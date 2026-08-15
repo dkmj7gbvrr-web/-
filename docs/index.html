@@ -76,10 +76,14 @@
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   #app {
-    display: flex;
     flex-direction: column;
     height: 100dvh;
     overflow: hidden;
+  }
+  /* [hidden] must win over this ID selector, otherwise a "hidden" #app
+     still renders (same class of bug as the sheet-backdrop fix below). */
+  #app:not([hidden]) {
+    display: flex;
   }
   main#main-scroll {
     flex: 1;
@@ -553,17 +557,22 @@
   /* --- onboarding (household code) --- */
   .onboarding {
     min-height: 100dvh;
-    display: flex;
     align-items: center;
     justify-content: center;
     padding: 24px;
   }
+  /* Same [hidden]-vs-class-selector fix as #app above. */
+  .onboarding:not([hidden]) {
+    display: flex;
+  }
   .onboarding-card {
     width: 100%;
     max-width: 360px;
-    display: flex;
     flex-direction: column;
     gap: 14px;
+  }
+  .onboarding-card:not([hidden]) {
+    display: flex;
   }
   .onboarding-card h1 {
     font-size: 26px;
