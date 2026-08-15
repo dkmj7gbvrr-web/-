@@ -2,8 +2,8 @@ import SwiftUI
 import SwiftData
 
 struct SettingsView: View {
+    // AppSettings の初回作成は RootView が一元的に行う。ここでは読み取り/編集のみ。
     @Query private var settingsList: [AppSettings]
-    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         NavigationStack {
@@ -16,12 +16,6 @@ struct SettingsView: View {
             }
             .navigationTitle("設定")
         }
-        .onAppear(perform: ensureSettingsExist)
-    }
-
-    private func ensureSettingsExist() {
-        guard settingsList.isEmpty else { return }
-        modelContext.insert(AppSettings())
     }
 }
 
