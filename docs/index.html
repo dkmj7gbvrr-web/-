@@ -1253,6 +1253,10 @@ import {
     // above settlement()). It still counts in burdenA/burdenB below, which
     // reflect each person's fair share of TOTAL household spending.
     let nonSharedBurdenA = 0;
+    // Each person's own fair share of JUST the shared-card spending -- what
+    // they'd need to contribute to a joint account to cover it (see
+    // sharedAccountPlan(), which turns this into an actual transfer plan).
+    let sharedBurdenA = 0, sharedBurdenB = 0;
     const bySplitType = {};
     const byCategory = {};
 
@@ -1264,7 +1268,7 @@ import {
       burdenB += b.b;
       if (e.paidBy === 'a') { paidByA += e.amount; nonSharedBurdenA += b.a; }
       else if (e.paidBy === 'b') { paidByB += e.amount; nonSharedBurdenA += b.a; }
-      else { paidByShared += e.amount; }
+      else { paidByShared += e.amount; sharedBurdenA += b.a; sharedBurdenB += b.b; }
       bySplitType[e.splitType] = (bySplitType[e.splitType] || 0) + e.amount;
       const cat = isKnownCategory(e.category) ? e.category : 'other';
       byCategory[cat] = (byCategory[cat] || 0) + e.amount;
@@ -1275,7 +1279,38 @@ import {
     if (net > 0) settle = { payer: 'b', receiver: 'a', amount: net };
     else if (net < 0) settle = { payer: 'a', receiver: 'b', amount: -net };
 
-    return { cycle: cycle, total: total, paidByA: paidByA, paidByB: paidByB, paidByShared: paidByShared, burdenA: burdenA, burdenB: burdenB, bySplitType: bySplitType, byCategory: byCategory, settle: settle };
+    return {
+      cycle: cycle, total: total, paidByA: paidByA, paidByB: paidByB, paidByShared: paidByShared,
+      burdenA: burdenA, burdenB: burdenB, sharedBurdenA: sharedBurdenA, sharedBurdenB: sharedBurdenB,
+      bySplitType: bySplitType, byCategory: byCategory, settle: settle
+    };
+  }
+
+  // Turns a shared-card expense's burden into a concrete transfer plan for a
+  // joint account that pays that card's bill: the person owed money in the
+  // ordinary (non-shared) settlement above (the "creditor") gets their own
+  // joint-account contribution folded into what the other person ("debtor")
+  // sends them -- so the debtor pays their own share plus whatever of the
+  // creditor's share the settlement amount can absorb, directly into the
+  // joint account, and only the leftover (if any) goes to the creditor
+  // directly. This minimizes how many transfers either person has to make.
+  // Returns null when there's no shared-card spending in the cycle.
+  function sharedAccountPlan(s) {
+    if (s.paidByShared <= 0) return null;
+    const netAmt = s.settle ? s.settle.amount : 0;
+    const debtor = s.settle ? s.settle.payer : 'a';
+    const creditor = s.settle ? s.settle.receiver : 'b';
+    const sharedBurden = { a: s.sharedBurdenA, b: s.sharedBurdenB };
+    const debtorOwnShare = sharedBurden[debtor];
+    const creditorOwnShare = sharedBurden[creditor];
+    const redirected = Math.min(creditorOwnShare, netAmt);
+    return {
+      debtor: debtor,
+      creditor: creditor,
+      debtorToJoint: debtorOwnShare + redirected,
+      debtorToCreditor: netAmt - redirected,
+      creditorToJoint: creditorOwnShare - redirected
+    };
   }
 
   const SPLIT_TYPES = ['incomeRatio', 'equal', 'aOnly', 'bOnly', 'customRatio'];
@@ -1704,6 +1739,14 @@ import {
         return '<div class="kv-row"><span>' + escapeHtml(categoryDisplayName(cat)) + '</span><span class="num">' + formatYen(s.byCategory[cat]) + '</span></div>';
       }).join('');
 
+    const sharedPlan = sharedAccountPlan(s);
+    const sharedPlanLines = [];
+    if (sharedPlan) {
+      if (sharedPlan.debtorToJoint > 0) sharedPlanLines.push({ from: sharedPlan.debtor, toLabel: '共有口座', amount: sharedPlan.debtorToJoint });
+      if (sharedPlan.debtorToCreditor > 0) sharedPlanLines.push({ from: sharedPlan.debtor, to: sharedPlan.creditor, amount: sharedPlan.debtorToCreditor });
+      if (sharedPlan.creditorToJoint > 0) sharedPlanLines.push({ from: sharedPlan.creditor, toLabel: '共有口座', amount: sharedPlan.creditorToJoint });
+    }
+
     const body = document.getElementById('summary-body');
     body.innerHTML = '' +
       '<div class="ledger-card">' +
@@ -1718,6 +1761,18 @@ import {
         '<div class="kv-row"><span>' + escapeHtml(names.b) + '</span><span class="num">' + formatYen(s.paidByB) + '</span></div>' +
         (s.paidByShared > 0 ? '<div class="kv-row"><span>共有カード</span><span class="num">' + formatYen(s.paidByShared) + '</span></div>' : '') +
       '</div>' +
+      (sharedPlan ?
+        '<div class="ledger-card">' +
+          '<div class="ledger-title">共有カードの精算プラン</div>' +
+          '<div class="field-hint" style="padding-top:0; margin-bottom:10px;">グロス：共有分も含めた本来の負担額。ネット：共有口座への入金とAB間の精算を1つにまとめた場合の送金額です。</div>' +
+          '<div class="kv-row"><span>' + escapeHtml(names.a) + '（グロス）</span><span class="num">' + formatYen(s.burdenA) + '</span></div>' +
+          '<div class="kv-row"><span>' + escapeHtml(names.b) + '（グロス）</span><span class="num">' + formatYen(s.burdenB) + '</span></div>' +
+          sharedPlanLines.map(function (l) {
+            const toText = l.toLabel ? l.toLabel : escapeHtml(paidByLabel(l.to, names));
+            return '<div class="kv-row"><span>' + escapeHtml(paidByLabel(l.from, names)) + ' → ' + toText + '（ネット）</span><span class="num">' + formatYen(l.amount) + '</span></div>';
+          }).join('') +
+        '</div>'
+        : '') +
       '<div class="settlement-card">' +
         (settled ? '<div class="stamp">精算済</div>' : '') +
         (s.settle ?
