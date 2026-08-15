@@ -1246,28 +1246,36 @@ import {
       return d >= cycle.start && d <= cycle.end;
     });
 
-    let paidByA = 0, paidByB = 0, burdenA = 0, burdenB = 0, total = 0;
+    let paidByA = 0, paidByB = 0, paidByShared = 0, burdenA = 0, burdenB = 0, total = 0;
+    // Burden from 'shared'-card expenses is excluded here: that money was
+    // already paid out of the joint pot, not by A or B individually, so it
+    // carries no balance to settle between them (see the shared-card note
+    // above settlement()). It still counts in burdenA/burdenB below, which
+    // reflect each person's fair share of TOTAL household spending.
+    let nonSharedBurdenA = 0;
     const bySplitType = {};
     const byCategory = {};
 
     for (let i = 0; i < target.length; i++) {
       const e = target[i];
       total += e.amount;
-      if (e.paidBy === 'a') paidByA += e.amount; else paidByB += e.amount;
       const b = burden(e, incomePeriods, closingDay);
       burdenA += b.a;
       burdenB += b.b;
+      if (e.paidBy === 'a') { paidByA += e.amount; nonSharedBurdenA += b.a; }
+      else if (e.paidBy === 'b') { paidByB += e.amount; nonSharedBurdenA += b.a; }
+      else { paidByShared += e.amount; }
       bySplitType[e.splitType] = (bySplitType[e.splitType] || 0) + e.amount;
       const cat = isKnownCategory(e.category) ? e.category : 'other';
       byCategory[cat] = (byCategory[cat] || 0) + e.amount;
     }
 
-    const net = paidByA - burdenA;
+    const net = paidByA - nonSharedBurdenA;
     let settle = null;
     if (net > 0) settle = { payer: 'b', receiver: 'a', amount: net };
     else if (net < 0) settle = { payer: 'a', receiver: 'b', amount: -net };
 
-    return { cycle: cycle, total: total, paidByA: paidByA, paidByB: paidByB, burdenA: burdenA, burdenB: burdenB, bySplitType: bySplitType, byCategory: byCategory, settle: settle };
+    return { cycle: cycle, total: total, paidByA: paidByA, paidByB: paidByB, paidByShared: paidByShared, burdenA: burdenA, burdenB: burdenB, bySplitType: bySplitType, byCategory: byCategory, settle: settle };
   }
 
   const SPLIT_TYPES = ['incomeRatio', 'equal', 'aOnly', 'bOnly', 'customRatio'];
@@ -1287,6 +1295,16 @@ import {
   }
   function splitDotHtml(type) {
     return '<span class="split-dot split-dot-' + type + '"></span>';
+  }
+
+  // 'shared' means the expense was paid from a joint/shared card -- nobody
+  // personally fronted it, so it's excluded from the A/B settlement balance
+  // (see settlement()) but still counts toward totals and breakdowns.
+  const PAID_BY_OPTIONS = ['a', 'b', 'shared'];
+  function paidByLabel(paidBy, names) {
+    if (paidBy === 'a') return names.a;
+    if (paidBy === 'b') return names.b;
+    return '共有';
   }
 
   // ============================================================
@@ -1622,7 +1640,7 @@ import {
             '<span>' + dateLabel + '</span><span>・</span>' +
             splitDotHtml(e.splitType) +
             '<span>' + escapeHtml(splitLabel(e.splitType, names)) + '</span><span>・</span>' +
-            '<span>立替: ' + escapeHtml(e.paidBy === 'a' ? names.a : names.b) + '</span><span>・</span>' +
+            '<span>立替: ' + escapeHtml(paidByLabel(e.paidBy, names)) + '</span><span>・</span>' +
             categoryChipHtml(e.category) +
           '</div>' +
         '</div>' +
@@ -1698,6 +1716,7 @@ import {
         '<div class="ledger-title">実際の立替額</div>' +
         '<div class="kv-row"><span>' + escapeHtml(names.a) + '</span><span class="num">' + formatYen(s.paidByA) + '</span></div>' +
         '<div class="kv-row"><span>' + escapeHtml(names.b) + '</span><span class="num">' + formatYen(s.paidByB) + '</span></div>' +
+        (s.paidByShared > 0 ? '<div class="kv-row"><span>共有カード</span><span class="num">' + formatYen(s.paidByShared) + '</span></div>' : '') +
       '</div>' +
       '<div class="settlement-card">' +
         (settled ? '<div class="stamp">精算済</div>' : '') +
@@ -1937,9 +1956,9 @@ import {
   function renderExpensePaidBySegmented() {
     const names = currentNames();
     const container = document.getElementById('expense-paidby-segmented');
-    container.innerHTML = ['a', 'b'].map(function (p) {
+    container.innerHTML = PAID_BY_OPTIONS.map(function (p) {
       return '<button type="button" class="segment' + (currentPaidBy === p ? ' selected' : '') + '" data-action="select-paidby" data-person="' + p + '">' +
-        escapeHtml(p === 'a' ? names.a : names.b) + '</button>';
+        escapeHtml(paidByLabel(p, names)) + '</button>';
     }).join('');
   }
 
@@ -2560,9 +2579,9 @@ import {
   function renderImportPaidBySegmented() {
     const names = currentNames();
     const container = document.getElementById('import-paidby-segmented');
-    container.innerHTML = ['a', 'b'].map(function (p) {
+    container.innerHTML = PAID_BY_OPTIONS.map(function (p) {
       return '<button type="button" class="segment' + (importDefaultPaidBy === p ? ' selected' : '') + '" data-action="select-import-paidby" data-person="' + p + '">' +
-        escapeHtml(p === 'a' ? names.a : names.b) + '</button>';
+        escapeHtml(paidByLabel(p, names)) + '</button>';
     }).join('');
   }
 
@@ -2587,7 +2606,7 @@ import {
                 '<span>' + dateLabel + '</span><span>・</span>' +
                 splitDotHtml(item.splitType) +
                 '<span>' + escapeHtml(splitLabel(item.splitType, names)) + '</span><span>・</span>' +
-                '<span>立替: ' + escapeHtml(item.paidBy === 'a' ? names.a : names.b) + '</span><span>・</span>' +
+                '<span>立替: ' + escapeHtml(paidByLabel(item.paidBy, names)) + '</span><span>・</span>' +
                 categoryChipHtml(item.category) +
               '</div>' +
             '</div>' +
@@ -2705,7 +2724,12 @@ import {
       case 'edit-import-item': openExpenseSheetForPendingImport(Number(target.dataset.index)); break;
       case 'select-import-paidby':
         importDefaultPaidBy = target.dataset.person;
+        // Every row in one imported statement is necessarily the same card,
+        // so changing this applies to the whole batch already on screen, not
+        // just to future imports.
+        pendingImportItems.forEach(function (item) { item.paidBy = importDefaultPaidBy; });
         renderImportPaidBySegmented();
+        renderImportReviewList();
         break;
       case 'commit-import': commitImport(); break;
       default: break;
