@@ -24,6 +24,12 @@
     --accent-soft: #DCE3EA;
     --red: #B23A2E;
     --red-soft: #F3DEDA;
+    /* Categorical: one color per split pattern, fixed order (never reassigned). */
+    --split-aOnly: #2a78d6;
+    --split-bOnly: #eb6834;
+    --split-equal: #1baf7a;
+    --split-incomeRatio: #eda100;
+    --split-customRatio: #e87ba4;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -38,6 +44,11 @@
       --accent-soft: #24323F;
       --red: #E1685A;
       --red-soft: #3A2422;
+      --split-aOnly: #3987e5;
+      --split-bOnly: #d95926;
+      --split-equal: #199e70;
+      --split-incomeRatio: #c98500;
+      --split-customRatio: #d55181;
     }
   }
   :root[data-theme="dark"] {
@@ -52,6 +63,11 @@
     --accent-soft: #24323F;
     --red: #E1685A;
     --red-soft: #3A2422;
+    --split-aOnly: #3987e5;
+    --split-bOnly: #d95926;
+    --split-equal: #199e70;
+    --split-incomeRatio: #c98500;
+    --split-customRatio: #d55181;
   }
 
   * { box-sizing: border-box; }
@@ -141,6 +157,21 @@
   }
   .chip-settled { background: var(--red-soft); color: var(--red); }
 
+  /* Split-pattern color marker: always paired with a text label next to it,
+     never the sole carrier of meaning (color-blind / low-vision safe). */
+  .split-dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex: none;
+  }
+  .split-dot-aOnly { background: var(--split-aOnly); }
+  .split-dot-bOnly { background: var(--split-bOnly); }
+  .split-dot-equal { background: var(--split-equal); }
+  .split-dot-incomeRatio { background: var(--split-incomeRatio); }
+  .split-dot-customRatio { background: var(--split-customRatio); }
+
   .ledger {
     background: var(--surface);
     border-top: 1px solid var(--line);
@@ -170,6 +201,7 @@
     color: var(--ink-muted);
     margin-top: 3px;
     display: flex;
+    align-items: center;
     gap: 5px;
     flex-wrap: wrap;
   }
@@ -399,6 +431,11 @@
     background: rgba(20, 24, 29, 0);
     transition: background .28s ease;
   }
+  /* The expense/income detail sheets can be opened *on top of* the import
+     review sheet (tapping a pending row), so they need to stack above it
+     regardless of DOM order (otherwise the backdrop below intercepts taps
+     meant for the sheet on top). */
+  #expense-sheet-backdrop, #income-sheet-backdrop { z-index: 110; }
   /* [hidden] must still win over this class at equal specificity, otherwise a
      "hidden" backdrop keeps intercepting taps underneath it. */
   .sheet-backdrop:not([hidden]) {
@@ -436,6 +473,38 @@
   .sheet-btn { background: none; border: none; font-size: 15.5px; color: var(--ink-muted); padding: 6px 4px; }
   .sheet-btn-primary { color: var(--accent); font-weight: 700; }
   .sheet-body { overflow-y: auto; padding: 18px 20px 28px; }
+
+  .import-sheet { max-height: 94dvh; }
+  .import-sheet-body { flex: 1; }
+  .import-sheet-footer {
+    padding: 12px 20px 14px;
+    border-top: 1px solid var(--line);
+    background: var(--bg);
+  }
+  .import-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 8px 0 16px;
+  }
+  .import-checkbox {
+    width: 20px;
+    height: 20px;
+    accent-color: var(--accent);
+    flex: none;
+  }
+  .import-row-body {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+    padding: 13px 12px 13px 4px;
+    background: none;
+    border: none;
+    text-align: left;
+    color: inherit;
+  }
 
   .field-group { margin-bottom: 16px; }
   .field-label {
@@ -685,9 +754,14 @@
     <section class="tab-panel" data-tab="expenses" id="tab-expenses">
       <div class="page-header">
         <h1>支出</h1>
-        <button class="icon-btn" data-action="add-expense" aria-label="支出を追加">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-        </button>
+        <div style="display:flex; gap:8px;">
+          <button class="icon-btn" data-action="import-pdf-trigger" aria-label="明細PDFを読み込む">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9.5 17v-4.5h1.3a1.3 1.3 0 0 1 0 2.6H9.5M13.5 17v-4.5h1.6a1 1 0 0 1 0 4.5h-1.6z"/></svg>
+          </button>
+          <button class="icon-btn" data-action="add-expense" aria-label="支出を追加">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+        </div>
       </div>
       <div id="expenses-list"></div>
     </section>
@@ -854,6 +928,31 @@
   </div>
 </div>
 
+<div class="sheet-backdrop" id="import-sheet-backdrop" hidden>
+  <div class="sheet import-sheet" role="dialog" aria-modal="true" aria-labelledby="import-sheet-title">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <button class="sheet-btn" data-action="close-sheet" data-sheet="import">キャンセル</button>
+      <div class="sheet-title" id="import-sheet-title">明細を読み込み</div>
+      <span style="width:52px;"></span>
+    </div>
+    <div class="sheet-body import-sheet-body">
+      <div class="field-group">
+        <label class="field-label">このカードの名義（立替えた人）</label>
+        <div class="segmented" id="import-paidby-segmented"></div>
+      </div>
+      <div class="section-label" id="import-summary-label"></div>
+      <div class="ledger" id="import-review-list"></div>
+      <div class="field-hint">行をタップすると、日付・金額・負担の分け方を1件ずつ編集できます。チェックを外した行は追加されません。</div>
+    </div>
+    <div class="import-sheet-footer">
+      <button class="btn btn-primary" data-action="commit-import" id="import-commit-btn">追加する</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="import-pdf-input" accept="application/pdf" hidden>
+
 <div id="toast"></div>
 
 <script type="module">
@@ -1007,6 +1106,9 @@ import {
   }
   function splitShort(type) {
     return { aOnly: 'A100%', bOnly: 'B100%', equal: '半々', incomeRatio: '収入割合', customRatio: '任意割合' }[type] || '';
+  }
+  function splitDotHtml(type) {
+    return '<span class="split-dot split-dot-' + type + '"></span>';
   }
 
   // ============================================================
@@ -1171,6 +1273,7 @@ import {
           '<div class="title">' + escapeHtml(title) + '</div>' +
           '<div class="meta">' +
             '<span>' + dateLabel + '</span><span>・</span>' +
+            splitDotHtml(e.splitType) +
             '<span>' + escapeHtml(splitLabel(e.splitType, names)) + '</span><span>・</span>' +
             '<span>立替: ' + escapeHtml(e.paidBy === 'a' ? names.a : names.b) + '</span>' +
           '</div>' +
@@ -1225,7 +1328,7 @@ import {
 
     const breakdown = SPLIT_TYPES.filter(function (t) { return s.bySplitType[t] > 0; })
       .map(function (t) {
-        return '<div class="kv-row"><span>' + escapeHtml(splitLabel(t, names)) + '</span><span class="num">' + formatYen(s.bySplitType[t]) + '</span></div>';
+        return '<div class="kv-row"><span style="display:flex; align-items:center; gap:8px;">' + splitDotHtml(t) + '<span>' + escapeHtml(splitLabel(t, names)) + '</span></span><span class="num">' + formatYen(s.bySplitType[t]) + '</span></div>';
       }).join('');
 
     const body = document.getElementById('summary-body');
@@ -1313,6 +1416,7 @@ import {
 
   let editingExpenseId = null;
   let editingIncomeId = null;
+  let editingPendingImportIndex = null;
   let currentSplitType = 'equal';
   let currentCustomPercent = 50;
   let currentPaidBy = 'a';
@@ -1336,7 +1440,7 @@ import {
       const selected = currentSplitType === t;
       return '' +
         '<button type="button" class="option-row' + (selected ? ' selected' : '') + '" data-action="select-split-type" data-type="' + t + '">' +
-          '<span>' + escapeHtml(splitLabel(t, names)) + '</span>' +
+          '<span style="display:flex; align-items:center; gap:9px;">' + splitDotHtml(t) + '<span>' + escapeHtml(splitLabel(t, names)) + '</span></span>' +
           (selected ? checkIconSvg() : '') +
         '</button>';
     }).join('');
@@ -1375,13 +1479,25 @@ import {
 
   function openExpenseSheet(id) {
     editingExpenseId = id || null;
+    editingPendingImportIndex = null;
     const e = id ? state.expenses.find(function (x) { return x.id === id; }) : null;
+    populateExpenseSheetFields(e, !!e);
+    showSheet('expense-sheet-backdrop');
+  }
 
-    document.getElementById('expense-sheet-title').textContent = e ? '支出を編集' : '支出を追加';
+  function openExpenseSheetForPendingImport(index) {
+    editingExpenseId = null;
+    editingPendingImportIndex = index;
+    populateExpenseSheetFields(pendingImportItems[index], true);
+    showSheet('expense-sheet-backdrop');
+  }
+
+  function populateExpenseSheetFields(e, showDeleteButton) {
+    document.getElementById('expense-sheet-title').textContent = showDeleteButton ? '支出を編集' : '支出を追加';
     document.getElementById('expense-memo').value = e ? e.memo : '';
     document.getElementById('expense-date').value = e ? e.date : toDateInputValue(new Date());
     document.getElementById('expense-amount').value = e ? String(e.amount) : '';
-    document.getElementById('expense-delete-btn').hidden = !e;
+    document.getElementById('expense-delete-btn').hidden = !showDeleteButton;
 
     currentSplitType = e ? e.splitType : 'equal';
     currentCustomPercent = (e && e.customAPercent != null) ? e.customAPercent : 50;
@@ -1390,7 +1506,6 @@ import {
     renderExpenseSplitOptions();
     renderExpensePaidBySegmented();
     updateCustomRatioVisibility();
-    showSheet('expense-sheet-backdrop');
   }
 
   async function saveExpense() {
@@ -1400,19 +1515,33 @@ import {
     const date = document.getElementById('expense-date').value || toDateInputValue(new Date());
     const memo = document.getElementById('expense-memo').value.trim();
     const customAPercent = currentSplitType === 'customRatio' ? currentCustomPercent : null;
-    const payload = { date: date, amount: amount, memo: memo, splitType: currentSplitType, customAPercent: customAPercent, paidBy: currentPaidBy, updatedAt: Date.now() };
+    const payload = { date: date, amount: amount, memo: memo, splitType: currentSplitType, customAPercent: customAPercent, paidBy: currentPaidBy };
+
+    if (editingPendingImportIndex !== null) {
+      Object.assign(pendingImportItems[editingPendingImportIndex], payload);
+      closeSheet('expense-sheet-backdrop');
+      renderImportReviewList();
+      return;
+    }
 
     closeSheet('expense-sheet-backdrop');
     try {
+      const withTimestamp = Object.assign({}, payload, { updatedAt: Date.now() });
       if (editingExpenseId) {
-        await updateDoc(doc(expensesCol(currentCode), editingExpenseId), payload);
+        await updateDoc(doc(expensesCol(currentCode), editingExpenseId), withTimestamp);
       } else {
-        await addDoc(expensesCol(currentCode), payload);
+        await addDoc(expensesCol(currentCode), withTimestamp);
       }
     } catch (e) { toast('保存に失敗しました。通信環境を確認してください'); }
   }
 
   async function deleteExpense() {
+    if (editingPendingImportIndex !== null) {
+      pendingImportItems.splice(editingPendingImportIndex, 1);
+      closeSheet('expense-sheet-backdrop');
+      renderImportReviewList();
+      return;
+    }
     if (!editingExpenseId) return;
     if (!confirm('この支出を削除しますか？')) return;
     closeSheet('expense-sheet-backdrop');
@@ -1507,6 +1636,268 @@ import {
   }
 
   // ============================================================
+  // PDF import: read a card statement PDF, parse purchase lines,
+  // and stage them for review before writing anything to Firestore.
+  // ============================================================
+
+  let pdfjsLibPromise = null;
+  function loadPdfJs() {
+    if (!pdfjsLibPromise) {
+      pdfjsLibPromise = import('https://unpkg.com/pdfjs-dist@6.2.108/build/pdf.min.mjs').then(function (mod) {
+        mod.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@6.2.108/build/pdf.worker.min.mjs';
+        return mod;
+      });
+    }
+    return pdfjsLibPromise;
+  }
+
+  // Card statement PDFs sometimes use full-width digits/commas; normalize to
+  // half-width before matching so the parser doesn't need two regexes.
+  function toHalfWidthDigitsAndComma(str) {
+    return str
+      .replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); })
+      .replace(/，/g, ',');
+  }
+
+  // pdf.js gives positioned text fragments, not lines -- reconstruct rows by
+  // bucketing items with the same (rounded) baseline Y, then reading left to right.
+  function linesFromTextContent(content) {
+    const rows = new Map();
+    content.items.forEach(function (item) {
+      const y = Math.round(item.transform[5] / 2) * 2;
+      if (!rows.has(y)) rows.set(y, []);
+      rows.get(y).push(item);
+    });
+    const keys = Array.from(rows.keys()).sort(function (a, b) { return b - a; }); // top to bottom
+    return keys.map(function (key) {
+      const items = rows.get(key).slice().sort(function (a, b) { return a.transform[4] - b.transform[4]; });
+      let text = '';
+      let lastEndX = null;
+      items.forEach(function (item) {
+        const startX = item.transform[4];
+        if (lastEndX !== null && startX - lastEndX > 2) text += ' ';
+        text += item.str;
+        lastEndX = startX + (item.width || 0);
+      });
+      return text.trim();
+    }).filter(function (line) { return line.length > 0; });
+  }
+
+  async function extractPdfLines(pdfjsLib, arrayBuffer) {
+    // cMapUrl lets pdf.js decode CID-keyed CJK fonts that reference the
+    // standard Adobe character maps instead of embedding their own
+    // ToUnicode table -- without it, Japanese text extraction can silently
+    // come back empty even though the PDF renders fine visually.
+    const pdf = await pdfjsLib.getDocument({
+      data: arrayBuffer,
+      cMapUrl: 'https://unpkg.com/pdfjs-dist@6.2.108/cmaps/',
+      cMapPacked: true
+    }).promise;
+    let lines = [];
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const content = await page.getTextContent();
+      lines = lines.concat(linesFromTextContent(content));
+    }
+    return lines;
+  }
+
+  // The statement's own reference date (明細書作成日/締め日/決済日) carries the
+  // year that individual purchase lines omit (they're just "8月20日").
+  function findStatementReferenceDate(lines) {
+    const dateRe = /(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日/;
+    let fallback = null;
+    for (let i = 0; i < lines.length; i++) {
+      const m = toHalfWidthDigitsAndComma(lines[i]).match(dateRe);
+      if (!m) continue;
+      const parsed = { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) };
+      if (/作成日|締め|決済日/.test(lines[i])) return parsed;
+      if (!fallback) fallback = parsed;
+    }
+    return fallback;
+  }
+
+  function resolvePurchaseYear(month, referenceYM) {
+    const ref = referenceYM || (function () {
+      const now = new Date();
+      return { year: now.getFullYear(), month: now.getMonth() + 1 };
+    })();
+    // A purchase month later than the statement's own month means it rolled
+    // over from the previous year (e.g. a Jan statement listing a Dec charge).
+    return month > ref.month ? ref.year - 1 : ref.year;
+  }
+
+  // Matches "8月20日　家電量販店　500,000" style rows (also used for the
+  // "その他のご請求分" section: annual fee, tax, etc.) while skipping
+  // subtotal/total rows, which always contain "合計" in this statement format.
+  function parseStatementLines(rawLines) {
+    const itemRe = /^\s*(\d{1,2})月\s*(\d{1,2})日\s+(.+?)\s+([\d,]{3,})\s*(?:[(（]\*[)）])?\s*$/;
+    const referenceYM = findStatementReferenceDate(rawLines);
+    const items = [];
+    rawLines.forEach(function (rawLine) {
+      const line = toHalfWidthDigitsAndComma(rawLine);
+      if (line.indexOf('合計') !== -1) return;
+      const m = line.match(itemRe);
+      if (!m) return;
+      const month = Number(m[1]);
+      const day = Number(m[2]);
+      const memo = m[3].trim();
+      const amount = Number(m[4].replace(/,/g, ''));
+      if (month < 1 || month > 12 || day < 1 || day > 31) return;
+      if (!memo || memo.length > 40 || !Number.isFinite(amount) || amount <= 0) return;
+      const year = resolvePurchaseYear(month, referenceYM);
+      items.push({
+        date: year + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0'),
+        memo: memo,
+        amount: amount
+      });
+    });
+    return items;
+  }
+
+  // Remembers the last-chosen split pattern per merchant name (by exact memo
+  // text) so recurring charges default to what was picked before, instead of
+  // always landing on "equal split".
+  const MERCHANT_MEMORY_KEY = 'warikan-kakeibo-merchant-memory';
+  function loadMerchantMemory() {
+    try {
+      const raw = localStorage.getItem(MERCHANT_MEMORY_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
+  }
+  function rememberMerchantChoice(memo, choice) {
+    try {
+      const memory = loadMerchantMemory();
+      memory[memo] = choice;
+      localStorage.setItem(MERCHANT_MEMORY_KEY, JSON.stringify(memory));
+    } catch (e) { /* storage unavailable; not fatal */ }
+  }
+
+  function isLikelyDuplicateExpense(item) {
+    return state.expenses.some(function (e) {
+      return e.date === item.date && e.amount === item.amount && e.memo === item.memo;
+    });
+  }
+
+  let pendingImportItems = [];
+  let importDefaultPaidBy = 'a';
+
+  async function handlePdfFile(file) {
+    toast('PDFを解析しています…');
+    let pdfjsLib;
+    try {
+      pdfjsLib = await loadPdfJs();
+    } catch (e) {
+      toast('PDF読み込み機能を準備できませんでした。通信環境を確認してください');
+      return;
+    }
+    try {
+      const buf = await file.arrayBuffer();
+      const lines = await extractPdfLines(pdfjsLib, buf);
+      const parsed = parseStatementLines(lines);
+      if (parsed.length === 0) {
+        toast('明細を読み取れませんでした。対応していないPDF形式の可能性があります');
+        return;
+      }
+      const memory = loadMerchantMemory();
+      pendingImportItems = parsed.map(function (p) {
+        const remembered = memory[p.memo];
+        const duplicate = isLikelyDuplicateExpense(p);
+        return {
+          date: p.date,
+          memo: p.memo,
+          amount: p.amount,
+          splitType: remembered ? remembered.splitType : 'equal',
+          customAPercent: remembered ? remembered.customAPercent : null,
+          paidBy: remembered ? remembered.paidBy : importDefaultPaidBy,
+          included: !duplicate,
+          isDuplicate: duplicate
+        };
+      });
+      openImportSheet();
+    } catch (e) {
+      toast('PDFの読み込みに失敗しました');
+    }
+  }
+
+  function openImportSheet() {
+    renderImportPaidBySegmented();
+    renderImportReviewList();
+    showSheet('import-sheet-backdrop');
+  }
+
+  function renderImportPaidBySegmented() {
+    const names = currentNames();
+    const container = document.getElementById('import-paidby-segmented');
+    container.innerHTML = ['a', 'b'].map(function (p) {
+      return '<button type="button" class="segment' + (importDefaultPaidBy === p ? ' selected' : '') + '" data-action="select-import-paidby" data-person="' + p + '">' +
+        escapeHtml(p === 'a' ? names.a : names.b) + '</button>';
+    }).join('');
+  }
+
+  function renderImportReviewList() {
+    const names = currentNames();
+    const includedCount = pendingImportItems.filter(function (item) { return item.included; }).length;
+    document.getElementById('import-summary-label').textContent =
+      pendingImportItems.length + '件見つかりました（' + includedCount + '件を追加します）';
+
+    const list = document.getElementById('import-review-list');
+    list.innerHTML = pendingImportItems.map(function (item, index) {
+      const dateLabel = formatMonthDay(parseLocalDate(item.date));
+      return '' +
+        '<div class="row import-row">' +
+          '<input type="checkbox" class="import-checkbox" data-action="toggle-import-item" data-index="' + index + '"' + (item.included ? ' checked' : '') + '>' +
+          '<button type="button" class="import-row-body" data-action="edit-import-item" data-index="' + index + '">' +
+            '<div class="main">' +
+              '<div class="title">' + escapeHtml(item.memo) +
+                (item.isDuplicate ? '<span class="chip chip-settled" style="margin-left:6px;">登録済みかも</span>' : '') +
+              '</div>' +
+              '<div class="meta">' +
+                '<span>' + dateLabel + '</span><span>・</span>' +
+                splitDotHtml(item.splitType) +
+                '<span>' + escapeHtml(splitLabel(item.splitType, names)) + '</span><span>・</span>' +
+                '<span>立替: ' + escapeHtml(item.paidBy === 'a' ? names.a : names.b) + '</span>' +
+              '</div>' +
+            '</div>' +
+            '<div class="amount">' + formatYen(item.amount) + '</div>' +
+          '</button>' +
+        '</div>';
+    }).join('');
+
+    document.getElementById('import-commit-btn').textContent = includedCount + '件を追加する';
+  }
+
+  function toggleImportItem(index) {
+    pendingImportItems[index].included = !pendingImportItems[index].included;
+    renderImportReviewList();
+  }
+
+  async function commitImport() {
+    const toCommit = pendingImportItems.filter(function (item) { return item.included; });
+    if (toCommit.length === 0) { toast('追加する項目を選んでください'); return; }
+    try {
+      const batch = writeBatch(db);
+      toCommit.forEach(function (item) {
+        const ref = doc(expensesCol(currentCode));
+        batch.set(ref, {
+          date: item.date, amount: item.amount, memo: item.memo,
+          splitType: item.splitType, customAPercent: item.customAPercent,
+          paidBy: item.paidBy, updatedAt: Date.now()
+        });
+      });
+      await batch.commit();
+      toCommit.forEach(function (item) {
+        rememberMerchantChoice(item.memo, { splitType: item.splitType, customAPercent: item.customAPercent, paidBy: item.paidBy });
+      });
+      toast(toCommit.length + '件の支出を追加しました');
+      pendingImportItems = [];
+      closeSheet('import-sheet-backdrop');
+    } catch (e) {
+      toast('追加に失敗しました。通信環境を確認してください');
+    }
+  }
+
+  // ============================================================
   // Wiring
   // ============================================================
 
@@ -1556,6 +1947,14 @@ import {
       case 'copy-settings-code': copyCode(currentCode); break;
       case 'enter-app': enterApp(); break;
       case 'leave-household': leaveHousehold(); break;
+      case 'import-pdf-trigger': document.getElementById('import-pdf-input').click(); break;
+      case 'toggle-import-item': toggleImportItem(Number(target.dataset.index)); break;
+      case 'edit-import-item': openExpenseSheetForPendingImport(Number(target.dataset.index)); break;
+      case 'select-import-paidby':
+        importDefaultPaidBy = target.dataset.person;
+        renderImportPaidBySegmented();
+        break;
+      case 'commit-import': commitImport(); break;
       default: break;
     }
   });
@@ -1592,6 +1991,14 @@ import {
     v = Math.min(28, Math.max(1, Math.round(v)));
     e.target.value = v;
     updateSettings({ cardClosingDay: v });
+  });
+
+  document.getElementById('import-pdf-input').addEventListener('change', function (e) {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.type !== 'application/pdf') { toast('PDFファイルを選んでください'); return; }
+    handlePdfFile(file);
   });
 
   document.querySelectorAll('.sheet-backdrop').forEach(function (backdrop) {
