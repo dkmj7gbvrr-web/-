@@ -2418,9 +2418,11 @@ import {
   }
 
   // The statement's own reference date (明細書作成日/締め日/決済日) carries the
-  // year that individual purchase lines omit (they're just "8月20日").
+  // year that individual purchase lines omit (they're just "8月20日" or "08/20").
+  // Different card issuers write this with kanji (2023年9月20日) or slashes
+  // (2023/09/20), so both are accepted.
   function findStatementReferenceDate(lines) {
-    const dateRe = /(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日/;
+    const dateRe = /(\d{4})[年\/]\s*(\d{1,2})[月\/]\s*(\d{1,2})日?/;
     let fallback = null;
     for (let i = 0; i < lines.length; i++) {
       const m = toHalfWidthDigitsAndComma(lines[i]).match(dateRe);
@@ -2442,11 +2444,21 @@ import {
     return month > ref.month ? ref.year - 1 : ref.year;
   }
 
-  // Matches "8月20日　家電量販店　500,000" style rows (also used for the
-  // "その他のご請求分" section: annual fee, tax, etc.) while skipping
-  // subtotal/total rows, which always contain "合計" in this statement format.
+  // Matches one item row, e.g. "8月20日　家電量販店　500,000" (kanji date,
+  // used by some issuers' PDF/paper statements) or "08/20　家電量販店　1回
+  // ￥12,340円" (slash date + an optional 支払方法 column + an optional ¥/円
+  // wrapper around the amount, closer to what Vpass/MyJCB/e-NAVI/Netアンサー
+  // style WEB明細 PDFs tend to use). Also handles the "その他のご請求分"
+  // section (annual fee, tax, etc.), while skipping subtotal/total rows,
+  // which always contain "合計" across every issuer's statement format.
+  // Card statements commonly insert a 支払方法/回数 column ("1回", "リボ",
+  // "分割3回", "ボーナス一括") between the merchant name and the amount --
+  // strip a trailing one of these off the memo so it doesn't pollute the
+  // merchant name shown/remembered in the app.
+  const PAYMENT_METHOD_SUFFIX_RE = /\s*(?:ボーナス(?:一括払?い?|[0-9]+回払?い?)|[0-9]+回払?い?|一括払?い?|リボ(?:払い)?|分割[0-9]*回?)\s*$/;
+
   function parseStatementLines(rawLines) {
-    const itemRe = /^\s*(\d{1,2})月\s*(\d{1,2})日\s+(.+?)\s+([\d,]{3,})\s*(?:[(（]\*[)）])?\s*$/;
+    const itemRe = /^\s*(?:(\d{4})\/(\d{1,2})\/(\d{1,2})|(\d{1,2})\/(\d{1,2})|(\d{1,2})月\s*(\d{1,2})日)\s+(.+?)\s+[¥￥]?([\d,]{3,})円?\s*(?:[(（]\*[)）])?\s*$/;
     const referenceYM = findStatementReferenceDate(rawLines);
     const items = [];
     rawLines.forEach(function (rawLine) {
@@ -2454,13 +2466,15 @@ import {
       if (line.indexOf('合計') !== -1) return;
       const m = line.match(itemRe);
       if (!m) return;
-      const month = Number(m[1]);
-      const day = Number(m[2]);
-      const memo = m[3].trim();
-      const amount = Number(m[4].replace(/,/g, ''));
+      let year = null, month, day;
+      if (m[1] !== undefined) { year = Number(m[1]); month = Number(m[2]); day = Number(m[3]); }
+      else if (m[4] !== undefined) { month = Number(m[4]); day = Number(m[5]); }
+      else { month = Number(m[6]); day = Number(m[7]); }
+      const memo = m[8].trim().replace(PAYMENT_METHOD_SUFFIX_RE, '').trim();
+      const amount = Number(m[9].replace(/,/g, ''));
       if (month < 1 || month > 12 || day < 1 || day > 31) return;
       if (!memo || memo.length > 40 || !Number.isFinite(amount) || amount <= 0) return;
-      const year = resolvePurchaseYear(month, referenceYM);
+      if (year === null) year = resolvePurchaseYear(month, referenceYM);
       items.push({
         date: year + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0'),
         memo: memo,
