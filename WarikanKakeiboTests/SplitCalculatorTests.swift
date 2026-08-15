@@ -16,11 +16,12 @@ final class SplitCalculatorTests: XCTestCase {
         XCTAssertEqual(burden.bAmount, 1000)
     }
 
-    func testEqualSplitWithOddAmountGivesRemainderToB() {
+    func testEqualSplitWithOddAmountRoundsUpToA() {
+        // 1001円の50%は500.5円 -> Aの取り分は四捨五入(.plain, 0から遠い方に丸め)で501円、Bは残りの500円。
         let expense = Expense(amount: 1001, splitType: .equalSplit, paidBy: .a)
         let burden = SplitCalculator.burden(for: expense, incomeRecords: [], closingDay: 6)
-        XCTAssertEqual(burden.aAmount, 500)
-        XCTAssertEqual(burden.bAmount, 501)
+        XCTAssertEqual(burden.aAmount, 501)
+        XCTAssertEqual(burden.bAmount, 500)
         XCTAssertEqual(burden.aAmount + burden.bAmount, expense.amount)
     }
 

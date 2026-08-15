@@ -25,7 +25,7 @@ final class SettlementCalculatorTests: XCTestCase {
         XCTAssertEqual(settlement.settlementDescription?.amount, 2000)
     }
 
-    func testNoSettlementNeededWhenBalanced() {
+    func testSingleEqualSplitExpenseRequiresHalfSettlement() {
         let cycle = BillingCycleCalculator.cycle(forStatement: YearMonth(year: 2026, month: 8), closingDay: 6)
         let d = dateFor(year: 2026, month: 8, day: 1)
         let expense = Expense(date: d, amount: 2000, splitType: .equalSplit, paidBy: .a)
@@ -37,7 +37,27 @@ final class SettlementCalculatorTests: XCTestCase {
             closingDay: 6
         )
 
+        // Aが2000円立て替え、半々負担 -> Bが1000円払えば精算完了。
+        XCTAssertEqual(settlement.settlementDescription?.payer, .b)
         XCTAssertEqual(settlement.settlementDescription?.amount, 1000)
+    }
+
+    func testNoSettlementNeededWhenAlreadyBalanced() {
+        let cycle = BillingCycleCalculator.cycle(forStatement: YearMonth(year: 2026, month: 8), closingDay: 6)
+        let d = dateFor(year: 2026, month: 8, day: 1)
+
+        // AとBがそれぞれ同額を立て替え、どちらも半々負担 -> 差し引きゼロで精算不要。
+        let expense1 = Expense(date: d, amount: 2000, splitType: .equalSplit, paidBy: .a)
+        let expense2 = Expense(date: d, amount: 2000, splitType: .equalSplit, paidBy: .b)
+
+        let settlement = SettlementCalculator.settlement(
+            for: [expense1, expense2],
+            cycle: cycle,
+            incomeRecords: [],
+            closingDay: 6
+        )
+
+        XCTAssertNil(settlement.settlementDescription)
     }
 
     func testExpensesOutsideCycleAreExcluded() {

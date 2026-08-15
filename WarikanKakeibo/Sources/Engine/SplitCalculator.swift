@@ -27,7 +27,8 @@ enum SplitCalculator {
         }
     }
 
-    /// Aの割合(%)で分割する。端数はBに寄せることで合計が必ず元の金額と一致するようにする。
+    /// Aの割合(%)で分割する。Aの金額を四捨五入し、Bの金額は残り(合計 - Aの金額)として求めるため、
+    /// 端数が生じても合計は必ず元の金額と一致する（例: 1001円を50%ずつ分けるとA=501円, B=500円）。
     private static func splitByPercent(amount: Decimal, aPercent: Int) -> Burden {
         let clamped = min(100, max(0, aPercent))
         var aAmount = (amount * Decimal(clamped) / 100)
