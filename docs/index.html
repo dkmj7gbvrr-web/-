@@ -1156,9 +1156,16 @@ import {
     const origConsoleError = console.error.bind(console);
     console.error = function () {
       origConsoleError.apply(console, arguments);
-      debugLog('console.error: ' + Array.prototype.map.call(arguments, String).join(' '));
+      const text = Array.prototype.map.call(arguments, function (a) {
+        return (a instanceof Error) ? (a.stack || (a.name + ': ' + a.message)) : String(a);
+      }).join(' ');
+      debugLog('console.error: ' + text);
     };
     debugLog('debug console ready (' + navigator.userAgent + ')');
+    debugLog('JS features: Promise.withResolvers=' + (typeof Promise.withResolvers) +
+      ' AbortSignal.any=' + (typeof AbortSignal.any) +
+      ' structuredClone=' + (typeof structuredClone) +
+      ' Iterator=' + (typeof Iterator));
   }
 
   // ============================================================
