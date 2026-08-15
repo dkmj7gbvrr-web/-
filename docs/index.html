@@ -1129,7 +1129,8 @@
       </div>
       <div class="section-label" id="import-summary-label"></div>
       <div class="field-hint garbled-hint" id="import-garbled-hint" style="padding-top:0; margin-bottom:10px;" hidden>
-        一部の店名がこのPDFから正しく読み取れませんでした。行についている画像を見て、正しい店名をタップして直接入力し直してください。
+        <div>一部の店名がこのPDFから正しく読み取れませんでした。画像から自動で読み取るか、行をタップして直接入力し直してください。</div>
+        <button type="button" class="btn btn-secondary" id="import-ocr-all-btn" data-action="ocr-all-garbled" style="margin-top:8px;">画像から店名をまとめて読み取る</button>
       </div>
       <div class="ledger" id="import-review-list"></div>
       <div class="field-hint">行をタップすると、日付・金額・負担の分け方を1件ずつ編集できます。チェックを外した行は追加されません。</div>
@@ -2538,6 +2539,46 @@ import {
     return pdfjsLibPromise;
   }
 
+  // Self-hosted under docs/vendor/tesseract/ for the same reason as pdf.js
+  // above. Uses the LSTM-only engine (Tesseract's modern, most accurate
+  // mode) with a non-SIMD core build specifically -- pointing corePath at
+  // one exact file (rather than a directory) skips tesseract.js's own
+  // SIMD-capability probing and always loads this one file, trading a bit
+  // of raw speed for not needing to vendor multiple core variants and not
+  // depending on a browser feature-detection path we can't test everywhere.
+  // Loaded lazily (only once the user actually asks to OCR a row) since the
+  // engine + Japanese language data together are several MB.
+  let ocrWorkerPromise = null;
+  function getOcrWorker() {
+    if (!ocrWorkerPromise) {
+      ocrWorkerPromise = import('./vendor/tesseract/tesseract.esm.min.js').then(function (mod) {
+        const Tesseract = mod.default;
+        return Tesseract.createWorker('jpn', 1, {
+          workerPath: './vendor/tesseract/worker.min.js',
+          corePath: './vendor/tesseract/tesseract-core-lstm.wasm.js',
+          langPath: './vendor/tesseract/lang/'
+        });
+      });
+    }
+    return ocrWorkerPromise;
+  }
+
+  // The row image OCR runs against is a full-width crop (see
+  // renderRowImageDataUrl), so the recognized text usually still carries the
+  // date prefix and the amount at the tail end -- strip both, leaving just
+  // the merchant name, the same shape a normally-extracted memo would have.
+  function cleanOcrText(text) {
+    let s = String(text || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+    // A trailing amount (optionally followed by OCR noise from a cut-off
+    // digit or stray character at the crop's right edge).
+    s = s.replace(/[¥￥]?[\d,.]{2,}\s*円?\s*\S{0,3}\s*$/, '').trim();
+    // A leading date, month/day only (no year, matching what the crop
+    // actually contains) -- OCR often inserts spaces between every token
+    // ("7 月 2 日"), so each separator tolerates surrounding whitespace.
+    s = s.replace(/^(?:\d{1,4}\s*[年\/]\s*)?\d{1,2}\s*[月\/]\s*\d{1,2}\s*日?\s*/, '').trim();
+    return s.length > 40 ? s.slice(0, 40) : s;
+  }
+
   // Card statement PDFs sometimes use full-width digits/commas; normalize to
   // half-width before matching so the parser doesn't need two regexes.
   function toHalfWidthDigitsAndComma(str) {
@@ -2823,6 +2864,50 @@ import {
     }
   }
 
+  // Runs OCR over every currently-garbled row's already-rendered image and
+  // replaces its memo with the (cleaned) recognized text -- a picture of a
+  // legible line isn't itself text, so this is the step that actually
+  // closes the loop for the user instead of just being a reading aid.
+  async function ocrAllGarbledRows() {
+    const targets = pendingImportItems.filter(function (item) { return item.isGarbled && item.rowImageUrl; });
+    if (targets.length === 0) return;
+    const myGeneration = pendingImportGeneration;
+    const btn = document.getElementById('import-ocr-all-btn');
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    try {
+      toast('文字を読み取る準備をしています…（初回は少し時間がかかります）');
+      const worker = await getOcrWorker();
+      const memory = loadMerchantMemory();
+      for (let i = 0; i < targets.length; i++) {
+        if (pendingImportGeneration !== myGeneration) return;
+        btn.textContent = '読み取り中…（' + (i + 1) + '/' + targets.length + '件）';
+        const item = targets[i];
+        try {
+          const result = await worker.recognize(item.rowImageUrl);
+          const cleaned = cleanOcrText(result.data.text);
+          if (cleaned) {
+            item.memo = cleaned;
+            item.isGarbled = false;
+            item.category = guessCategory(item.memo, memory);
+          }
+        } catch (e) {
+          console.error('OCR failed for a row:', e);
+        }
+        if (pendingImportGeneration === myGeneration) renderImportReviewList();
+      }
+      toast('店名の読み取りが終わりました。内容を確認してください');
+    } catch (e) {
+      console.error('OCR setup failed:', e);
+      toast('文字認識の準備に失敗しました。通信環境を確認してください');
+    } finally {
+      if (pendingImportGeneration === myGeneration) {
+        const btnAfter = document.getElementById('import-ocr-all-btn');
+        if (btnAfter) { btnAfter.disabled = false; btnAfter.textContent = originalLabel; }
+      }
+    }
+  }
+
   function openImportSheet() {
     renderImportPaidBySegmented();
     renderImportReviewList();
@@ -2991,6 +3076,7 @@ import {
         renderImportReviewList();
         break;
       case 'commit-import': commitImport(); break;
+      case 'ocr-all-garbled': ocrAllGarbledRows(); break;
       default: break;
     }
   });
