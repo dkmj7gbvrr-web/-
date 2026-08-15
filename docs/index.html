@@ -2470,6 +2470,23 @@ import {
   // style WEB明細 PDFs tend to use). Also handles the "その他のご請求分"
   // section (annual fee, tax, etc.), while skipping subtotal/total rows,
   // which always contain "合計" across every issuer's statement format.
+  //
+  // Some issuers' PDFs (an Amex statement is the confirmed case) embed a
+  // font whose CID-to-Unicode map is broken specifically for 月/日 --
+  // pdf.js extracts them as arbitrary garbage characters (e.g. "C"/"Ï"
+  // instead of 月/日) while digits, katakana and amounts still extract
+  // correctly. The 4th alternative below tolerates that: it accepts ANY
+  // single non-digit/non-slash character as the month marker, then a day
+  // written either "<marker><digits>" or "<digits><marker>" -- both
+  // orderings show up in the same real Amex PDF (single-digit days glue
+  // the month+day markers into one run that sorts before the day digit by
+  // pdf.js's own left-to-right positioning; double-digit days don't).
+  // A leading "-" right before the amount marks a credit/payment line (e.g.
+  // "前回のお支払い金額 -183,656" listed among the itemized rows on some
+  // statements) rather than an actual purchase -- captured so it can be
+  // rejected below instead of getting imported as a positive expense.
+  const itemRe = /^\s*(?:(?<y1>\d{4})\/(?<m1>\d{1,2})\/(?<d1>\d{1,2})|(?<m2>\d{1,2})\/(?<d2>\d{1,2})|(?<m3>\d{1,2})月\s*(?<d3>\d{1,2})日|(?<m4>\d{1,2})\s*[^\d\s/]\s+(?:[^\d\s/](?<d4a>\d{1,2})|(?<d4b>\d{1,2})[^\d\s/]))\s+(?<memo>.+?)\s+(?<sign>-\s*)?[¥￥]?(?<amount>[\d,]{3,})円?\s*(?:[(（]\*[)）])?\s*$/;
+
   // Card statements commonly insert a 支払方法/回数 column ("1回", "リボ",
   // "分割3回", "ボーナス一括") between the merchant name and the amount --
   // strip a trailing one of these off the memo so it doesn't pollute the
@@ -2477,7 +2494,6 @@ import {
   const PAYMENT_METHOD_SUFFIX_RE = /\s*(?:ボーナス(?:一括払?い?|[0-9]+回払?い?)|[0-9]+回払?い?|一括払?い?|リボ(?:払い)?|分割[0-9]*回?)\s*$/;
 
   function parseStatementLines(rawLines) {
-    const itemRe = /^\s*(?:(\d{4})\/(\d{1,2})\/(\d{1,2})|(\d{1,2})\/(\d{1,2})|(\d{1,2})月\s*(\d{1,2})日)\s+(.+?)\s+[¥￥]?([\d,]{3,})円?\s*(?:[(（]\*[)）])?\s*$/;
     const referenceYM = findStatementReferenceDate(rawLines);
     const items = [];
     rawLines.forEach(function (rawLine) {
@@ -2485,12 +2501,15 @@ import {
       if (line.indexOf('合計') !== -1) return;
       const m = line.match(itemRe);
       if (!m) return;
+      const g = m.groups;
+      if (g.sign) return; // a credit/payment line, not a purchase
       let year = null, month, day;
-      if (m[1] !== undefined) { year = Number(m[1]); month = Number(m[2]); day = Number(m[3]); }
-      else if (m[4] !== undefined) { month = Number(m[4]); day = Number(m[5]); }
-      else { month = Number(m[6]); day = Number(m[7]); }
-      const memo = m[8].trim().replace(PAYMENT_METHOD_SUFFIX_RE, '').trim();
-      const amount = Number(m[9].replace(/,/g, ''));
+      if (g.y1 !== undefined) { year = Number(g.y1); month = Number(g.m1); day = Number(g.d1); }
+      else if (g.m2 !== undefined) { month = Number(g.m2); day = Number(g.d2); }
+      else if (g.m3 !== undefined) { month = Number(g.m3); day = Number(g.d3); }
+      else { month = Number(g.m4); day = Number(g.d4a !== undefined ? g.d4a : g.d4b); }
+      const memo = g.memo.trim().replace(PAYMENT_METHOD_SUFFIX_RE, '').trim();
+      const amount = Number(g.amount.replace(/,/g, ''));
       if (month < 1 || month > 12 || day < 1 || day > 31) return;
       if (!memo || memo.length > 40 || !Number.isFinite(amount) || amount <= 0) return;
       if (year === null) year = resolvePurchaseYear(month, referenceYM);
