@@ -157,6 +157,37 @@
   }
   .chip-settled { background: var(--red-soft); color: var(--red); }
 
+  .category-chip {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    color: var(--ink-muted);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .category-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .category-picker-chip {
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+  .category-picker-chip.selected {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+  }
+
   /* Split-pattern color marker: always paired with a text label next to it,
      never the sole carrier of meaning (color-blind / low-vision safe). */
   .split-dot {
@@ -935,6 +966,9 @@
         </div>
       </div>
 
+      <div class="section-label">ジャンル</div>
+      <div class="category-picker" id="expense-category-picker"></div>
+
       <div class="section-label">負担の分け方</div>
       <div class="option-list" id="expense-split-options"></div>
 
@@ -1151,6 +1185,7 @@ import {
 
     let paidByA = 0, paidByB = 0, burdenA = 0, burdenB = 0, total = 0;
     const bySplitType = {};
+    const byCategory = {};
 
     for (let i = 0; i < target.length; i++) {
       const e = target[i];
@@ -1160,6 +1195,8 @@ import {
       burdenA += b.a;
       burdenB += b.b;
       bySplitType[e.splitType] = (bySplitType[e.splitType] || 0) + e.amount;
+      const cat = (e.category && CATEGORY_NAMES[e.category]) ? e.category : 'other';
+      byCategory[cat] = (byCategory[cat] || 0) + e.amount;
     }
 
     const net = paidByA - burdenA;
@@ -1167,7 +1204,7 @@ import {
     if (net > 0) settle = { payer: 'b', receiver: 'a', amount: net };
     else if (net < 0) settle = { payer: 'a', receiver: 'b', amount: -net };
 
-    return { cycle: cycle, total: total, paidByA: paidByA, paidByB: paidByB, burdenA: burdenA, burdenB: burdenB, bySplitType: bySplitType, settle: settle };
+    return { cycle: cycle, total: total, paidByA: paidByA, paidByB: paidByB, burdenA: burdenA, burdenB: burdenB, bySplitType: bySplitType, byCategory: byCategory, settle: settle };
   }
 
   const SPLIT_TYPES = ['aOnly', 'bOnly', 'equal', 'incomeRatio', 'customRatio'];
@@ -1187,6 +1224,69 @@ import {
   }
   function splitDotHtml(type) {
     return '<span class="split-dot split-dot-' + type + '"></span>';
+  }
+
+  // ============================================================
+  // Expense categories -- keyword-based guess, refined by memory of
+  // this household's own past corrections (see rememberMerchantChoice).
+  // Not a real AI classifier: a fixed keyword dictionary plus per-merchant
+  // memory, entirely client-side (no network calls, no API keys to protect).
+  // ============================================================
+
+  const CATEGORY_ORDER = ['food', 'dining', 'daily', 'transport', 'housing', 'utilities', 'communication', 'medical', 'beauty', 'entertainment', 'travel', 'education', 'insurance', 'other'];
+
+  const CATEGORY_NAMES = {
+    food: '食料品',
+    dining: '外食',
+    daily: '日用品',
+    transport: '交通費',
+    housing: '住居費',
+    utilities: '水道光熱費',
+    communication: '通信費',
+    medical: '医療費',
+    beauty: '美容・衣服',
+    entertainment: '娯楽・趣味',
+    travel: '旅行',
+    education: '教育',
+    insurance: '保険',
+    other: 'その他'
+  };
+
+  const CATEGORY_KEYWORDS = {
+    food: ['スーパー', 'マーケット', '八百屋', '肉屋', '魚屋', 'イオン', '西友', '業務スーパー', '生協', 'コープ', 'まいばすけっと', 'ライフ', 'サミット', '成城石井', 'カルディ', '青果', '精肉', '鮮魚'],
+    dining: ['レストラン', 'カフェ', '喫茶', '居酒屋', 'スタバ', 'スターバックス', 'マクドナルド', 'マック', '吉野家', 'すき家', '松屋', 'ラーメン', '焼肉', '寿司', 'ファミレス', 'サイゼリヤ', 'ドトール', 'タリーズ', 'フード', 'ダイニング', 'ビストロ', '食堂', '定食', '弁当'],
+    daily: ['ドラッグストア', 'マツキヨ', 'マツモトキヨシ', 'ウエルシア', 'ダイソー', '100均', '無印', 'ニトリ', 'ホームセンター', 'カインズ', 'コーナン', '洗剤', 'ドンキ'],
+    transport: ['交通', '電車', '地下鉄', 'バス', 'タクシー', 'ガソリン', 'ETC', '駐車場', 'パーキング', 'JR', 'Suica', 'PASMO', '高速道路', '新幹線', '航空', 'ANA', 'JAL', 'ピーチ', 'レンタカー'],
+    housing: ['家賃', '賃貸', '管理費', '修繕', '不動産', '住宅ローン'],
+    utilities: ['電気', 'ガス代', '水道', '東京電力', '東京ガス', '光熱'],
+    communication: ['携帯', 'スマホ', 'ドコモ', 'au', 'ソフトバンク', '楽天モバイル', 'ワイモバイル', 'インターネット', 'wifi', 'プロバイダ', 'NTT'],
+    medical: ['病院', 'クリニック', '薬局', '歯科', '眼科', '皮膚科', '整形', '医院'],
+    beauty: ['美容室', '美容院', 'サロン', 'ヘア', 'ネイル', 'エステ', 'ユニクロ', 'ZARA', 'しまむら', '衣料', 'コスメ', '化粧品'],
+    entertainment: ['映画', 'シネマ', 'カラオケ', 'ゲーム', 'Amazon', 'Netflix', 'Spotify', 'サブスク', '書店', '本屋', '漫画', 'ジム', 'スポーツクラブ', 'ライブ', 'コンサート', '動物園', '水族館', '遊園地'],
+    travel: ['ホテル', '旅館', '航空券', 'JTB', '楽天トラベル', 'じゃらん', 'Airbnb', '旅行', '温泉'],
+    education: ['学費', '塾', 'スクール', '授業料', '教材', '参考書', 'セミナー'],
+    insurance: ['生命保険', '損保', '共済', '保険料'],
+    other: []
+  };
+
+  function categoryChipHtml(category) {
+    const key = category && CATEGORY_NAMES[category] ? category : 'other';
+    return '<span class="category-chip">' + escapeHtml(CATEGORY_NAMES[key]) + '</span>';
+  }
+
+  function guessCategory(memo, merchantMemory) {
+    const trimmed = (memo || '').trim();
+    if (!trimmed) return 'other';
+    const remembered = merchantMemory[trimmed];
+    if (remembered && remembered.category && CATEGORY_NAMES[remembered.category]) return remembered.category;
+    for (let i = 0; i < CATEGORY_ORDER.length; i++) {
+      const cat = CATEGORY_ORDER[i];
+      const keywords = CATEGORY_KEYWORDS[cat];
+      for (let j = 0; j < keywords.length; j++) {
+        if (trimmed.indexOf(keywords[j]) !== -1) return cat;
+      }
+    }
+    return 'other';
   }
 
   // ============================================================
@@ -1354,7 +1454,8 @@ import {
             '<span>' + dateLabel + '</span><span>・</span>' +
             splitDotHtml(e.splitType) +
             '<span>' + escapeHtml(splitLabel(e.splitType, names)) + '</span><span>・</span>' +
-            '<span>立替: ' + escapeHtml(e.paidBy === 'a' ? names.a : names.b) + '</span>' +
+            '<span>立替: ' + escapeHtml(e.paidBy === 'a' ? names.a : names.b) + '</span><span>・</span>' +
+            categoryChipHtml(e.category) +
           '</div>' +
         '</div>' +
         '<div class="amount">' + formatYen(e.amount) + '</div>' +
@@ -1410,6 +1511,13 @@ import {
         return '<div class="kv-row"><span style="display:flex; align-items:center; gap:8px;">' + splitDotHtml(t) + '<span>' + escapeHtml(splitLabel(t, names)) + '</span></span><span class="num">' + formatYen(s.bySplitType[t]) + '</span></div>';
       }).join('');
 
+    const categoryBreakdown = CATEGORY_ORDER
+      .filter(function (cat) { return s.byCategory[cat] > 0; })
+      .sort(function (a, b) { return s.byCategory[b] - s.byCategory[a]; })
+      .map(function (cat) {
+        return '<div class="kv-row"><span>' + escapeHtml(CATEGORY_NAMES[cat]) + '</span><span class="num">' + formatYen(s.byCategory[cat]) + '</span></div>';
+      }).join('');
+
     const body = document.getElementById('summary-body');
     body.innerHTML = '' +
       '<div class="ledger-card">' +
@@ -1432,6 +1540,10 @@ import {
         '<button class="btn ' + (settled ? 'btn-ghost' : 'btn-primary') + '" data-action="toggle-settled" data-key="' + key + '">' +
           (settled ? 'この月の精算済みを取り消す' : 'この月を精算済みにする') +
         '</button>' +
+      '</div>' +
+      '<div class="ledger-card">' +
+        '<div class="ledger-title">内訳（ジャンル別）</div>' +
+        (categoryBreakdown || '<div class="empty-inline">この月の支出はありません</div>') +
       '</div>' +
       '<div class="ledger-card">' +
         '<div class="ledger-title">内訳（負担パターン別）</div>' +
@@ -1517,6 +1629,8 @@ import {
   let currentSplitType = 'equal';
   let currentCustomPercent = 50;
   let currentPaidBy = 'a';
+  let currentCategory = 'other';
+  let categoryManuallySet = false;
   let currentIncomeEntryMode = 'lump';
   let currentIncomePerMonthValues = [];
 
@@ -1564,6 +1678,24 @@ import {
       return '<button type="button" class="segment' + (currentPaidBy === p ? ' selected' : '') + '" data-action="select-paidby" data-person="' + p + '">' +
         escapeHtml(p === 'a' ? names.a : names.b) + '</button>';
     }).join('');
+  }
+
+  function renderExpenseCategoryPicker() {
+    const container = document.getElementById('expense-category-picker');
+    container.innerHTML = CATEGORY_ORDER.map(function (cat) {
+      return '<button type="button" class="category-picker-chip' + (currentCategory === cat ? ' selected' : '') + '" data-action="select-category" data-category="' + cat + '">' +
+        escapeHtml(CATEGORY_NAMES[cat]) + '</button>';
+    }).join('');
+  }
+
+  // Auto-guesses the category from the memo, but only while the user hasn't
+  // picked one themselves in this session -- typing/editing the memo should
+  // keep refining the guess, but never silently override a manual choice.
+  function maybeAutoGuessCategory() {
+    if (categoryManuallySet) return;
+    const memo = document.getElementById('expense-memo').value;
+    currentCategory = guessCategory(memo, loadMerchantMemory());
+    renderExpenseCategoryPicker();
   }
 
   function renderIncomeEntryModeSegmented() {
@@ -1680,9 +1812,15 @@ import {
     currentSplitType = e ? e.splitType : 'equal';
     currentCustomPercent = (e && e.customAPercent != null) ? e.customAPercent : 50;
     currentPaidBy = e ? e.paidBy : 'a';
+    // Existing expenses (or pending import items, which already carry a
+    // guessed category) keep whatever category they have; only a brand-new
+    // blank entry auto-refines its category guess as the memo is typed.
+    currentCategory = (e && e.category && CATEGORY_NAMES[e.category]) ? e.category : 'other';
+    categoryManuallySet = !!e;
 
     renderExpenseSplitOptions();
     renderExpensePaidBySegmented();
+    renderExpenseCategoryPicker();
     updateCustomRatioVisibility();
   }
 
@@ -1693,13 +1831,17 @@ import {
     const date = document.getElementById('expense-date').value || toDateInputValue(new Date());
     const memo = document.getElementById('expense-memo').value.trim();
     const customAPercent = currentSplitType === 'customRatio' ? currentCustomPercent : null;
-    const payload = { date: date, amount: amount, memo: memo, splitType: currentSplitType, customAPercent: customAPercent, paidBy: currentPaidBy };
+    const payload = { date: date, amount: amount, memo: memo, splitType: currentSplitType, customAPercent: customAPercent, paidBy: currentPaidBy, category: currentCategory };
 
     if (editingPendingImportIndex !== null) {
       Object.assign(pendingImportItems[editingPendingImportIndex], payload);
       closeSheet('expense-sheet-backdrop');
       renderImportReviewList();
       return;
+    }
+
+    if (memo) {
+      rememberMerchantChoice(memo, { splitType: currentSplitType, customAPercent: customAPercent, paidBy: currentPaidBy, category: currentCategory });
     }
 
     closeSheet('expense-sheet-backdrop');
@@ -2044,6 +2186,7 @@ import {
           splitType: remembered ? remembered.splitType : 'equal',
           customAPercent: remembered ? remembered.customAPercent : null,
           paidBy: remembered ? remembered.paidBy : importDefaultPaidBy,
+          category: guessCategory(p.memo, memory),
           included: !duplicate,
           isDuplicate: duplicate
         };
@@ -2090,7 +2233,8 @@ import {
                 '<span>' + dateLabel + '</span><span>・</span>' +
                 splitDotHtml(item.splitType) +
                 '<span>' + escapeHtml(splitLabel(item.splitType, names)) + '</span><span>・</span>' +
-                '<span>立替: ' + escapeHtml(item.paidBy === 'a' ? names.a : names.b) + '</span>' +
+                '<span>立替: ' + escapeHtml(item.paidBy === 'a' ? names.a : names.b) + '</span><span>・</span>' +
+                categoryChipHtml(item.category) +
               '</div>' +
             '</div>' +
             '<div class="amount">' + formatYen(item.amount) + '</div>' +
@@ -2116,12 +2260,12 @@ import {
         batch.set(ref, {
           date: item.date, amount: item.amount, memo: item.memo,
           splitType: item.splitType, customAPercent: item.customAPercent,
-          paidBy: item.paidBy, updatedAt: Date.now()
+          paidBy: item.paidBy, category: item.category, updatedAt: Date.now()
         });
       });
       await batch.commit();
       toCommit.forEach(function (item) {
-        rememberMerchantChoice(item.memo, { splitType: item.splitType, customAPercent: item.customAPercent, paidBy: item.paidBy });
+        rememberMerchantChoice(item.memo, { splitType: item.splitType, customAPercent: item.customAPercent, paidBy: item.paidBy, category: item.category });
       });
       toast(toCommit.length + '件の支出を追加しました');
       pendingImportItems = [];
@@ -2163,6 +2307,11 @@ import {
         currentPaidBy = target.dataset.person;
         renderExpensePaidBySegmented();
         break;
+      case 'select-category':
+        currentCategory = target.dataset.category;
+        categoryManuallySet = true;
+        renderExpenseCategoryPicker();
+        break;
       case 'select-income-entry-mode':
         currentIncomeEntryMode = target.dataset.mode;
         renderIncomeEntryModeSegmented();
@@ -2202,6 +2351,8 @@ import {
     currentCustomPercent = Number(e.target.value);
     updateCustomRatioLabel();
   });
+
+  document.getElementById('expense-memo').addEventListener('input', maybeAutoGuessCategory);
 
   ['expense-amount', 'income-lump-a', 'income-lump-b'].forEach(function (id) {
     document.getElementById(id).addEventListener('input', function (e) {
