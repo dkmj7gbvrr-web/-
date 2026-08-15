@@ -1207,7 +1207,7 @@ import {
     return { cycle: cycle, total: total, paidByA: paidByA, paidByB: paidByB, burdenA: burdenA, burdenB: burdenB, bySplitType: bySplitType, byCategory: byCategory, settle: settle };
   }
 
-  const SPLIT_TYPES = ['aOnly', 'bOnly', 'equal', 'incomeRatio', 'customRatio'];
+  const SPLIT_TYPES = ['incomeRatio', 'equal', 'aOnly', 'bOnly', 'customRatio'];
 
   function splitLabel(type, names) {
     switch (type) {
@@ -1287,6 +1287,16 @@ import {
       }
     }
     return 'other';
+  }
+
+  // Default 負担方法 per category: income-ratio for everything except
+  // travel and entertainment, which default to an even split.
+  const CATEGORY_DEFAULT_SPLIT_TYPE = {
+    travel: 'equal',
+    entertainment: 'equal'
+  };
+  function defaultSplitTypeForCategory(category) {
+    return CATEGORY_DEFAULT_SPLIT_TYPE[category] || 'incomeRatio';
   }
 
   // ============================================================
@@ -1631,6 +1641,7 @@ import {
   let currentPaidBy = 'a';
   let currentCategory = 'other';
   let categoryManuallySet = false;
+  let splitTypeManuallySet = false;
   let currentIncomeEntryMode = 'lump';
   let currentIncomePerMonthValues = [];
 
@@ -1696,6 +1707,17 @@ import {
     const memo = document.getElementById('expense-memo').value;
     currentCategory = guessCategory(memo, loadMerchantMemory());
     renderExpenseCategoryPicker();
+    applyCategoryDefaultSplitType();
+  }
+
+  // Keeps 負担方法 in sync with the category's default, but only while the
+  // user hasn't picked a split type themselves -- an explicit choice always
+  // wins over the category-driven suggestion.
+  function applyCategoryDefaultSplitType() {
+    if (splitTypeManuallySet) return;
+    currentSplitType = defaultSplitTypeForCategory(currentCategory);
+    renderExpenseSplitOptions();
+    updateCustomRatioVisibility();
   }
 
   function renderIncomeEntryModeSegmented() {
@@ -1809,14 +1831,15 @@ import {
     document.getElementById('expense-amount').value = e ? String(e.amount) : '';
     document.getElementById('expense-delete-btn').hidden = !showDeleteButton;
 
-    currentSplitType = e ? e.splitType : 'equal';
-    currentCustomPercent = (e && e.customAPercent != null) ? e.customAPercent : 50;
-    currentPaidBy = e ? e.paidBy : 'a';
     // Existing expenses (or pending import items, which already carry a
     // guessed category) keep whatever category they have; only a brand-new
     // blank entry auto-refines its category guess as the memo is typed.
     currentCategory = (e && e.category && CATEGORY_NAMES[e.category]) ? e.category : 'other';
     categoryManuallySet = !!e;
+    currentSplitType = e ? e.splitType : defaultSplitTypeForCategory(currentCategory);
+    currentCustomPercent = (e && e.customAPercent != null) ? e.customAPercent : 50;
+    currentPaidBy = e ? e.paidBy : 'a';
+    splitTypeManuallySet = !!e;
 
     renderExpenseSplitOptions();
     renderExpensePaidBySegmented();
@@ -2179,14 +2202,15 @@ import {
       pendingImportItems = parsed.map(function (p) {
         const remembered = memory[p.memo];
         const duplicate = isLikelyDuplicateExpense(p);
+        const category = guessCategory(p.memo, memory);
         return {
           date: p.date,
           memo: p.memo,
           amount: p.amount,
-          splitType: remembered ? remembered.splitType : 'equal',
+          splitType: remembered ? remembered.splitType : defaultSplitTypeForCategory(category),
           customAPercent: remembered ? remembered.customAPercent : null,
           paidBy: remembered ? remembered.paidBy : importDefaultPaidBy,
-          category: guessCategory(p.memo, memory),
+          category: category,
           included: !duplicate,
           isDuplicate: duplicate
         };
@@ -2300,6 +2324,7 @@ import {
       case 'save-expense': saveExpense(); break;
       case 'select-split-type':
         currentSplitType = target.dataset.type;
+        splitTypeManuallySet = true;
         renderExpenseSplitOptions();
         updateCustomRatioVisibility();
         break;
@@ -2311,6 +2336,7 @@ import {
         currentCategory = target.dataset.category;
         categoryManuallySet = true;
         renderExpenseCategoryPicker();
+        applyCategoryDefaultSplitType();
         break;
       case 'select-income-entry-mode':
         currentIncomeEntryMode = target.dataset.mode;
