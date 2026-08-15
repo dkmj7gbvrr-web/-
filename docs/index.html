@@ -968,7 +968,7 @@
         <label class="field-label" for="income-period-months">期間の長さ（1〜12か月）</label>
         <input type="number" id="income-period-months" min="1" max="12" value="1">
       </div>
-      <div class="field-hint" style="padding-top:0; margin-bottom:4px;">ここで入れた期間分、同じ収入割合が使われます。期間が終わると「収入」タブで新しい期間の入力を求められます。</div>
+      <div class="field-hint" id="income-period-hint" style="padding-top:0; margin-bottom:4px;"></div>
 
       <div class="section-label">入力方法</div>
       <div class="segmented" id="income-entry-mode-segmented"></div>
@@ -1332,12 +1332,14 @@ import {
       return ymKey({ year: b.startYear, month: b.startMonth }) - ymKey({ year: a.startYear, month: a.startMonth });
     });
   }
+  function formatMonthRangeLabel(startYear, startMonth, months) {
+    const end = addMonths(startYear, startMonth, months - 1);
+    if (months === 1) return startYear + '年' + startMonth + '月';
+    if (startYear === end.year) return startYear + '年' + startMonth + '月〜' + end.month + '月';
+    return startYear + '年' + startMonth + '月〜' + end.year + '年' + end.month + '月';
+  }
   function incomePeriodRangeLabel(period) {
-    const start = { year: period.startYear, month: period.startMonth };
-    const end = addMonths(period.startYear, period.startMonth, period.months - 1);
-    if (period.months === 1) return start.year + '年' + start.month + '月';
-    if (start.year === end.year) return start.year + '年' + start.month + '月〜' + end.month + '月';
-    return start.year + '年' + start.month + '月〜' + end.year + '年' + end.month + '月';
+    return formatMonthRangeLabel(period.startYear, period.startMonth, period.months);
   }
 
   function expenseRowHtml(e) {
@@ -1587,6 +1589,31 @@ import {
     return Math.min(12, Math.max(1, Number.isFinite(v) ? Math.round(v) : 1));
   }
 
+  // The amounts entered always describe the `months` months immediately
+  // BEFORE the period starts (already-finalized income by the time the
+  // period begins), not the period's own months -- the resulting ratio is
+  // then applied forward to the period itself.
+  function incomeLookbackStart(startYear, startMonth, months) {
+    return addMonths(startYear, startMonth, -months);
+  }
+
+  function updateIncomePeriodHint() {
+    const el = document.getElementById('income-period-hint');
+    const startVal = document.getElementById('income-period-start').value;
+    if (!startVal) {
+      el.textContent = '確定済みの手取り額をもとに算出した収入割合が、指定した期間ずっと使われます。';
+      return;
+    }
+    const parts = startVal.split('-');
+    const startYear = Number(parts[0]), startMonth = Number(parts[1]);
+    const months = currentIncomePeriodMonthsValue();
+    const lookback = incomeLookbackStart(startYear, startMonth, months);
+    el.textContent =
+      formatMonthRangeLabel(lookback.year, lookback.month, months) + 'の確定した手取り額をもとに、' +
+      formatMonthRangeLabel(startYear, startMonth, months) + 'の収入割合を決めます。' +
+      '期間が終わると「収入」タブで新しい期間の入力を求められます。';
+  }
+
   function renderIncomePerMonthRows() {
     const names = currentNames();
     const startVal = document.getElementById('income-period-start').value;
@@ -1598,13 +1625,14 @@ import {
     if (!startVal) { rowsContainer.innerHTML = ''; return; }
     const parts = startVal.split('-');
     const startYear = Number(parts[0]), startMonth = Number(parts[1]);
+    const lookback = incomeLookbackStart(startYear, startMonth, length);
 
     while (currentIncomePerMonthValues.length < length) currentIncomePerMonthValues.push({ aAmount: '', bAmount: '' });
     currentIncomePerMonthValues.length = length;
 
     let html = '';
     for (let i = 0; i < length; i++) {
-      const ym = addMonths(startYear, startMonth, i);
+      const ym = addMonths(lookback.year, lookback.month, i);
       const v = currentIncomePerMonthValues[i];
       html += '' +
         '<div class="income-permonth-row">' +
@@ -1736,6 +1764,7 @@ import {
 
     renderIncomeEntryModeSegmented();
     updateIncomeEntryModeVisibility();
+    updateIncomePeriodHint();
     showSheet('income-sheet-backdrop');
   }
 
@@ -1755,8 +1784,9 @@ import {
       aAmount = sums.aTotal;
       bAmount = sums.bTotal;
       perMonthAmounts = [];
+      const lookback = incomeLookbackStart(startYear, startMonth, months);
       for (let i = 0; i < months; i++) {
-        const ym = addMonths(startYear, startMonth, i);
+        const ym = addMonths(lookback.year, lookback.month, i);
         const v = currentIncomePerMonthValues[i] || { aAmount: '', bAmount: '' };
         perMonthAmounts.push({
           year: ym.year, month: ym.month,
@@ -2180,13 +2210,23 @@ import {
   });
 
   document.getElementById('income-period-start').addEventListener('change', function () {
+    updateIncomePeriodHint();
     if (currentIncomeEntryMode === 'perMonth') renderIncomePerMonthRows();
   });
-  document.getElementById('income-period-months').addEventListener('input', function (e) {
+  // Only re-render live (never overwrite the field) on 'input', so the user
+  // can freely clear/retype the number; clamp to 1-12 only once they're done
+  // editing (on 'blur'), otherwise the field fights back on every keystroke
+  // and an empty/mid-edit value can never be reached.
+  document.getElementById('income-period-months').addEventListener('input', function () {
+    updateIncomePeriodHint();
+    if (currentIncomeEntryMode === 'perMonth') renderIncomePerMonthRows();
+  });
+  document.getElementById('income-period-months').addEventListener('blur', function (e) {
     let v = Number(e.target.value);
-    if (!Number.isFinite(v)) v = 1;
+    if (!e.target.value || !Number.isFinite(v)) v = 1;
     v = Math.min(12, Math.max(1, Math.round(v)));
-    if (String(v) !== e.target.value) e.target.value = v;
+    e.target.value = v;
+    updateIncomePeriodHint();
     if (currentIncomeEntryMode === 'perMonth') renderIncomePerMonthRows();
   });
   document.getElementById('income-permonth-rows').addEventListener('input', function (e) {
