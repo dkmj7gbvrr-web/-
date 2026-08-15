@@ -1131,6 +1131,36 @@ import {
   'use strict';
   const { initializeApp, getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collection, onSnapshot, deleteField, writeBatch, getDocs } = firebaseDeps;
 
+  // On-screen debug console, opt-in via ?debug in the URL -- lets errors be
+  // read directly off a phone (no Mac/Web Inspector or cable needed) when
+  // diagnosing a report that only reproduces on a real device.
+  if (/[?&]debug\b/.test(location.search)) {
+    const box = document.createElement('div');
+    box.style.cssText = 'position:fixed;left:0;right:0;bottom:0;max-height:45vh;overflow:auto;' +
+      'background:rgba(10,10,10,0.92);color:#7CFC7C;font:11px/1.4 monospace;padding:8px;' +
+      'white-space:pre-wrap;word-break:break-all;z-index:99999;';
+    document.addEventListener('DOMContentLoaded', function () { document.body.appendChild(box); });
+    function debugLog(text) {
+      const line = document.createElement('div');
+      line.textContent = new Date().toLocaleTimeString() + '  ' + text;
+      box.appendChild(line);
+      box.scrollTop = box.scrollHeight;
+    }
+    window.addEventListener('error', function (e) {
+      debugLog('ERROR: ' + e.message + (e.error && e.error.stack ? '\n' + e.error.stack : ''));
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+      const r = e.reason;
+      debugLog('REJECTION: ' + (r && r.message ? r.message + (r.stack ? '\n' + r.stack : '') : String(r)));
+    });
+    const origConsoleError = console.error.bind(console);
+    console.error = function () {
+      origConsoleError.apply(console, arguments);
+      debugLog('console.error: ' + Array.prototype.map.call(arguments, String).join(' '));
+    };
+    debugLog('debug console ready (' + navigator.userAgent + ')');
+  }
+
   // ============================================================
   // Engine — billing cycle / income ratio / split / settlement
   // (verified against a battery of test cases in a Node sandbox
