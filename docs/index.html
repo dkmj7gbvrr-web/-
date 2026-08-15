@@ -2429,11 +2429,16 @@ import {
   // and stage them for review before writing anything to Firestore.
   // ============================================================
 
+  // Self-hosted under docs/vendor/pdfjs/ (same origin as this app) rather
+  // than loaded from a CDN: a cross-origin Worker is subject to stricter
+  // restrictions on some mobile browsers (notably iOS Safari), where it can
+  // fail silently or throw instead of falling back gracefully -- serving
+  // pdf.js and its worker from the same origin sidesteps that entirely.
   let pdfjsLibPromise = null;
   function loadPdfJs() {
     if (!pdfjsLibPromise) {
-      pdfjsLibPromise = import('https://unpkg.com/pdfjs-dist@6.2.108/build/pdf.min.mjs').then(function (mod) {
-        mod.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@6.2.108/build/pdf.worker.min.mjs';
+      pdfjsLibPromise = import('./vendor/pdfjs/pdf.min.mjs').then(function (mod) {
+        mod.GlobalWorkerOptions.workerSrc = './vendor/pdfjs/pdf.worker.min.mjs';
         return mod;
       });
     }
@@ -2479,7 +2484,7 @@ import {
     // come back empty even though the PDF renders fine visually.
     const pdf = await pdfjsLib.getDocument({
       data: arrayBuffer,
-      cMapUrl: 'https://unpkg.com/pdfjs-dist@6.2.108/cmaps/',
+      cMapUrl: './vendor/pdfjs/cmaps/',
       cMapPacked: true
     }).promise;
     let lines = [];
@@ -2610,6 +2615,7 @@ import {
     try {
       pdfjsLib = await loadPdfJs();
     } catch (e) {
+      console.error('loadPdfJs failed:', e);
       toast('PDF読み込み機能を準備できませんでした。通信環境を確認してください');
       return;
     }
@@ -2640,6 +2646,7 @@ import {
       });
       openImportSheet();
     } catch (e) {
+      console.error('PDF import failed:', e);
       toast('PDFの読み込みに失敗しました');
     }
   }
