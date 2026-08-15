@@ -1,6 +1,12 @@
 # 割り勘家計簿（WarikanKakeibo）
 
-2人（A・B）で分担する支出を管理するiOS向け家計簿アプリです。SwiftUI + SwiftDataで実装しています。
+2人（A・B）で分担する支出を管理する家計簿アプリです。2つの実装があります。
+
+- **iOSネイティブ版**（このREADME）: SwiftUI + SwiftData。Xcodeでビルドが必要です。
+- **Web版（共有版）**: [`docs/`](./docs) 以下。ブラウザだけで動き、Firestoreで2人の
+  データをリアルタイムに共有できます。セットアップ手順は [`docs/README.md`](./docs/README.md) を参照してください。
+
+以下はiOSネイティブ版の説明です。
 
 ## できること
 

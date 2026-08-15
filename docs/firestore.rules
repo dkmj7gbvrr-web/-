@@ -1,0 +1,14 @@
+rules_version = '2';
+
+// わりかん家計簿(共有版)のセキュリティルール。
+// ログイン機能を使わず、ランダムな「世帯コード」を知っている人だけが
+// そのコード配下のデータを読み書きできる、という簡易的な仕組みです。
+// URLと世帯コードの両方を知っている人だけがアクセスできますが、
+// 銀行レベルの認証ではないため、世帯コードは他人に教えないでください。
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /households/{code}/{document=**} {
+      allow read, write: if code is string && code.size() >= 6;
+    }
+  }
+}

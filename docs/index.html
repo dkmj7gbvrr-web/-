@@ -1,0 +1,1697 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>わりかん家計簿</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="わりかん家計簿">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#EAE7DC" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14181D" media="(prefers-color-scheme: dark)">
+
+<style>
+  :root {
+    --bg: #EAE7DC;
+    --surface: #F7F5EE;
+    --surface-2: #FFFFFF;
+    --ink: #232A36;
+    --ink-muted: #5B6472;
+    --line: #D9D4C2;
+    --accent: #2E4A6B;
+    --accent-ink: #FFFFFF;
+    --accent-soft: #DCE3EA;
+    --red: #B23A2E;
+    --red-soft: #F3DEDA;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14181D;
+      --surface: #1B2027;
+      --surface-2: #20262E;
+      --ink: #EDEAE0;
+      --ink-muted: #98A0AC;
+      --line: #2C333B;
+      --accent: #86A6CC;
+      --accent-ink: #14181D;
+      --accent-soft: #24323F;
+      --red: #E1685A;
+      --red-soft: #3A2422;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14181D;
+    --surface: #1B2027;
+    --surface-2: #20262E;
+    --ink: #EDEAE0;
+    --ink-muted: #98A0AC;
+    --line: #2C333B;
+    --accent: #86A6CC;
+    --accent-ink: #14181D;
+    --accent-soft: #24323F;
+    --red: #E1685A;
+    --red-soft: #3A2422;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", system-ui, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button, input, select {
+    font-family: inherit;
+    color: inherit;
+  }
+  .num, .amount, .amount-input, .num-input {
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  h1, h2, h3, p { margin: 0; text-wrap: balance; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+  }
+  main#main-scroll {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: calc(92px + env(safe-area-inset-bottom));
+  }
+  .tab-panel[hidden] { display: none; }
+
+  .page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: max(22px, env(safe-area-inset-top)) 20px 14px;
+  }
+  .page-header h1 {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .icon-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: none;
+    background: var(--accent-soft);
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .icon-btn svg { width: 19px; height: 19px; }
+
+  /* --- ledger list --- */
+  .cycle-group { margin: 0 0 26px; }
+  .cycle-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 20px 8px;
+  }
+  .cycle-header .label {
+    font-size: 13px;
+    letter-spacing: .02em;
+    color: var(--ink-muted);
+    font-weight: 600;
+  }
+  .chip {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .chip-settled { background: var(--red-soft); color: var(--red); }
+
+  .ledger {
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 13px 20px;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+  }
+  .ledger .row:last-child { border-bottom: none; }
+  .row .main { flex: 1; min-width: 0; }
+  .row .title {
+    font-size: 15.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .row .meta {
+    font-size: 12px;
+    color: var(--ink-muted);
+    margin-top: 3px;
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+  .row .amount { font-size: 15.5px; white-space: nowrap; }
+
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 10px;
+    padding: 70px 32px;
+    color: var(--ink-muted);
+  }
+  .empty-state svg { width: 40px; height: 40px; opacity: .6; }
+  .empty-title { font-size: 16px; font-weight: 600; color: var(--ink); }
+  .empty-desc { font-size: 13.5px; line-height: 1.5; }
+  .empty-inline { padding: 14px 20px; font-size: 13.5px; color: var(--ink-muted); }
+
+  /* --- summary --- */
+  .summary-top {
+    padding: 0 20px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  select.cycle-select {
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    color: var(--ink);
+    font-size: 16px;
+    font-weight: 600;
+    appearance: none;
+  }
+  .summary-range { font-size: 12.5px; color: var(--ink-muted); padding-left: 2px; }
+
+  .ledger-card {
+    margin: 0 20px 16px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .ledger-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: .02em;
+    color: var(--ink-muted);
+    padding: 14px 16px 6px;
+  }
+  .kv-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 9px 16px;
+    font-size: 15px;
+    border-top: 1px solid var(--line);
+  }
+  .kv-row.total { font-weight: 700; }
+  .kv-row:last-child { padding-bottom: 15px; }
+
+  .settlement-card {
+    position: relative;
+    margin: 4px 20px 20px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 22px 20px 18px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  .settlement-flow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 15px;
+    color: var(--ink-muted);
+  }
+  .settlement-flow .arrow { color: var(--accent); font-size: 18px; }
+  .settlement-amount {
+    font-size: 34px;
+    font-weight: 700;
+    color: var(--red);
+    letter-spacing: -0.01em;
+  }
+  .settlement-none { font-size: 15px; color: var(--ink-muted); padding: 6px 0; }
+
+  .stamp {
+    position: absolute;
+    top: -14px;
+    right: 18px;
+    width: 62px;
+    height: 62px;
+    border: 3px solid var(--red);
+    color: var(--red);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    transform: rotate(-10deg);
+    background: var(--bg);
+    animation: stamp-in .35s cubic-bezier(.2, 1.4, .4, 1);
+  }
+  @keyframes stamp-in {
+    from { transform: rotate(-10deg) scale(1.8); opacity: 0; }
+    to { transform: rotate(-10deg) scale(1); opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .stamp { animation: none; }
+  }
+
+  /* --- buttons --- */
+  .btn {
+    border: none;
+    border-radius: 12px;
+    padding: 13px 20px;
+    font-size: 15.5px;
+    font-weight: 600;
+    width: 100%;
+  }
+  .btn-primary { background: var(--accent); color: var(--accent-ink); }
+  .btn-ghost { background: none; color: var(--accent); }
+  .btn-danger-ghost { background: none; color: var(--red); margin-top: 8px; }
+
+  /* --- income --- */
+  .income-ratio-card {
+    margin: 0 20px 20px;
+    padding: 16px;
+    background: var(--accent-soft);
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .income-ratio-card .label { font-size: 12px; color: var(--ink-muted); font-weight: 600; }
+  .income-ratio-card .value { font-size: 19px; font-weight: 700; color: var(--accent); }
+
+  /* --- settings --- */
+  .settings-section { margin: 0 20px 24px; }
+  .settings-section .section-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--ink-muted);
+    letter-spacing: .02em;
+    padding: 0 4px 8px;
+  }
+  .field-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .field {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 13px 16px;
+    border-top: 1px solid var(--line);
+  }
+  .field:first-child { border-top: none; }
+  .field label { font-size: 15px; }
+  .field input[type="text"], .field input[type="number"] {
+    border: none;
+    background: none;
+    text-align: right;
+    font-size: 15px;
+    color: var(--ink);
+    width: 55%;
+  }
+  .field-hint {
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--ink-muted);
+    padding: 10px 4px 0;
+  }
+  .settings-actions { display: flex; flex-direction: column; gap: 10px; }
+  .btn-secondary {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    color: var(--ink);
+  }
+
+  /* --- tab bar --- */
+  .tabbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    background: var(--surface);
+    background: color-mix(in srgb, var(--surface) 90%, transparent);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid var(--line);
+    padding: 8px 0 calc(6px + env(safe-area-inset-bottom));
+    z-index: 50;
+  }
+  .tab-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    background: none;
+    border: none;
+    color: var(--ink-muted);
+    padding: 4px 0;
+  }
+  .tab-btn svg { width: 23px; height: 23px; }
+  .tab-btn span { font-size: 10.5px; font-weight: 600; }
+  .tab-btn.active { color: var(--accent); }
+
+  /* --- sheets --- */
+  .sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: rgba(20, 24, 29, 0);
+    transition: background .28s ease;
+  }
+  /* [hidden] must still win over this class at equal specificity, otherwise a
+     "hidden" backdrop keeps intercepting taps underneath it. */
+  .sheet-backdrop:not([hidden]) {
+    display: flex;
+    align-items: flex-end;
+  }
+  .sheet-backdrop.open { background: rgba(20, 24, 29, 0.4); }
+  .sheet {
+    width: 100%;
+    max-height: 88dvh;
+    background: var(--bg);
+    border-radius: 20px 20px 0 0;
+    display: flex;
+    flex-direction: column;
+    transform: translateY(100%);
+    transition: transform .3s cubic-bezier(.32, .72, 0, 1);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .sheet-backdrop.open .sheet { transform: translateY(0); }
+  .sheet-handle {
+    width: 36px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--line);
+    margin: 10px auto 2px;
+  }
+  .sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .sheet-title { font-size: 16px; font-weight: 700; }
+  .sheet-btn { background: none; border: none; font-size: 15.5px; color: var(--ink-muted); padding: 6px 4px; }
+  .sheet-btn-primary { color: var(--accent); font-weight: 700; }
+  .sheet-body { overflow-y: auto; padding: 18px 20px 28px; }
+
+  .field-group { margin-bottom: 16px; }
+  .field-label {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--ink-muted);
+    margin-bottom: 6px;
+  }
+  .field-group input[type="text"],
+  .field-group input[type="date"],
+  .field-group input[type="month"] {
+    width: 100%;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 16px;
+    color: var(--ink);
+  }
+  .amount-field {
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    border-radius: 12px;
+    padding: 0 14px;
+  }
+  .amount-field .yen-mark { font-size: 16px; color: var(--ink-muted); margin-right: 4px; }
+  .amount-field input {
+    border: none;
+    background: none;
+    padding: 12px 0;
+    font-size: 18px;
+    width: 100%;
+    color: var(--ink);
+  }
+
+  .section-label {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--ink-muted);
+    letter-spacing: .02em;
+    margin: 20px 2px 8px;
+  }
+  .option-list {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .option-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 13px 16px;
+    background: none;
+    border: none;
+    border-top: 1px solid var(--line);
+    font-size: 15px;
+    text-align: left;
+    color: var(--ink);
+  }
+  .option-row:first-child { border-top: none; }
+  .option-row.selected { color: var(--accent); font-weight: 600; }
+  .option-row .check { width: 18px; height: 18px; color: var(--accent); }
+
+  .custom-ratio {
+    margin-top: 12px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px 16px;
+  }
+  .custom-ratio-label { font-size: 14.5px; margin-bottom: 10px; font-variant-numeric: tabular-nums; }
+  .custom-ratio input[type="range"] { width: 100%; accent-color: var(--accent); }
+
+  .segmented {
+    display: flex;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 3px;
+    gap: 3px;
+  }
+  .segment {
+    flex: 1;
+    border: none;
+    background: none;
+    padding: 10px 0;
+    border-radius: 9px;
+    font-size: 14.5px;
+    color: var(--ink-muted);
+    font-weight: 600;
+  }
+  .segment.selected { background: var(--accent); color: var(--accent-ink); }
+
+  /* --- toast --- */
+  #toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(96px + env(safe-area-inset-bottom));
+    transform: translate(-50%, 10px);
+    background: var(--ink);
+    color: var(--bg);
+    padding: 10px 18px;
+    border-radius: 999px;
+    font-size: 13.5px;
+    font-weight: 600;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s ease, transform .2s ease;
+    z-index: 200;
+    white-space: nowrap;
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* --- onboarding (household code) --- */
+  .onboarding {
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .onboarding-card {
+    width: 100%;
+    max-width: 360px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .onboarding-card h1 {
+    font-size: 26px;
+    text-align: center;
+    margin-bottom: 2px;
+  }
+  .onboarding-lead {
+    font-size: 14.5px;
+    color: var(--ink-muted);
+    text-align: center;
+    line-height: 1.6;
+    margin-bottom: 6px;
+  }
+  .onboarding-divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--ink-muted);
+    font-size: 12.5px;
+    margin: 6px 0;
+  }
+  .onboarding-divider::before, .onboarding-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+  .onboarding input[type="text"] {
+    width: 100%;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    border-radius: 12px;
+    padding: 13px 14px;
+    font-size: 17px;
+    letter-spacing: .04em;
+    color: var(--ink);
+    text-align: center;
+  }
+  .onboarding-error {
+    color: var(--red);
+    font-size: 13px;
+    text-align: center;
+  }
+  .code-display {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 22px 16px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+  }
+  .code-display .code-value {
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    color: var(--accent);
+  }
+  .code-display .code-hint {
+    font-size: 12.5px;
+    color: var(--ink-muted);
+    text-align: center;
+    line-height: 1.5;
+  }
+  .spinner {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2.5px solid var(--line);
+    border-top-color: var(--accent);
+    animation: spin .7s linear infinite;
+    margin: 40px auto;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation: spin 1.4s linear infinite; } }
+</style>
+</head>
+<body>
+
+<div id="loading-screen" class="onboarding">
+  <div class="spinner"></div>
+</div>
+
+<div id="onboarding" class="onboarding" hidden>
+  <div class="onboarding-card" id="onboarding-start">
+    <h1>わりかん家計簿</h1>
+    <p class="onboarding-lead">2人でデータを共有するには「世帯コード」を使います。<br>どちらか1人が新しく作り、そのコードをもう1人に伝えてください。</p>
+    <button class="btn btn-primary" data-action="create-household">新しく世帯を作る</button>
+    <div class="onboarding-divider">または</div>
+    <input type="text" id="join-code-input" placeholder="招待されたコードを入力" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <button class="btn btn-secondary" data-action="join-household">このコードで参加する</button>
+    <div class="onboarding-error" id="onboarding-error" hidden></div>
+  </div>
+
+  <div class="onboarding-card" id="onboarding-created" hidden>
+    <h1>世帯を作成しました</h1>
+    <div class="code-display">
+      <div class="code-value" id="created-code-value"></div>
+      <div class="code-hint">このコードをもう1人に伝えてください。<br>相手が「招待されたコードを入力」で参加すると、データが共有されます。</div>
+    </div>
+    <button class="btn btn-secondary" data-action="copy-created-code">コードをコピー</button>
+    <button class="btn btn-primary" data-action="enter-app">はじめる</button>
+  </div>
+</div>
+
+<div id="app" hidden>
+  <main id="main-scroll">
+    <section class="tab-panel" data-tab="expenses" id="tab-expenses">
+      <div class="page-header">
+        <h1>支出</h1>
+        <button class="icon-btn" data-action="add-expense" aria-label="支出を追加">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+      <div id="expenses-list"></div>
+    </section>
+
+    <section class="tab-panel" data-tab="summary" id="tab-summary" hidden>
+      <div class="page-header"><h1>集計</h1></div>
+      <div class="summary-top">
+        <select class="cycle-select" id="summary-cycle-select"></select>
+        <div class="summary-range" id="summary-range"></div>
+      </div>
+      <div id="summary-body"></div>
+    </section>
+
+    <section class="tab-panel" data-tab="income" id="tab-income" hidden>
+      <div class="page-header">
+        <h1>収入</h1>
+        <button class="icon-btn" data-action="add-income" aria-label="収入を追加">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+      <div class="income-ratio-card">
+        <div class="label">現在の収入割合（直近12ヶ月・5%刻み）</div>
+        <div class="value" id="income-ratio-now">—</div>
+      </div>
+      <div id="income-list"></div>
+    </section>
+
+    <section class="tab-panel" data-tab="settings" id="tab-settings" hidden>
+      <div class="page-header"><h1>設定</h1></div>
+
+      <div class="settings-section">
+        <div class="section-title">世帯コード</div>
+        <div class="field-card">
+          <div class="field"><label>現在のコード</label><span class="num" id="settings-code-value"></span></div>
+        </div>
+        <div class="field-hint">このコードを知っている人だけが、このデータを見たり入力したりできます。他の人に教えないでください。</div>
+        <div class="settings-actions" style="margin-top:10px;">
+          <button class="btn btn-secondary" data-action="copy-settings-code">コードをコピー</button>
+          <button class="btn btn-ghost" data-action="leave-household" style="width:auto; padding:8px 4px;">別の世帯コードに切り替える</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="section-title">表示名</div>
+        <div class="field-card">
+          <div class="field"><label for="setting-name-a">Aさんの名前</label><input type="text" id="setting-name-a" maxlength="10"></div>
+          <div class="field"><label for="setting-name-b">Bさんの名前</label><input type="text" id="setting-name-b" maxlength="10"></div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="section-title">クレジットカード</div>
+        <div class="field-card">
+          <div class="field"><label for="setting-closing-day">締め日（毎月）</label><input type="number" id="setting-closing-day" min="1" max="28"></div>
+        </div>
+        <div class="field-hint">締め日の翌日から翌月の締め日までを1ヶ月分（1つの請求サイクル）として「集計」タブで集計します。</div>
+      </div>
+
+      <div class="settings-section">
+        <div class="section-title">バックアップ</div>
+        <div class="field-hint" style="padding-top:0; margin-bottom:12px;">
+          入力したデータは自動的に2人の間で共有されます。念のための保存用に、いつでもファイルとして書き出せます。
+        </div>
+        <div class="settings-actions">
+          <button class="btn btn-secondary" data-action="export-data">バックアップを書き出す</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="section-title">データの削除</div>
+        <div class="field-hint" style="padding-top:0; margin-bottom:12px;">これはこの世帯コードを使っている2人共有のデータです。削除すると相手の画面からも消えます。</div>
+        <button class="btn btn-danger-ghost" data-action="reset-data" style="margin-top:0;">この世帯のデータをすべて削除する</button>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabbar">
+    <button class="tab-btn active" data-action="switch-tab" data-tab="expenses">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>
+      <span>支出</span>
+    </button>
+    <button class="tab-btn" data-action="switch-tab" data-tab="summary">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M12 20V4M20 20v-7"/></svg>
+      <span>集計</span>
+    </button>
+    <button class="tab-btn" data-action="switch-tab" data-tab="income">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 7.5l3 5 3-5M12 12.5V18M9.3 14h5.4M9.3 16h5.4"/></svg>
+      <span>収入</span>
+    </button>
+    <button class="tab-btn" data-action="switch-tab" data-tab="settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a8 8 0 0 0 0-2l2-1.5-2-3.4-2.4 1a8 8 0 0 0-1.7-1L15 3h-4l-.3 2.6a8 8 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a8 8 0 0 0 0 2l-2 1.5 2 3.4 2.4-1a8 8 0 0 0 1.7 1L11 21h4l.3-2.6a8 8 0 0 0 1.7-1l2.4 1 2-3.4-2-1.5z"/></svg>
+      <span>設定</span>
+    </button>
+  </nav>
+</div>
+
+<div class="sheet-backdrop" id="expense-sheet-backdrop" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="expense-sheet-title">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <button class="sheet-btn" data-action="close-sheet" data-sheet="expense">キャンセル</button>
+      <div class="sheet-title" id="expense-sheet-title">支出を追加</div>
+      <button class="sheet-btn sheet-btn-primary" data-action="save-expense">保存</button>
+    </div>
+    <div class="sheet-body">
+      <div class="field-group">
+        <label class="field-label" for="expense-memo">メモ</label>
+        <input type="text" id="expense-memo" placeholder="例: スーパーで食材" maxlength="60">
+      </div>
+      <div class="field-group">
+        <label class="field-label" for="expense-date">日付</label>
+        <input type="date" id="expense-date">
+      </div>
+      <div class="field-group">
+        <label class="field-label" for="expense-amount">金額</label>
+        <div class="amount-field">
+          <span class="yen-mark">¥</span>
+          <input type="text" inputmode="numeric" id="expense-amount" class="amount-input" placeholder="0">
+        </div>
+      </div>
+
+      <div class="section-label">負担の分け方</div>
+      <div class="option-list" id="expense-split-options"></div>
+
+      <div class="custom-ratio" id="expense-custom-ratio" hidden>
+        <div class="custom-ratio-label" id="expense-custom-ratio-label"></div>
+        <input type="range" id="expense-custom-slider" min="0" max="100" step="5" value="50">
+      </div>
+
+      <div class="section-label">実際に立て替えた人</div>
+      <div class="segmented" id="expense-paidby-segmented"></div>
+
+      <button class="btn btn-danger-ghost" id="expense-delete-btn" data-action="delete-expense" hidden>この支出を削除</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet-backdrop" id="income-sheet-backdrop" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="income-sheet-title">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <button class="sheet-btn" data-action="close-sheet" data-sheet="income">キャンセル</button>
+      <div class="sheet-title" id="income-sheet-title">収入を追加</div>
+      <button class="sheet-btn sheet-btn-primary" data-action="save-income">保存</button>
+    </div>
+    <div class="sheet-body">
+      <div class="field-group">
+        <label class="field-label" for="income-month">対象月</label>
+        <input type="month" id="income-month">
+      </div>
+      <div class="field-group">
+        <label class="field-label">対象</label>
+        <div class="segmented" id="income-person-segmented"></div>
+      </div>
+      <div class="field-group">
+        <label class="field-label" for="income-amount">手取り額</label>
+        <div class="amount-field">
+          <span class="yen-mark">¥</span>
+          <input type="text" inputmode="numeric" id="income-amount" class="amount-input" placeholder="0">
+        </div>
+      </div>
+      <button class="btn btn-danger-ghost" id="income-delete-btn" data-action="delete-income" hidden>この収入を削除</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
+import {
+  getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collection, onSnapshot, deleteField, writeBatch, getDocs
+} from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
+
+(function (firebaseDeps) {
+  'use strict';
+  const { initializeApp, getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collection, onSnapshot, deleteField, writeBatch, getDocs } = firebaseDeps;
+
+  // ============================================================
+  // Engine — billing cycle / income ratio / split / settlement
+  // (verified against a battery of test cases in a Node sandbox
+  // before being embedded here)
+  // ============================================================
+
+  function addMonths(year, month, delta) {
+    const total = year * 12 + (month - 1) + delta;
+    const ny = Math.floor(total / 12);
+    const nm = ((total % 12) + 12) % 12 + 1;
+    return { year: ny, month: nm };
+  }
+
+  function daysInMonth(year, month) {
+    return new Date(year, month, 0).getDate();
+  }
+
+  function clampedDay(day, year, month) {
+    return Math.min(day, daysInMonth(year, month));
+  }
+
+  function parseLocalDate(str) {
+    const parts = String(str).split('-').map(Number);
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+  }
+
+  function toDateInputValue(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + d;
+  }
+
+  function ymKey(ym) { return ym.year * 12 + (ym.month - 1); }
+  function cycleKey(ym) { return ym.year + '-' + ym.month; }
+
+  function cycleForStatement(ym, closingDay) {
+    const endDay = clampedDay(closingDay, ym.year, ym.month);
+    const end = new Date(ym.year, ym.month - 1, endDay, 23, 59, 59, 999);
+
+    const prev = addMonths(ym.year, ym.month, -1);
+    const startDay = clampedDay(closingDay, prev.year, prev.month);
+    const startBase = new Date(prev.year, prev.month - 1, startDay);
+    const start = new Date(startBase.getFullYear(), startBase.getMonth(), startBase.getDate() + 1, 0, 0, 0, 0);
+
+    return { start: start, end: end, ym: ym, label: ym.year + '年' + ym.month + '月締め分' };
+  }
+
+  function cycleContaining(date, closingDay) {
+    const day = date.getDate();
+    let ym;
+    if (day > closingDay) {
+      const next = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+      ym = { year: next.getFullYear(), month: next.getMonth() + 1 };
+    } else {
+      ym = { year: date.getFullYear(), month: date.getMonth() + 1 };
+    }
+    return cycleForStatement(ym, closingDay);
+  }
+
+  function incomeAPercent(ym, records) {
+    const windowStart = addMonths(ym.year, ym.month, -11);
+    const lo = ymKey(windowStart);
+    const hi = ymKey(ym);
+    const inWindow = records.filter(function (r) {
+      const k = r.year * 12 + (r.month - 1);
+      return k >= lo && k <= hi;
+    });
+    const aSum = inWindow.filter(function (r) { return r.person === 'a'; }).reduce(function (s, r) { return s + r.netIncome; }, 0);
+    const bSum = inWindow.filter(function (r) { return r.person === 'b'; }).reduce(function (s, r) { return s + r.netIncome; }, 0);
+    const total = aSum + bSum;
+    if (total <= 0) return 50;
+    const raw = (aSum / total) * 100;
+    const rounded = Math.round(raw / 5) * 5;
+    return Math.min(100, Math.max(0, rounded));
+  }
+
+  function splitByPercent(amount, aPercent) {
+    const clamped = Math.min(100, Math.max(0, aPercent));
+    const a = Math.round(amount * clamped / 100);
+    const b = amount - a;
+    return { a: a, b: b };
+  }
+
+  function burden(expense, incomeRecords, closingDay) {
+    const amount = expense.amount;
+    switch (expense.splitType) {
+      case 'aOnly': return { a: amount, b: 0 };
+      case 'bOnly': return { a: 0, b: amount };
+      case 'equal': return splitByPercent(amount, 50);
+      case 'incomeRatio': {
+        const cycle = cycleContaining(parseLocalDate(expense.date), closingDay);
+        const p = incomeAPercent(cycle.ym, incomeRecords);
+        return splitByPercent(amount, p);
+      }
+      case 'customRatio': return splitByPercent(amount, expense.customAPercent == null ? 50 : expense.customAPercent);
+      default: return { a: 0, b: 0 };
+    }
+  }
+
+  function settlement(expenses, cycle, incomeRecords, closingDay) {
+    const target = expenses.filter(function (e) {
+      const d = parseLocalDate(e.date);
+      return d >= cycle.start && d <= cycle.end;
+    });
+
+    let paidByA = 0, paidByB = 0, burdenA = 0, burdenB = 0, total = 0;
+    const bySplitType = {};
+
+    for (let i = 0; i < target.length; i++) {
+      const e = target[i];
+      total += e.amount;
+      if (e.paidBy === 'a') paidByA += e.amount; else paidByB += e.amount;
+      const b = burden(e, incomeRecords, closingDay);
+      burdenA += b.a;
+      burdenB += b.b;
+      bySplitType[e.splitType] = (bySplitType[e.splitType] || 0) + e.amount;
+    }
+
+    const net = paidByA - burdenA;
+    let settle = null;
+    if (net > 0) settle = { payer: 'b', receiver: 'a', amount: net };
+    else if (net < 0) settle = { payer: 'a', receiver: 'b', amount: -net };
+
+    return { cycle: cycle, total: total, paidByA: paidByA, paidByB: paidByB, burdenA: burdenA, burdenB: burdenB, bySplitType: bySplitType, settle: settle };
+  }
+
+  const SPLIT_TYPES = ['aOnly', 'bOnly', 'equal', 'incomeRatio', 'customRatio'];
+
+  function splitLabel(type, names) {
+    switch (type) {
+      case 'aOnly': return names.a + 'が100%負担';
+      case 'bOnly': return names.b + 'が100%負担';
+      case 'equal': return '半々で負担';
+      case 'incomeRatio': return '収入割合で負担';
+      case 'customRatio': return '任意の割合で負担';
+      default: return '';
+    }
+  }
+  function splitShort(type) {
+    return { aOnly: 'A100%', bOnly: 'B100%', equal: '半々', incomeRatio: '収入割合', customRatio: '任意割合' }[type] || '';
+  }
+
+  // ============================================================
+  // State — synced live from Firestore, keyed by a shared "household code"
+  // ============================================================
+
+  const firebaseConfig = {
+    apiKey: "__FIREBASE_API_KEY__",
+    authDomain: "__FIREBASE_AUTH_DOMAIN__",
+    projectId: "__FIREBASE_PROJECT_ID__",
+    storageBucket: "__FIREBASE_STORAGE_BUCKET__",
+    messagingSenderId: "__FIREBASE_MESSAGING_SENDER_ID__",
+    appId: "__FIREBASE_APP_ID__"
+  };
+
+  const CODE_STORAGE_KEY = 'warikan-kakeibo-household-code';
+  const firebaseApp = initializeApp(firebaseConfig);
+  const db = getFirestore(firebaseApp);
+
+  function configRef(code) { return doc(db, 'households', code, 'meta', 'config'); }
+  function expensesCol(code) { return collection(db, 'households', code, 'expenses'); }
+  function incomeCol(code) { return collection(db, 'households', code, 'incomeRecords'); }
+
+  function defaultState() {
+    return {
+      settings: { personAName: 'A', personBName: 'B', cardClosingDay: 6 },
+      expenses: [],
+      incomeRecords: [],
+      settledCycles: {}
+    };
+  }
+
+  let state = defaultState();
+  let currentCode = null;
+  let unsubscribers = [];
+
+  function uid() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'id-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
+
+  function generateHouseholdCode() {
+    return Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 6);
+  }
+
+  function subscribeToHousehold(code) {
+    unsubscribers.forEach(function (u) { u(); });
+    unsubscribers = [];
+
+    unsubscribers.push(onSnapshot(configRef(code), function (snap) {
+      const d = defaultState();
+      if (snap.exists()) {
+        const data = snap.data();
+        state.settings = {
+          personAName: data.personAName || d.settings.personAName,
+          personBName: data.personBName || d.settings.personBName,
+          cardClosingDay: data.cardClosingDay || d.settings.cardClosingDay
+        };
+        state.settledCycles = (data.settledCycles && typeof data.settledCycles === 'object') ? data.settledCycles : {};
+      }
+      renderAll();
+    }, function () { toast('設定の同期に失敗しました。通信環境を確認してください'); }));
+
+    unsubscribers.push(onSnapshot(expensesCol(code), function (snap) {
+      state.expenses = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+      renderExpenses();
+      renderSummary();
+    }, function () { toast('支出データの同期に失敗しました'); }));
+
+    unsubscribers.push(onSnapshot(incomeCol(code), function (snap) {
+      state.incomeRecords = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+      renderIncome();
+      renderSummary();
+    }, function () { toast('収入データの同期に失敗しました'); }));
+  }
+
+  async function updateSettings(partial) {
+    try {
+      await setDoc(configRef(currentCode), partial, { merge: true });
+    } catch (e) { toast('保存に失敗しました。通信環境を確認してください'); }
+  }
+
+  // ============================================================
+  // Formatting helpers
+  // ============================================================
+
+  function escapeHtml(str) {
+    return String(str == null ? '' : str).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  const yenFormatter = new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 });
+  function formatYen(n) { return yenFormatter.format(n || 0); }
+  function formatMonthDay(date) { return (date.getMonth() + 1) + '/' + date.getDate(); }
+  function formatFullDate(date) { return date.getFullYear() + '年' + (date.getMonth() + 1) + '月' + date.getDate() + '日'; }
+
+  function checkIconSvg() {
+    return '<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>';
+  }
+  function trayIconSvg() {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8l2-4h14l2 4M3 8v10a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8M3 8h18M9 13h6"/></svg>';
+  }
+  function yenIconSvg() {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 7.5l3 5 3-5M12 12.5V18M9.3 14h5.4M9.3 16h5.4"/></svg>';
+  }
+  function emptyState(icon, title, desc) {
+    const svg = icon === 'yen' ? yenIconSvg() : trayIconSvg();
+    return '<div class="empty-state">' + svg + '<div class="empty-title">' + escapeHtml(title) + '</div><div class="empty-desc">' + escapeHtml(desc) + '</div></div>';
+  }
+
+  function currentNames() {
+    return { a: state.settings.personAName, b: state.settings.personBName };
+  }
+
+  // ============================================================
+  // Rendering
+  // ============================================================
+
+  let currentTab = 'expenses';
+  let summarySelectedKey = null;
+
+  function groupExpensesByCycle() {
+    const closingDay = state.settings.cardClosingDay;
+    const map = new Map();
+    for (let i = 0; i < state.expenses.length; i++) {
+      const e = state.expenses[i];
+      const cyc = cycleContaining(parseLocalDate(e.date), closingDay);
+      const key = cycleKey(cyc.ym);
+      if (!map.has(key)) map.set(key, { cycle: cyc, items: [] });
+      map.get(key).items.push(e);
+    }
+    const groups = Array.from(map.values());
+    groups.sort(function (a, b) { return b.cycle.start - a.cycle.start; });
+    groups.forEach(function (g) {
+      g.items.sort(function (a, b) { return parseLocalDate(b.date) - parseLocalDate(a.date); });
+    });
+    return groups;
+  }
+
+  function groupIncomeByMonth() {
+    const map = new Map();
+    for (let i = 0; i < state.incomeRecords.length; i++) {
+      const r = state.incomeRecords[i];
+      const ym = { year: r.year, month: r.month };
+      const key = cycleKey(ym);
+      if (!map.has(key)) map.set(key, { ym: ym, items: [] });
+      map.get(key).items.push(r);
+    }
+    const groups = Array.from(map.values());
+    groups.sort(function (a, b) { return ymKey(b.ym) - ymKey(a.ym); });
+    return groups;
+  }
+
+  function expenseRowHtml(e) {
+    const names = currentNames();
+    const title = e.memo ? e.memo : splitShort(e.splitType);
+    const dateLabel = formatMonthDay(parseLocalDate(e.date));
+    return '' +
+      '<button class="row" data-action="edit-expense" data-id="' + e.id + '">' +
+        '<div class="main">' +
+          '<div class="title">' + escapeHtml(title) + '</div>' +
+          '<div class="meta">' +
+            '<span>' + dateLabel + '</span><span>・</span>' +
+            '<span>' + escapeHtml(splitLabel(e.splitType, names)) + '</span><span>・</span>' +
+            '<span>立替: ' + escapeHtml(e.paidBy === 'a' ? names.a : names.b) + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="amount">' + formatYen(e.amount) + '</div>' +
+      '</button>';
+  }
+
+  function renderExpenses() {
+    const container = document.getElementById('expenses-list');
+    const groups = groupExpensesByCycle();
+    if (groups.length === 0) {
+      container.innerHTML = emptyState('tray', '支出がありません', '右上の＋から支出を追加してください');
+      return;
+    }
+    container.innerHTML = groups.map(function (g) {
+      const key = cycleKey(g.cycle.ym);
+      const settled = !!state.settledCycles[key];
+      return '' +
+        '<div class="cycle-group">' +
+          '<div class="cycle-header">' +
+            '<span class="label">' + escapeHtml(g.cycle.label) + '</span>' +
+            (settled ? '<span class="chip chip-settled">精算済み</span>' : '') +
+          '</div>' +
+          '<div class="ledger">' + g.items.map(expenseRowHtml).join('') + '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  function renderSummary() {
+    const groups = groupExpensesByCycle();
+    let cycles = groups.map(function (g) { return g.cycle; });
+    if (cycles.length === 0) {
+      cycles = [cycleContaining(new Date(), state.settings.cardClosingDay)];
+    }
+    if (summarySelectedKey === null || !cycles.some(function (c) { return cycleKey(c.ym) === summarySelectedKey; })) {
+      summarySelectedKey = cycleKey(cycles[0].ym);
+    }
+    const cycle = cycles.find(function (c) { return cycleKey(c.ym) === summarySelectedKey; }) || cycles[0];
+    const s = settlement(state.expenses, cycle, state.incomeRecords, state.settings.cardClosingDay);
+    const names = currentNames();
+    const key = cycleKey(cycle.ym);
+    const settled = !!state.settledCycles[key];
+
+    const select = document.getElementById('summary-cycle-select');
+    select.innerHTML = cycles.map(function (c) {
+      const k = cycleKey(c.ym);
+      return '<option value="' + k + '"' + (k === key ? ' selected' : '') + '>' + escapeHtml(c.label) + '</option>';
+    }).join('');
+
+    document.getElementById('summary-range').textContent = formatFullDate(cycle.start) + ' 〜 ' + formatFullDate(cycle.end);
+
+    const breakdown = SPLIT_TYPES.filter(function (t) { return s.bySplitType[t] > 0; })
+      .map(function (t) {
+        return '<div class="kv-row"><span>' + escapeHtml(splitLabel(t, names)) + '</span><span class="num">' + formatYen(s.bySplitType[t]) + '</span></div>';
+      }).join('');
+
+    const body = document.getElementById('summary-body');
+    body.innerHTML = '' +
+      '<div class="ledger-card">' +
+        '<div class="ledger-title">負担額（本来支払うべき金額）</div>' +
+        '<div class="kv-row"><span>' + escapeHtml(names.a) + '</span><span class="num">' + formatYen(s.burdenA) + '</span></div>' +
+        '<div class="kv-row"><span>' + escapeHtml(names.b) + '</span><span class="num">' + formatYen(s.burdenB) + '</span></div>' +
+        '<div class="kv-row total"><span>合計</span><span class="num">' + formatYen(s.total) + '</span></div>' +
+      '</div>' +
+      '<div class="ledger-card">' +
+        '<div class="ledger-title">実際の立替額</div>' +
+        '<div class="kv-row"><span>' + escapeHtml(names.a) + '</span><span class="num">' + formatYen(s.paidByA) + '</span></div>' +
+        '<div class="kv-row"><span>' + escapeHtml(names.b) + '</span><span class="num">' + formatYen(s.paidByB) + '</span></div>' +
+      '</div>' +
+      '<div class="settlement-card">' +
+        (settled ? '<div class="stamp">精算済</div>' : '') +
+        (s.settle ?
+          '<div class="settlement-flow"><span>' + escapeHtml(s.settle.payer === 'a' ? names.a : names.b) + '</span><span class="arrow">→</span><span>' + escapeHtml(s.settle.receiver === 'a' ? names.a : names.b) + '</span></div>' +
+          '<div class="settlement-amount">' + formatYen(s.settle.amount) + '</div>'
+          : '<div class="settlement-none">精算の必要はありません</div>') +
+        '<button class="btn ' + (settled ? 'btn-ghost' : 'btn-primary') + '" data-action="toggle-settled" data-key="' + key + '">' +
+          (settled ? 'この月の精算済みを取り消す' : 'この月を精算済みにする') +
+        '</button>' +
+      '</div>' +
+      '<div class="ledger-card">' +
+        '<div class="ledger-title">内訳（負担パターン別）</div>' +
+        (breakdown || '<div class="empty-inline">この月の支出はありません</div>') +
+      '</div>';
+  }
+
+  function renderIncome() {
+    const now = new Date();
+    const currentYM = { year: now.getFullYear(), month: now.getMonth() + 1 };
+    const names = currentNames();
+    const currentPercent = incomeAPercent(currentYM, state.incomeRecords);
+    document.getElementById('income-ratio-now').textContent =
+      names.a + ' ' + currentPercent + '% : ' + names.b + ' ' + (100 - currentPercent) + '%';
+
+    const container = document.getElementById('income-list');
+    if (state.incomeRecords.length === 0) {
+      container.innerHTML = emptyState('yen', '収入データがありません', '「収入割合で負担する費用」を使うには、毎月の手取りを登録してください');
+      return;
+    }
+    const groups = groupIncomeByMonth();
+    container.innerHTML = groups.map(function (g) {
+      return '' +
+        '<div class="cycle-group">' +
+          '<div class="cycle-header"><span class="label">' + g.ym.year + '年' + g.ym.month + '月</span></div>' +
+          '<div class="ledger">' + g.items.map(function (r) {
+            return '' +
+              '<button class="row" data-action="edit-income" data-id="' + r.id + '">' +
+                '<div class="main"><div class="title">' + escapeHtml(r.person === 'a' ? names.a : names.b) + '</div></div>' +
+                '<div class="amount">' + formatYen(r.netIncome) + '</div>' +
+              '</button>';
+          }).join('') + '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  function renderSettings() {
+    document.getElementById('setting-name-a').value = state.settings.personAName;
+    document.getElementById('setting-name-b').value = state.settings.personBName;
+    document.getElementById('setting-closing-day').value = state.settings.cardClosingDay;
+    document.getElementById('settings-code-value').textContent = currentCode || '';
+  }
+
+  function renderAll() {
+    renderExpenses();
+    renderSummary();
+    renderIncome();
+    renderSettings();
+  }
+
+  function switchTab(tab) {
+    currentTab = tab;
+    document.querySelectorAll('.tab-panel').forEach(function (p) { p.hidden = p.dataset.tab !== tab; });
+    document.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.toggle('active', b.dataset.tab === tab); });
+    document.getElementById('main-scroll').scrollTop = 0;
+  }
+
+  // ============================================================
+  // Sheets: add/edit expense & income
+  // ============================================================
+
+  let editingExpenseId = null;
+  let editingIncomeId = null;
+  let currentSplitType = 'equal';
+  let currentCustomPercent = 50;
+  let currentPaidBy = 'a';
+  let currentIncomePerson = 'a';
+
+  function showSheet(id) {
+    const el = document.getElementById(id);
+    el.hidden = false;
+    requestAnimationFrame(function () { el.classList.add('open'); });
+  }
+  function closeSheet(id) {
+    const el = document.getElementById(id);
+    el.classList.remove('open');
+    setTimeout(function () { el.hidden = true; }, 280);
+  }
+
+  function renderExpenseSplitOptions() {
+    const names = currentNames();
+    const container = document.getElementById('expense-split-options');
+    container.innerHTML = SPLIT_TYPES.map(function (t) {
+      const selected = currentSplitType === t;
+      return '' +
+        '<button type="button" class="option-row' + (selected ? ' selected' : '') + '" data-action="select-split-type" data-type="' + t + '">' +
+          '<span>' + escapeHtml(splitLabel(t, names)) + '</span>' +
+          (selected ? checkIconSvg() : '') +
+        '</button>';
+    }).join('');
+  }
+
+  function updateCustomRatioLabel() {
+    const names = currentNames();
+    document.getElementById('expense-custom-ratio-label').textContent =
+      names.a + ': ' + currentCustomPercent + '%　' + names.b + ': ' + (100 - currentCustomPercent) + '%';
+  }
+
+  function updateCustomRatioVisibility() {
+    const wrap = document.getElementById('expense-custom-ratio');
+    wrap.hidden = currentSplitType !== 'customRatio';
+    document.getElementById('expense-custom-slider').value = currentCustomPercent;
+    updateCustomRatioLabel();
+  }
+
+  function renderExpensePaidBySegmented() {
+    const names = currentNames();
+    const container = document.getElementById('expense-paidby-segmented');
+    container.innerHTML = ['a', 'b'].map(function (p) {
+      return '<button type="button" class="segment' + (currentPaidBy === p ? ' selected' : '') + '" data-action="select-paidby" data-person="' + p + '">' +
+        escapeHtml(p === 'a' ? names.a : names.b) + '</button>';
+    }).join('');
+  }
+
+  function renderIncomePersonSegmented() {
+    const names = currentNames();
+    const container = document.getElementById('income-person-segmented');
+    container.innerHTML = ['a', 'b'].map(function (p) {
+      return '<button type="button" class="segment' + (currentIncomePerson === p ? ' selected' : '') + '" data-action="select-income-person" data-person="' + p + '">' +
+        escapeHtml(p === 'a' ? names.a : names.b) + '</button>';
+    }).join('');
+  }
+
+  function openExpenseSheet(id) {
+    editingExpenseId = id || null;
+    const e = id ? state.expenses.find(function (x) { return x.id === id; }) : null;
+
+    document.getElementById('expense-sheet-title').textContent = e ? '支出を編集' : '支出を追加';
+    document.getElementById('expense-memo').value = e ? e.memo : '';
+    document.getElementById('expense-date').value = e ? e.date : toDateInputValue(new Date());
+    document.getElementById('expense-amount').value = e ? String(e.amount) : '';
+    document.getElementById('expense-delete-btn').hidden = !e;
+
+    currentSplitType = e ? e.splitType : 'equal';
+    currentCustomPercent = (e && e.customAPercent != null) ? e.customAPercent : 50;
+    currentPaidBy = e ? e.paidBy : 'a';
+
+    renderExpenseSplitOptions();
+    renderExpensePaidBySegmented();
+    updateCustomRatioVisibility();
+    showSheet('expense-sheet-backdrop');
+  }
+
+  async function saveExpense() {
+    const amountRaw = document.getElementById('expense-amount').value.replace(/[^\d]/g, '');
+    const amount = Number(amountRaw);
+    if (!amountRaw || !Number.isFinite(amount) || amount <= 0) { toast('金額を入力してください'); return; }
+    const date = document.getElementById('expense-date').value || toDateInputValue(new Date());
+    const memo = document.getElementById('expense-memo').value.trim();
+    const customAPercent = currentSplitType === 'customRatio' ? currentCustomPercent : null;
+    const payload = { date: date, amount: amount, memo: memo, splitType: currentSplitType, customAPercent: customAPercent, paidBy: currentPaidBy, updatedAt: Date.now() };
+
+    closeSheet('expense-sheet-backdrop');
+    try {
+      if (editingExpenseId) {
+        await updateDoc(doc(expensesCol(currentCode), editingExpenseId), payload);
+      } else {
+        await addDoc(expensesCol(currentCode), payload);
+      }
+    } catch (e) { toast('保存に失敗しました。通信環境を確認してください'); }
+  }
+
+  async function deleteExpense() {
+    if (!editingExpenseId) return;
+    if (!confirm('この支出を削除しますか？')) return;
+    closeSheet('expense-sheet-backdrop');
+    try {
+      await deleteDoc(doc(expensesCol(currentCode), editingExpenseId));
+    } catch (e) { toast('削除に失敗しました。通信環境を確認してください'); }
+  }
+
+  function openIncomeSheet(id) {
+    editingIncomeId = id || null;
+    const r = id ? state.incomeRecords.find(function (x) { return x.id === id; }) : null;
+    document.getElementById('income-sheet-title').textContent = r ? '収入を編集' : '収入を追加';
+    const now = new Date();
+    const monthValue = r
+      ? String(r.year).padStart(4, '0') + '-' + String(r.month).padStart(2, '0')
+      : now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    document.getElementById('income-month').value = monthValue;
+    document.getElementById('income-amount').value = r ? String(r.netIncome) : '';
+    document.getElementById('income-delete-btn').hidden = !r;
+    currentIncomePerson = r ? r.person : 'a';
+    renderIncomePersonSegmented();
+    showSheet('income-sheet-backdrop');
+  }
+
+  async function saveIncome() {
+    const monthVal = document.getElementById('income-month').value;
+    if (!monthVal) { toast('対象月を選択してください'); return; }
+    const parts = monthVal.split('-');
+    const year = Number(parts[0]), month = Number(parts[1]);
+    const amountRaw = document.getElementById('income-amount').value.replace(/[^\d]/g, '');
+    const netIncome = Number(amountRaw);
+    if (!amountRaw || !Number.isFinite(netIncome) || netIncome <= 0) { toast('金額を入力してください'); return; }
+    const payload = { year: year, month: month, person: currentIncomePerson, netIncome: netIncome, updatedAt: Date.now() };
+
+    closeSheet('income-sheet-backdrop');
+    try {
+      if (editingIncomeId) {
+        await updateDoc(doc(incomeCol(currentCode), editingIncomeId), payload);
+      } else {
+        await addDoc(incomeCol(currentCode), payload);
+      }
+    } catch (e) { toast('保存に失敗しました。通信環境を確認してください'); }
+  }
+
+  async function deleteIncome() {
+    if (!editingIncomeId) return;
+    if (!confirm('この収入データを削除しますか？')) return;
+    closeSheet('income-sheet-backdrop');
+    try {
+      await deleteDoc(doc(incomeCol(currentCode), editingIncomeId));
+    } catch (e) { toast('削除に失敗しました。通信環境を確認してください'); }
+  }
+
+  async function toggleSettled(key) {
+    const settled = !!state.settledCycles[key];
+    const nextSettledCycles = Object.assign({}, state.settledCycles);
+    nextSettledCycles[key] = !settled;
+    await updateSettings({ settledCycles: nextSettledCycles });
+  }
+
+  async function resetAllData() {
+    if (!confirm('この世帯のデータ（支出・収入・設定）をすべて削除します。もう1人の画面からも消え、この操作は取り消せません。よろしいですか？')) return;
+    try {
+      const batch1 = writeBatch(db);
+      (await getDocs(expensesCol(currentCode))).forEach(function (d) { batch1.delete(d.ref); });
+      await batch1.commit();
+      const batch2 = writeBatch(db);
+      (await getDocs(incomeCol(currentCode))).forEach(function (d) { batch2.delete(d.ref); });
+      await batch2.commit();
+      await setDoc(configRef(currentCode), defaultState().settings, { merge: false });
+      toast('この世帯のデータをすべて削除しました');
+    } catch (e) { toast('削除に失敗しました。通信環境を確認してください'); }
+  }
+
+  // ============================================================
+  // Backup: export current synced state as a JSON file
+  // ============================================================
+
+  function exportBackup() {
+    const now = new Date();
+    const stamp = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'warikan-kakeibo-' + stamp + '.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    toast('バックアップを書き出しました');
+  }
+
+  // ============================================================
+  // Wiring
+  // ============================================================
+
+  let toastTimer = null;
+  function toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove('show'); }, 2200);
+  }
+
+  document.addEventListener('click', function (e) {
+    const target = e.target.closest('[data-action]');
+    if (!target) return;
+    const action = target.dataset.action;
+    switch (action) {
+      case 'switch-tab': switchTab(target.dataset.tab); break;
+      case 'add-expense': openExpenseSheet(null); break;
+      case 'edit-expense': openExpenseSheet(target.dataset.id); break;
+      case 'delete-expense': deleteExpense(); break;
+      case 'save-expense': saveExpense(); break;
+      case 'select-split-type':
+        currentSplitType = target.dataset.type;
+        renderExpenseSplitOptions();
+        updateCustomRatioVisibility();
+        break;
+      case 'select-paidby':
+        currentPaidBy = target.dataset.person;
+        renderExpensePaidBySegmented();
+        break;
+      case 'select-income-person':
+        currentIncomePerson = target.dataset.person;
+        renderIncomePersonSegmented();
+        break;
+      case 'add-income': openIncomeSheet(null); break;
+      case 'edit-income': openIncomeSheet(target.dataset.id); break;
+      case 'delete-income': deleteIncome(); break;
+      case 'save-income': saveIncome(); break;
+      case 'close-sheet': closeSheet(target.dataset.sheet + '-sheet-backdrop'); break;
+      case 'toggle-settled': toggleSettled(target.dataset.key); break;
+      case 'export-data': exportBackup(); break;
+      case 'reset-data': resetAllData(); break;
+      case 'create-household': createHousehold(); break;
+      case 'join-household': joinHousehold(document.getElementById('join-code-input').value); break;
+      case 'copy-created-code': copyCode(document.getElementById('created-code-value').textContent); break;
+      case 'copy-settings-code': copyCode(currentCode); break;
+      case 'enter-app': enterApp(); break;
+      case 'leave-household': leaveHousehold(); break;
+      default: break;
+    }
+  });
+
+  document.getElementById('join-code-input').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') joinHousehold(e.target.value);
+  });
+
+  document.getElementById('expense-custom-slider').addEventListener('input', function (e) {
+    currentCustomPercent = Number(e.target.value);
+    updateCustomRatioLabel();
+  });
+
+  ['expense-amount', 'income-amount'].forEach(function (id) {
+    document.getElementById(id).addEventListener('input', function (e) {
+      e.target.value = e.target.value.replace(/[^\d]/g, '');
+    });
+  });
+
+  document.getElementById('summary-cycle-select').addEventListener('change', function (e) {
+    summarySelectedKey = e.target.value;
+    renderSummary();
+  });
+
+  document.getElementById('setting-name-a').addEventListener('change', function (e) {
+    updateSettings({ personAName: e.target.value.trim() || 'A' });
+  });
+  document.getElementById('setting-name-b').addEventListener('change', function (e) {
+    updateSettings({ personBName: e.target.value.trim() || 'B' });
+  });
+  document.getElementById('setting-closing-day').addEventListener('change', function (e) {
+    let v = Number(e.target.value);
+    if (!Number.isFinite(v)) v = 6;
+    v = Math.min(28, Math.max(1, Math.round(v)));
+    e.target.value = v;
+    updateSettings({ cardClosingDay: v });
+  });
+
+  document.querySelectorAll('.sheet-backdrop').forEach(function (backdrop) {
+    backdrop.addEventListener('click', function (e) {
+      if (e.target === backdrop) closeSheet(backdrop.id);
+    });
+  });
+
+  // ============================================================
+  // Onboarding: create / join a household by its shared code
+  // ============================================================
+
+  function showOnboardingError(msg) {
+    const el = document.getElementById('onboarding-error');
+    el.textContent = msg;
+    el.hidden = false;
+  }
+  function clearOnboardingError() {
+    document.getElementById('onboarding-error').hidden = true;
+  }
+
+  function showOnboarding() {
+    document.getElementById('loading-screen').hidden = true;
+    document.getElementById('app').hidden = true;
+    document.getElementById('onboarding').hidden = false;
+    document.getElementById('onboarding-start').hidden = false;
+    document.getElementById('onboarding-created').hidden = true;
+  }
+
+  async function createHousehold() {
+    clearOnboardingError();
+    const code = generateHouseholdCode();
+    try {
+      await setDoc(configRef(code), Object.assign({}, defaultState().settings, { settledCycles: {} }));
+      localStorage.setItem(CODE_STORAGE_KEY, code);
+      currentCode = code;
+      document.getElementById('onboarding-start').hidden = true;
+      document.getElementById('onboarding-created').hidden = false;
+      document.getElementById('created-code-value').textContent = code;
+    } catch (e) {
+      showOnboardingError('作成に失敗しました。通信環境を確認してください');
+    }
+  }
+
+  async function joinHousehold(rawCode) {
+    clearOnboardingError();
+    const code = (rawCode || '').trim().toLowerCase();
+    if (!code) { showOnboardingError('コードを入力してください'); return; }
+    try {
+      const snap = await getDoc(configRef(code));
+      if (!snap.exists()) { showOnboardingError('そのコードは見つかりませんでした'); return; }
+      localStorage.setItem(CODE_STORAGE_KEY, code);
+      currentCode = code;
+      enterApp();
+    } catch (e) {
+      showOnboardingError('参加に失敗しました。通信環境を確認してください');
+    }
+  }
+
+  function enterApp() {
+    document.getElementById('loading-screen').hidden = true;
+    document.getElementById('onboarding').hidden = true;
+    document.getElementById('app').hidden = false;
+    subscribeToHousehold(currentCode);
+    switchTab('expenses');
+  }
+
+  function leaveHousehold() {
+    if (!confirm('別の世帯コードに切り替えます。この端末に保存されたコードの記録を消しますが、データ自体は削除されません。よろしいですか？')) return;
+    unsubscribers.forEach(function (u) { u(); });
+    unsubscribers = [];
+    localStorage.removeItem(CODE_STORAGE_KEY);
+    currentCode = null;
+    state = defaultState();
+    showOnboarding();
+  }
+
+  async function copyCode(code) {
+    try {
+      await navigator.clipboard.writeText(code);
+      toast('コピーしました');
+    } catch (e) {
+      toast('コピーできませんでした。長押しで手動でコピーしてください');
+    }
+  }
+
+  // ============================================================
+  // Startup
+  // ============================================================
+
+  (async function start() {
+    const savedCode = localStorage.getItem(CODE_STORAGE_KEY);
+    if (!savedCode) { showOnboarding(); return; }
+    currentCode = savedCode;
+    try {
+      const snap = await getDoc(configRef(savedCode));
+      if (snap.exists()) {
+        enterApp();
+      } else {
+        localStorage.removeItem(CODE_STORAGE_KEY);
+        currentCode = null;
+        showOnboarding();
+      }
+    } catch (e) {
+      // Offline on first load: proceed optimistically, onSnapshot will sync once back online.
+      enterApp();
+    }
+  })();
+})({ initializeApp: initializeApp, getFirestore: getFirestore, doc: doc, getDoc: getDoc, setDoc: setDoc, updateDoc: updateDoc, deleteDoc: deleteDoc, addDoc: addDoc, collection: collection, onSnapshot: onSnapshot, deleteField: deleteField, writeBatch: writeBatch, getDocs: getDocs });
+</script>
+</body>
+</html>
