@@ -187,6 +187,11 @@
     border-color: var(--accent);
     color: var(--accent-ink);
   }
+  .category-picker-chip-add {
+    border-style: dashed;
+    color: var(--ink-muted);
+    background: none;
+  }
 
   /* Split-pattern color marker: always paired with a text label next to it,
      never the sole carrier of meaning (color-blind / low-vision safe). */
@@ -518,6 +523,9 @@
      regardless of DOM order (otherwise the backdrop below intercepts taps
      meant for the sheet on top). */
   #expense-sheet-backdrop, #income-sheet-backdrop { z-index: 110; }
+  /* The category sheet can be opened from within the expense sheet (the "+
+     新しいジャンル" chip), so it must stack above it too. */
+  #category-sheet-backdrop { z-index: 120; }
   /* [hidden] must still win over this class at equal specificity, otherwise a
      "hidden" backdrop keeps intercepting taps underneath it. */
   .sheet-backdrop:not([hidden]) {
@@ -1817,6 +1825,7 @@ import {
   let currentIncomePerMonthValues = [];
   let editingCategoryId = null;
   let currentCategorySplitType = 'incomeRatio';
+  let categorySheetReturnToExpense = false;
 
   function showSheet(id) {
     const el = document.getElementById(id);
@@ -1939,7 +1948,8 @@ import {
     container.innerHTML = allCategoryOrder().map(function (cat) {
       return '<button type="button" class="category-picker-chip' + (currentCategory === cat ? ' selected' : '') + '" data-action="select-category" data-category="' + cat + '">' +
         escapeHtml(categoryDisplayName(cat)) + '</button>';
-    }).join('');
+    }).join('') +
+      '<button type="button" class="category-picker-chip category-picker-chip-add" data-action="add-category-from-expense">＋ 新しいジャンル</button>';
   }
 
   // Auto-guesses the category from the memo, but only while the user hasn't
@@ -2251,8 +2261,9 @@ import {
     }).join('');
   }
 
-  function openCategorySheet(id) {
+  function openCategorySheet(id, opts) {
     editingCategoryId = id || null;
+    categorySheetReturnToExpense = !!(opts && opts.returnToExpense);
     const c = id ? findCustomCategory(id) : null;
     document.getElementById('category-sheet-title').textContent = c ? 'ジャンルを編集' : 'ジャンルを追加';
     document.getElementById('category-delete-btn').hidden = !c;
@@ -2266,17 +2277,28 @@ import {
     const name = document.getElementById('category-name').value.trim();
     if (!name) { toast('ジャンル名を入力してください'); return; }
     const list = customCategoryList().slice();
+    let savedId = editingCategoryId;
     if (editingCategoryId) {
       const idx = list.findIndex(function (c) { return c.id === editingCategoryId; });
       if (idx !== -1) list[idx] = Object.assign({}, list[idx], { name: name, defaultSplitType: currentCategorySplitType });
     } else {
-      list.push({
-        id: 'custom_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-        name: name,
-        defaultSplitType: currentCategorySplitType
-      });
+      savedId = 'custom_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      list.push({ id: savedId, name: name, defaultSplitType: currentCategorySplitType });
     }
+    // Optimistic local update: the settings doc write + onSnapshot round-trip
+    // is too slow for the "create a category, jump right back to picking it"
+    // flow to feel instant, so reflect it locally before the write resolves.
+    state.settings.customCategories = list;
     closeSheet('category-sheet-backdrop');
+    if (categorySheetReturnToExpense) {
+      categorySheetReturnToExpense = false;
+      currentCategory = savedId;
+      categoryManuallySet = true;
+      renderExpenseCategoryPicker();
+      applyCategoryDefaultSplitType();
+    } else {
+      renderCustomCategoryList();
+    }
     await updateSettings({ customCategories: list });
   }
 
@@ -2647,6 +2669,7 @@ import {
       case 'save-income': saveIncome(); break;
       case 'add-category': openCategorySheet(null); break;
       case 'edit-category': openCategorySheet(target.dataset.id); break;
+      case 'add-category-from-expense': openCategorySheet(null, { returnToExpense: true }); break;
       case 'delete-category': deleteCategory(); break;
       case 'save-category': saveCategory(); break;
       case 'select-category-split-type':
