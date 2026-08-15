@@ -664,6 +664,8 @@
   }
   .custom-ratio-label { font-size: 14.5px; margin-bottom: 10px; font-variant-numeric: tabular-nums; }
   .custom-ratio input[type="range"] { width: 100%; accent-color: var(--accent); }
+  .custom-amount-grid { display: flex; gap: 10px; }
+  .custom-amount-grid > div { flex: 1; min-width: 0; }
 
   .segmented {
     display: flex;
@@ -973,8 +975,32 @@
       <div class="option-list" id="expense-split-options"></div>
 
       <div class="custom-ratio" id="expense-custom-ratio" hidden>
-        <div class="custom-ratio-label" id="expense-custom-ratio-label"></div>
-        <input type="range" id="expense-custom-slider" min="0" max="100" step="5" value="50">
+        <div class="segmented" id="custom-ratio-mode-segmented" style="margin-bottom:12px;"></div>
+
+        <div id="custom-ratio-percent-fields">
+          <div class="custom-ratio-label" id="expense-custom-ratio-label"></div>
+          <input type="range" id="expense-custom-slider" min="0" max="100" step="5" value="50">
+        </div>
+
+        <div id="custom-ratio-amount-fields" hidden>
+          <div class="custom-amount-grid">
+            <div>
+              <label class="field-label" id="custom-amount-a-label">A</label>
+              <div class="amount-field">
+                <span class="yen-mark">¥</span>
+                <input type="text" inputmode="numeric" id="custom-amount-a" class="amount-input" placeholder="0">
+              </div>
+            </div>
+            <div>
+              <label class="field-label" id="custom-amount-b-label">B</label>
+              <div class="amount-field">
+                <span class="yen-mark">¥</span>
+                <input type="text" inputmode="numeric" id="custom-amount-b" class="amount-input" placeholder="0">
+              </div>
+            </div>
+          </div>
+          <div class="field-hint" id="custom-amount-hint" style="padding-top:8px; margin-bottom:0;"></div>
+        </div>
       </div>
 
       <div class="section-label">実際に立て替えた人</div>
@@ -1638,6 +1664,7 @@ import {
   let editingPendingImportIndex = null;
   let currentSplitType = 'equal';
   let currentCustomPercent = 50;
+  let customRatioMode = 'percent';
   let currentPaidBy = 'a';
   let currentCategory = 'other';
   let categoryManuallySet = false;
@@ -1669,17 +1696,87 @@ import {
     }).join('');
   }
 
+  function currentExpenseAmountValue() {
+    const raw = document.getElementById('expense-amount').value.replace(/[^\d]/g, '');
+    return Number(raw) || 0;
+  }
+
+  // 60% / 40% only tells you the ratio; showing the actual yen split (the
+  // "calculator" the user asked for) is what makes it usable at a glance.
   function updateCustomRatioLabel() {
     const names = currentNames();
+    const total = currentExpenseAmountValue();
+    const yen = splitByPercent(total, currentCustomPercent);
+    const aPercentText = Math.round(currentCustomPercent);
+    const bPercentText = 100 - aPercentText;
     document.getElementById('expense-custom-ratio-label').textContent =
-      names.a + ': ' + currentCustomPercent + '%　' + names.b + ': ' + (100 - currentCustomPercent) + '%';
+      names.a + ' ' + aPercentText + '%（' + formatYen(yen.a) + '）　' +
+      names.b + ' ' + bPercentText + '%（' + formatYen(yen.b) + '）';
+  }
+
+  function renderCustomRatioModeSegmented() {
+    const container = document.getElementById('custom-ratio-mode-segmented');
+    container.innerHTML = [['percent', '%で指定'], ['amount', '金額で指定']].map(function (m) {
+      return '<button type="button" class="segment' + (customRatioMode === m[0] ? ' selected' : '') + '" data-action="select-custom-ratio-mode" data-mode="' + m[0] + '">' + m[1] + '</button>';
+    }).join('');
+  }
+
+  // Fills the two amount fields (and their hint) from whatever percentage is
+  // currently stored -- used both on first entering amount mode and whenever
+  // the total changes while amount mode is active, so the pair stays in sync.
+  function syncCustomAmountFieldsFromPercent() {
+    const names = currentNames();
+    document.getElementById('custom-amount-a-label').textContent = escapeHtml(names.a);
+    document.getElementById('custom-amount-b-label').textContent = escapeHtml(names.b);
+    const total = currentExpenseAmountValue();
+    const hint = document.getElementById('custom-amount-hint');
+    if (total <= 0) {
+      document.getElementById('custom-amount-a').value = '';
+      document.getElementById('custom-amount-b').value = '';
+      hint.textContent = '先に金額を入力してください。';
+      return;
+    }
+    hint.textContent = '片方を入力すると、もう片方は自動で残りの金額になります。';
+    const yen = splitByPercent(total, currentCustomPercent);
+    document.getElementById('custom-amount-a').value = String(yen.a);
+    document.getElementById('custom-amount-b').value = String(yen.b);
   }
 
   function updateCustomRatioVisibility() {
     const wrap = document.getElementById('expense-custom-ratio');
     wrap.hidden = currentSplitType !== 'customRatio';
-    document.getElementById('expense-custom-slider').value = currentCustomPercent;
-    updateCustomRatioLabel();
+    if (currentSplitType !== 'customRatio') return;
+
+    renderCustomRatioModeSegmented();
+    document.getElementById('custom-ratio-percent-fields').hidden = customRatioMode !== 'percent';
+    document.getElementById('custom-ratio-amount-fields').hidden = customRatioMode !== 'amount';
+
+    if (customRatioMode === 'percent') {
+      document.getElementById('expense-custom-slider').value = Math.round(currentCustomPercent / 5) * 5;
+      updateCustomRatioLabel();
+    } else {
+      syncCustomAmountFieldsFromPercent();
+    }
+  }
+
+  // Editing one amount field recomputes the other as the remainder, and
+  // derives the underlying percentage from that -- never fights whichever
+  // field the user is actively typing in.
+  function handleCustomAmountInput(person) {
+    const total = currentExpenseAmountValue();
+    if (total <= 0) return;
+    const aField = document.getElementById('custom-amount-a');
+    const bField = document.getElementById('custom-amount-b');
+    if (person === 'a') {
+      const aVal = Math.min(Number(aField.value.replace(/[^\d]/g, '')) || 0, total);
+      bField.value = String(Math.max(0, total - aVal));
+      currentCustomPercent = (aVal / total) * 100;
+    } else {
+      const bVal = Math.min(Number(bField.value.replace(/[^\d]/g, '')) || 0, total);
+      const aVal = Math.max(0, total - bVal);
+      aField.value = String(aVal);
+      currentCustomPercent = (aVal / total) * 100;
+    }
   }
 
   function renderExpensePaidBySegmented() {
@@ -1840,6 +1937,7 @@ import {
     currentCustomPercent = (e && e.customAPercent != null) ? e.customAPercent : 50;
     currentPaidBy = e ? e.paidBy : 'a';
     splitTypeManuallySet = !!e;
+    customRatioMode = 'percent';
 
     renderExpenseSplitOptions();
     renderExpensePaidBySegmented();
@@ -2328,6 +2426,10 @@ import {
         renderExpenseSplitOptions();
         updateCustomRatioVisibility();
         break;
+      case 'select-custom-ratio-mode':
+        customRatioMode = target.dataset.mode;
+        updateCustomRatioVisibility();
+        break;
       case 'select-paidby':
         currentPaidBy = target.dataset.person;
         renderExpensePaidBySegmented();
@@ -2383,6 +2485,22 @@ import {
   ['expense-amount', 'income-lump-a', 'income-lump-b'].forEach(function (id) {
     document.getElementById(id).addEventListener('input', function (e) {
       e.target.value = e.target.value.replace(/[^\d]/g, '');
+    });
+  });
+
+  // Keep the custom-ratio calculator (percent-mode label or amount-mode
+  // fields) live-synced as the total expense amount is typed.
+  document.getElementById('expense-amount').addEventListener('input', function () {
+    if (currentSplitType !== 'customRatio') return;
+    if (customRatioMode === 'percent') updateCustomRatioLabel();
+    else syncCustomAmountFieldsFromPercent();
+  });
+
+  document.getElementById('custom-amount-a').addEventListener('input', function () { handleCustomAmountInput('a'); });
+  document.getElementById('custom-amount-b').addEventListener('input', function () { handleCustomAmountInput('b'); });
+  ['custom-amount-a', 'custom-amount-b'].forEach(function (id) {
+    document.getElementById(id).addEventListener('blur', function () {
+      if (currentExpenseAmountValue() > 0) syncCustomAmountFieldsFromPercent();
     });
   });
 
