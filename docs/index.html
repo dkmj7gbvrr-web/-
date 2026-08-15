@@ -905,6 +905,15 @@
       </div>
 
       <div class="settings-section">
+        <div class="section-title">ジャンル（カテゴリ）</div>
+        <div class="field-hint" style="padding-top:0; margin-bottom:12px;">支出につけるジャンルを自由に追加できます。ジャンルごとに既定の負担方法を設定できます。</div>
+        <div id="custom-category-list"></div>
+        <div class="settings-actions" style="margin-top:10px;">
+          <button class="btn btn-secondary" data-action="add-category">＋ ジャンルを追加</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
         <div class="section-title">バックアップ</div>
         <div class="field-hint" style="padding-top:0; margin-bottom:12px;">
           入力したデータは自動的に2人の間で共有されます。念のための保存用に、いつでもファイルとして書き出せます。
@@ -1053,6 +1062,26 @@
       </div>
 
       <button class="btn btn-danger-ghost" id="income-delete-btn" data-action="delete-income" hidden>この期間を削除</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet-backdrop" id="category-sheet-backdrop" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="category-sheet-title">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <button class="sheet-btn" data-action="close-sheet" data-sheet="category">キャンセル</button>
+      <div class="sheet-title" id="category-sheet-title">ジャンルを追加</div>
+      <button class="sheet-btn sheet-btn-primary" data-action="save-category">保存</button>
+    </div>
+    <div class="sheet-body">
+      <div class="field-group">
+        <label class="field-label" for="category-name">ジャンル名</label>
+        <input type="text" id="category-name" placeholder="例: ペット" maxlength="12">
+      </div>
+      <div class="section-label">既定の負担方法</div>
+      <div class="option-list" id="category-split-options"></div>
+      <button class="btn btn-danger-ghost" id="category-delete-btn" data-action="delete-category" hidden>このジャンルを削除</button>
     </div>
   </div>
 </div>
@@ -1221,7 +1250,7 @@ import {
       burdenA += b.a;
       burdenB += b.b;
       bySplitType[e.splitType] = (bySplitType[e.splitType] || 0) + e.amount;
-      const cat = (e.category && CATEGORY_NAMES[e.category]) ? e.category : 'other';
+      const cat = isKnownCategory(e.category) ? e.category : 'other';
       byCategory[cat] = (byCategory[cat] || 0) + e.amount;
     }
 
@@ -1344,21 +1373,49 @@ import {
     other: []
   };
 
+  // User-defined categories (name + default split type) live in
+  // state.settings.customCategories, alongside the built-in dictionary --
+  // these helpers are the single place that merges the two sets.
+  function customCategoryList() {
+    return (state.settings && Array.isArray(state.settings.customCategories)) ? state.settings.customCategories : [];
+  }
+  function findCustomCategory(id) {
+    return customCategoryList().find(function (c) { return c.id === id; }) || null;
+  }
+  // Built-ins first (その他 held back to the end), then custom categories in
+  // the order they were created, then その他 -- so その他 always reads as
+  // the final catch-all rather than sitting in the middle of the list.
+  function allCategoryOrder() {
+    const builtinsExceptOther = CATEGORY_ORDER.slice(0, -1);
+    const customIds = customCategoryList().map(function (c) { return c.id; });
+    return builtinsExceptOther.concat(customIds, ['other']);
+  }
+  function isKnownCategory(id) {
+    return !!(id && (CATEGORY_NAMES[id] || findCustomCategory(id)));
+  }
+  function categoryDisplayName(id) {
+    if (CATEGORY_NAMES[id]) return CATEGORY_NAMES[id];
+    const custom = findCustomCategory(id);
+    return custom ? custom.name : CATEGORY_NAMES.other;
+  }
+
   function categoryChipHtml(category) {
-    const key = category && CATEGORY_NAMES[category] ? category : 'other';
-    return '<span class="category-chip">' + escapeHtml(CATEGORY_NAMES[key]) + '</span>';
+    const key = isKnownCategory(category) ? category : 'other';
+    return '<span class="category-chip">' + escapeHtml(categoryDisplayName(key)) + '</span>';
   }
 
   function guessCategory(memo, merchantMemory) {
     const trimmed = (memo || '').trim();
     if (!trimmed) return 'other';
     const remembered = merchantMemory[trimmed];
-    if (remembered && remembered.category && CATEGORY_NAMES[remembered.category]) return remembered.category;
+    if (remembered && isKnownCategory(remembered.category)) return remembered.category;
 
     // Longest matching keyword wins (ties broken by CATEGORY_ORDER), not just
     // "first category with any match" -- otherwise a generic word in an
     // earlier category (food's bare "肉") can shadow a more specific compound
-    // in a later one ("焼肉" should mean dining out, not buying meat).
+    // in a later one ("焼肉" should mean dining out, not buying meat). Custom
+    // categories have no keywords of their own (not requested), so only the
+    // built-in dictionary is searched here.
     let bestCategory = null;
     let bestLength = 0;
     let bestOrderIndex = Infinity;
@@ -1379,13 +1436,16 @@ import {
   }
 
   // Default 負担方法 per category: income-ratio for everything except
-  // travel and entertainment, which default to an even split.
+  // travel and entertainment (which default to an even split), or whatever
+  // a custom category was configured with.
   const CATEGORY_DEFAULT_SPLIT_TYPE = {
     travel: 'equal',
     entertainment: 'equal'
   };
   function defaultSplitTypeForCategory(category) {
-    return CATEGORY_DEFAULT_SPLIT_TYPE[category] || 'incomeRatio';
+    if (CATEGORY_DEFAULT_SPLIT_TYPE[category]) return CATEGORY_DEFAULT_SPLIT_TYPE[category];
+    const custom = findCustomCategory(category);
+    return (custom && custom.defaultSplitType) || 'incomeRatio';
   }
 
   // ============================================================
@@ -1411,7 +1471,7 @@ import {
 
   function defaultState() {
     return {
-      settings: { personAName: 'A', personBName: 'B', cardClosingDay: 6 },
+      settings: { personAName: 'A', personBName: 'B', cardClosingDay: 6, customCategories: [] },
       expenses: [],
       incomePeriods: [],
       settledCycles: {}
@@ -1442,7 +1502,8 @@ import {
         state.settings = {
           personAName: data.personAName || d.settings.personAName,
           personBName: data.personBName || d.settings.personBName,
-          cardClosingDay: data.cardClosingDay || d.settings.cardClosingDay
+          cardClosingDay: data.cardClosingDay || d.settings.cardClosingDay,
+          customCategories: Array.isArray(data.customCategories) ? data.customCategories : []
         };
         state.settledCycles = (data.settledCycles && typeof data.settledCycles === 'object') ? data.settledCycles : {};
       }
@@ -1610,11 +1671,11 @@ import {
         return '<div class="kv-row"><span style="display:flex; align-items:center; gap:8px;">' + splitDotHtml(t) + '<span>' + escapeHtml(splitLabel(t, names)) + '</span></span><span class="num">' + formatYen(s.bySplitType[t]) + '</span></div>';
       }).join('');
 
-    const categoryBreakdown = CATEGORY_ORDER
+    const categoryBreakdown = allCategoryOrder()
       .filter(function (cat) { return s.byCategory[cat] > 0; })
       .sort(function (a, b) { return s.byCategory[b] - s.byCategory[a]; })
       .map(function (cat) {
-        return '<div class="kv-row"><span>' + escapeHtml(CATEGORY_NAMES[cat]) + '</span><span class="num">' + formatYen(s.byCategory[cat]) + '</span></div>';
+        return '<div class="kv-row"><span>' + escapeHtml(categoryDisplayName(cat)) + '</span><span class="num">' + formatYen(s.byCategory[cat]) + '</span></div>';
       }).join('');
 
     const body = document.getElementById('summary-body');
@@ -1702,6 +1763,26 @@ import {
     document.getElementById('setting-name-b').value = state.settings.personBName;
     document.getElementById('setting-closing-day').value = state.settings.cardClosingDay;
     document.getElementById('settings-code-value').textContent = currentCode || '';
+    renderCustomCategoryList();
+  }
+
+  function renderCustomCategoryList() {
+    const names = currentNames();
+    const container = document.getElementById('custom-category-list');
+    const list = customCategoryList();
+    if (list.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+    container.innerHTML = '<div class="ledger">' + list.map(function (c) {
+      return '' +
+        '<button class="row" data-action="edit-category" data-id="' + c.id + '">' +
+          '<div class="main">' +
+            '<div class="title">' + escapeHtml(c.name) + '</div>' +
+            '<div class="meta"><span>既定: ' + escapeHtml(splitLabel(c.defaultSplitType, names)) + '</span></div>' +
+          '</div>' +
+        '</button>';
+    }).join('') + '</div>';
   }
 
   function renderAll() {
@@ -1734,6 +1815,8 @@ import {
   let splitTypeManuallySet = false;
   let currentIncomeEntryMode = 'lump';
   let currentIncomePerMonthValues = [];
+  let editingCategoryId = null;
+  let currentCategorySplitType = 'incomeRatio';
 
   function showSheet(id) {
     const el = document.getElementById(id);
@@ -1853,9 +1936,9 @@ import {
 
   function renderExpenseCategoryPicker() {
     const container = document.getElementById('expense-category-picker');
-    container.innerHTML = CATEGORY_ORDER.map(function (cat) {
+    container.innerHTML = allCategoryOrder().map(function (cat) {
       return '<button type="button" class="category-picker-chip' + (currentCategory === cat ? ' selected' : '') + '" data-action="select-category" data-category="' + cat + '">' +
-        escapeHtml(CATEGORY_NAMES[cat]) + '</button>';
+        escapeHtml(categoryDisplayName(cat)) + '</button>';
     }).join('');
   }
 
@@ -1994,7 +2077,7 @@ import {
     // Existing expenses (or pending import items, which already carry a
     // guessed category) keep whatever category they have; only a brand-new
     // blank entry auto-refines its category guess as the memo is typed.
-    currentCategory = (e && e.category && CATEGORY_NAMES[e.category]) ? e.category : 'other';
+    currentCategory = (e && isKnownCategory(e.category)) ? e.category : 'other';
     categoryManuallySet = !!e;
     currentSplitType = e ? e.splitType : defaultSplitTypeForCategory(currentCategory);
     currentCustomPercent = (e && e.customAPercent != null) ? e.customAPercent : 50;
@@ -2153,6 +2236,56 @@ import {
     try {
       await deleteDoc(doc(incomePeriodsCol(currentCode), editingIncomeId));
     } catch (e) { toast('削除に失敗しました。通信環境を確認してください'); }
+  }
+
+  function renderCategorySplitOptions() {
+    const names = currentNames();
+    const container = document.getElementById('category-split-options');
+    container.innerHTML = SPLIT_TYPES.filter(function (t) { return t !== 'customRatio'; }).map(function (t) {
+      const selected = currentCategorySplitType === t;
+      return '' +
+        '<button type="button" class="option-row' + (selected ? ' selected' : '') + '" data-action="select-category-split-type" data-type="' + t + '">' +
+          '<span style="display:flex; align-items:center; gap:9px;">' + splitDotHtml(t) + '<span>' + escapeHtml(splitLabel(t, names)) + '</span></span>' +
+          (selected ? checkIconSvg() : '') +
+        '</button>';
+    }).join('');
+  }
+
+  function openCategorySheet(id) {
+    editingCategoryId = id || null;
+    const c = id ? findCustomCategory(id) : null;
+    document.getElementById('category-sheet-title').textContent = c ? 'ジャンルを編集' : 'ジャンルを追加';
+    document.getElementById('category-delete-btn').hidden = !c;
+    document.getElementById('category-name').value = c ? c.name : '';
+    currentCategorySplitType = c ? c.defaultSplitType : 'incomeRatio';
+    renderCategorySplitOptions();
+    showSheet('category-sheet-backdrop');
+  }
+
+  async function saveCategory() {
+    const name = document.getElementById('category-name').value.trim();
+    if (!name) { toast('ジャンル名を入力してください'); return; }
+    const list = customCategoryList().slice();
+    if (editingCategoryId) {
+      const idx = list.findIndex(function (c) { return c.id === editingCategoryId; });
+      if (idx !== -1) list[idx] = Object.assign({}, list[idx], { name: name, defaultSplitType: currentCategorySplitType });
+    } else {
+      list.push({
+        id: 'custom_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        name: name,
+        defaultSplitType: currentCategorySplitType
+      });
+    }
+    closeSheet('category-sheet-backdrop');
+    await updateSettings({ customCategories: list });
+  }
+
+  async function deleteCategory() {
+    if (!editingCategoryId) return;
+    if (!confirm('このジャンルを削除しますか？ このジャンルが付いている支出は「その他」として扱われます。')) return;
+    const list = customCategoryList().filter(function (c) { return c.id !== editingCategoryId; });
+    closeSheet('category-sheet-backdrop');
+    await updateSettings({ customCategories: list });
   }
 
   async function toggleSettled(key) {
@@ -2512,6 +2645,14 @@ import {
       case 'edit-income': openIncomeSheet(target.dataset.id); break;
       case 'delete-income': deleteIncome(); break;
       case 'save-income': saveIncome(); break;
+      case 'add-category': openCategorySheet(null); break;
+      case 'edit-category': openCategorySheet(target.dataset.id); break;
+      case 'delete-category': deleteCategory(); break;
+      case 'save-category': saveCategory(); break;
+      case 'select-category-split-type':
+        currentCategorySplitType = target.dataset.type;
+        renderCategorySplitOptions();
+        break;
       case 'close-sheet': closeSheet(target.dataset.sheet + '-sheet-backdrop'); break;
       case 'toggle-settled': toggleSettled(target.dataset.key); break;
       case 'export-data': exportBackup(); break;
