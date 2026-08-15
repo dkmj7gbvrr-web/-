@@ -583,6 +583,26 @@
     accent-color: var(--accent);
     flex: none;
   }
+  .import-row-image-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    margin: 6px 0;
+    background: #fff;
+  }
+  .import-row-image {
+    display: block;
+    height: 46px;
+    width: auto;
+    max-width: none;
+  }
+  .import-row-image-loading {
+    font-size: 12px;
+    color: var(--ink-muted);
+    margin: 4px 0;
+  }
+  .garbled-hint { color: var(--red); }
   .import-row-body {
     display: flex;
     align-items: center;
@@ -1108,6 +1128,9 @@
         <div class="segmented" id="import-paidby-segmented"></div>
       </div>
       <div class="section-label" id="import-summary-label"></div>
+      <div class="field-hint garbled-hint" id="import-garbled-hint" style="padding-top:0; margin-bottom:10px;" hidden>
+        一部の店名がこのPDFから正しく読み取れませんでした。行についている画像を見て、正しい店名をタップして直接入力し直してください。
+      </div>
       <div class="ledger" id="import-review-list"></div>
       <div class="field-hint">行をタップすると、日付・金額・負担の分け方を1件ずつ編集できます。チェックを外した行は追加されません。</div>
     </div>
@@ -2524,7 +2547,10 @@ import {
   }
 
   // pdf.js gives positioned text fragments, not lines -- reconstruct rows by
-  // bucketing items with the same (rounded) baseline Y, then reading left to right.
+  // bucketing items with the same (rounded) baseline Y, then reading left to
+  // right. Keeps each line's Y (PDF user-space coordinate) alongside its
+  // text, not just the text, so a line that turns out to need its row image
+  // rendered later (see renderRowImageDataUrl) knows where to crop.
   function linesFromTextContent(content) {
     const rows = new Map();
     content.items.forEach(function (item) {
@@ -2543,10 +2569,13 @@ import {
         text += item.str;
         lastEndX = startX + (item.width || 0);
       });
-      return text.trim();
-    }).filter(function (line) { return line.length > 0; });
+      return { y: key, text: text.trim() };
+    }).filter(function (line) { return line.text.length > 0; });
   }
 
+  // Returns { lines, pdf }: pdf.js's own PDFDocumentProxy is kept around (not
+  // just the extracted text) so a garbled-looking row can later be re-
+  // rendered as an image straight from the source page -- see handlePdfFile.
   async function extractPdfLines(pdfjsLib, arrayBuffer) {
     // cMapUrl lets pdf.js decode CID-keyed CJK fonts that reference the
     // standard Adobe character maps instead of embedding their own
@@ -2561,9 +2590,57 @@ import {
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
       const page = await pdf.getPage(pageNum);
       const content = await page.getTextContent();
-      lines = lines.concat(linesFromTextContent(content));
+      lines = lines.concat(linesFromTextContent(content).map(function (line) {
+        return { page: pageNum, y: line.y, text: line.text };
+      }));
     }
-    return lines;
+    return { lines: lines, pdf: pdf };
+  }
+
+  // A garbled memo (the broken-CID-font case described above itemRe) tends
+  // to contain Latin-1 Supplement characters (À-ÿ and friends) that
+  // essentially never appear in a real merchant name -- used to decide
+  // which rows are worth rendering an actual page-image snippet for.
+  function looksGarbled(text) {
+    return /[\u0080-\u00FF]/.test(text);
+  }
+
+  // Rendered PDF pages are cached per pageNum (a page can hold several
+  // garbled rows) and cleared at the start of each new import.
+  const renderedPdfPages = new Map();
+  const ROW_IMAGE_SCALE = 2.5;
+
+  async function getRenderedPdfPage(pdf, pageNum) {
+    if (renderedPdfPages.has(pageNum)) return renderedPdfPages.get(pageNum);
+    const page = await pdf.getPage(pageNum);
+    const viewport = page.getViewport({ scale: ROW_IMAGE_SCALE });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
+    const result = { canvas: canvas, viewport: viewport };
+    renderedPdfPages.set(pageNum, result);
+    return result;
+  }
+
+  // A row whose merchant name extracted as garbage still RENDERS correctly
+  // in the PDF (the glyphs draw fine; only their reported Unicode values are
+  // wrong), so cropping a band around that line out of the actual rendered
+  // page lets the row be read by eye and retyped, instead of hunting for it
+  // in a separate PDF viewer. y is the line's PDF user-space baseline,
+  // recorded back in linesFromTextContent/extractPdfLines.
+  async function renderRowImageDataUrl(pdf, pageNum, y) {
+    const rendered = await getRenderedPdfPage(pdf, pageNum);
+    const topPt = rendered.viewport.convertToViewportPoint(0, y + 14);
+    const bottomPt = rendered.viewport.convertToViewportPoint(0, y - 7);
+    const top = Math.max(0, Math.min(topPt[1], bottomPt[1]));
+    const bottom = Math.min(rendered.canvas.height, Math.max(topPt[1], bottomPt[1]));
+    const height = Math.max(1, Math.round(bottom - top));
+    const crop = document.createElement('canvas');
+    crop.width = rendered.canvas.width;
+    crop.height = height;
+    crop.getContext('2d').drawImage(rendered.canvas, 0, Math.round(top), rendered.canvas.width, height, 0, 0, rendered.canvas.width, height);
+    return crop.toDataURL('image/png');
   }
 
   // The statement's own reference date (明細書作成日/締め日/決済日) carries the
@@ -2574,10 +2651,11 @@ import {
     const dateRe = /(\d{4})[年\/]\s*(\d{1,2})[月\/]\s*(\d{1,2})日?/;
     let fallback = null;
     for (let i = 0; i < lines.length; i++) {
-      const m = toHalfWidthDigitsAndComma(lines[i]).match(dateRe);
+      const text = lines[i].text;
+      const m = toHalfWidthDigitsAndComma(text).match(dateRe);
       if (!m) continue;
       const parsed = { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) };
-      if (/作成日|締め|決済日/.test(lines[i])) return parsed;
+      if (/作成日|締め|決済日/.test(text)) return parsed;
       if (!fallback) fallback = parsed;
     }
     return fallback;
@@ -2627,7 +2705,7 @@ import {
     const referenceYM = findStatementReferenceDate(rawLines);
     const items = [];
     rawLines.forEach(function (rawLine) {
-      const line = toHalfWidthDigitsAndComma(rawLine);
+      const line = toHalfWidthDigitsAndComma(rawLine.text);
       if (line.indexOf('合計') !== -1) return;
       const m = line.match(itemRe);
       if (!m) return;
@@ -2646,7 +2724,9 @@ import {
       items.push({
         date: year + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0'),
         memo: memo,
-        amount: amount
+        amount: amount,
+        page: rawLine.page,
+        sourceY: rawLine.y
       });
     });
     return items;
@@ -2678,6 +2758,10 @@ import {
 
   let pendingImportItems = [];
   let importDefaultPaidBy = 'a';
+  // Bumped on every new import; row-image renders check this before applying
+  // so a slow render from an import the user has since replaced (or closed)
+  // can't clobber a newer pendingImportItems array.
+  let pendingImportGeneration = 0;
 
   async function handlePdfFile(file) {
     toast('PDFを解析しています…');
@@ -2691,12 +2775,15 @@ import {
     }
     try {
       const buf = await file.arrayBuffer();
-      const lines = await extractPdfLines(pdfjsLib, buf);
+      const { lines, pdf } = await extractPdfLines(pdfjsLib, buf);
       const parsed = parseStatementLines(lines);
       if (parsed.length === 0) {
         toast('明細を読み取れませんでした。対応していないPDF形式の可能性があります');
         return;
       }
+      renderedPdfPages.clear();
+      pendingImportGeneration++;
+      const myGeneration = pendingImportGeneration;
       const memory = loadMerchantMemory();
       pendingImportItems = parsed.map(function (p) {
         const remembered = memory[p.memo];
@@ -2711,10 +2798,25 @@ import {
           paidBy: remembered ? remembered.paidBy : importDefaultPaidBy,
           category: category,
           included: !duplicate,
-          isDuplicate: duplicate
+          isDuplicate: duplicate,
+          isGarbled: looksGarbled(p.memo),
+          rowImageUrl: null,
+          page: p.page,
+          sourceY: p.sourceY
         };
       });
       openImportSheet();
+      // Row images are a best-effort visual aid for garbled memos -- render
+      // them in the background so the review sheet opens immediately rather
+      // than waiting on however many pages need rasterizing.
+      pendingImportItems.forEach(function (item) {
+        if (!item.isGarbled || item.page == null) return;
+        renderRowImageDataUrl(pdf, item.page, item.sourceY).then(function (dataUrl) {
+          if (pendingImportGeneration !== myGeneration) return;
+          item.rowImageUrl = dataUrl;
+          renderImportReviewList();
+        }).catch(function (err) { console.error('row image render failed:', err); });
+      });
     } catch (e) {
       console.error('PDF import failed:', e);
       toast('PDFの読み込みに失敗しました');
@@ -2741,6 +2843,7 @@ import {
     const includedCount = pendingImportItems.filter(function (item) { return item.included; }).length;
     document.getElementById('import-summary-label').textContent =
       pendingImportItems.length + '件見つかりました（' + includedCount + '件を追加します）';
+    document.getElementById('import-garbled-hint').hidden = !pendingImportItems.some(function (item) { return item.isGarbled; });
 
     const list = document.getElementById('import-review-list');
     list.innerHTML = pendingImportItems.map(function (item, index) {
@@ -2753,6 +2856,11 @@ import {
               '<div class="title">' + escapeHtml(item.memo) +
                 (item.isDuplicate ? '<span class="chip chip-settled" style="margin-left:6px;">登録済みかも</span>' : '') +
               '</div>' +
+              (item.isGarbled ?
+                (item.rowImageUrl
+                  ? '<div class="import-row-image-wrap"><img class="import-row-image" src="' + item.rowImageUrl + '" alt="PDFのこの行の画像"></div>'
+                  : '<div class="import-row-image-loading">店名の画像を準備中…</div>')
+                : '') +
               '<div class="meta">' +
                 '<span>' + dateLabel + '</span><span>・</span>' +
                 splitDotHtml(item.splitType) +
