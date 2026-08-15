@@ -1639,6 +1639,31 @@ import {
 
   const yenFormatter = new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 });
   function formatYen(n) { return yenFormatter.format(n || 0); }
+
+  // Inserts thousands-separating commas into a digit string, e.g.
+  // "1234567" -> "1,234,567". Used to keep the free-text amount inputs
+  // (which can't use formatYen's ¥/currency styling) readable at a glance.
+  function formatDigitsWithCommas(digits) {
+    return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  // Reformats an <input>'s value with thousands commas in place, keeping the
+  // caret positioned after the same DIGIT it was after before reformatting
+  // (not the same character index, since commas shift as digits are added
+  // or removed) so typing in the middle of a number doesn't jump the cursor
+  // to the end.
+  function reformatAmountInput(el) {
+    const digitsBeforeCursor = el.value.slice(0, el.selectionStart).replace(/[^\d]/g, '').length;
+    const formatted = formatDigitsWithCommas(el.value.replace(/[^\d]/g, ''));
+    el.value = formatted;
+    let pos = 0, seen = 0;
+    while (pos < formatted.length && seen < digitsBeforeCursor) {
+      if (formatted[pos] !== ',') seen++;
+      pos++;
+    }
+    el.setSelectionRange(pos, pos);
+  }
+
   function formatMonthDay(date) { return (date.getMonth() + 1) + '/' + date.getDate(); }
   function formatFullDate(date) { return date.getFullYear() + '年' + (date.getMonth() + 1) + '月' + date.getDate() + '日'; }
 
@@ -2004,8 +2029,8 @@ import {
     }
     hint.textContent = '片方を入力すると、もう片方は自動で残りの金額になります。';
     const yen = splitByPercent(total, currentCustomPercent);
-    document.getElementById('custom-amount-a').value = String(yen.a);
-    document.getElementById('custom-amount-b').value = String(yen.b);
+    document.getElementById('custom-amount-a').value = formatDigitsWithCommas(String(yen.a));
+    document.getElementById('custom-amount-b').value = formatDigitsWithCommas(String(yen.b));
   }
 
   function updateCustomRatioVisibility() {
@@ -2034,13 +2059,15 @@ import {
     const aField = document.getElementById('custom-amount-a');
     const bField = document.getElementById('custom-amount-b');
     if (person === 'a') {
+      reformatAmountInput(aField);
       const aVal = Math.min(Number(aField.value.replace(/[^\d]/g, '')) || 0, total);
-      bField.value = String(Math.max(0, total - aVal));
+      bField.value = formatDigitsWithCommas(String(Math.max(0, total - aVal)));
       currentCustomPercent = (aVal / total) * 100;
     } else {
+      reformatAmountInput(bField);
       const bVal = Math.min(Number(bField.value.replace(/[^\d]/g, '')) || 0, total);
       const aVal = Math.max(0, total - bVal);
-      aField.value = String(aVal);
+      aField.value = formatDigitsWithCommas(String(aVal));
       currentCustomPercent = (aVal / total) * 100;
     }
   }
@@ -2192,7 +2219,7 @@ import {
     document.getElementById('expense-sheet-title').textContent = showDeleteButton ? '支出を編集' : '支出を追加';
     document.getElementById('expense-memo').value = e ? e.memo : '';
     document.getElementById('expense-date').value = e ? e.date : toDateInputValue(new Date());
-    document.getElementById('expense-amount').value = e ? String(e.amount) : '';
+    document.getElementById('expense-amount').value = e ? formatDigitsWithCommas(String(e.amount)) : '';
     document.getElementById('expense-delete-btn').hidden = !showDeleteButton;
 
     // Existing expenses (or pending import items, which already carry a
@@ -2287,10 +2314,10 @@ import {
 
     currentIncomeEntryMode = p ? p.entryMode : 'lump';
     currentIncomePerMonthValues = (p && p.entryMode === 'perMonth' && Array.isArray(p.perMonthAmounts))
-      ? p.perMonthAmounts.map(function (m) { return { aAmount: String(m.aAmount), bAmount: String(m.bAmount) }; })
+      ? p.perMonthAmounts.map(function (m) { return { aAmount: formatDigitsWithCommas(String(m.aAmount)), bAmount: formatDigitsWithCommas(String(m.bAmount)) }; })
       : [];
-    document.getElementById('income-lump-a').value = (p && p.entryMode === 'lump') ? String(p.aAmount) : '';
-    document.getElementById('income-lump-b').value = (p && p.entryMode === 'lump') ? String(p.bAmount) : '';
+    document.getElementById('income-lump-a').value = (p && p.entryMode === 'lump') ? formatDigitsWithCommas(String(p.aAmount)) : '';
+    document.getElementById('income-lump-b').value = (p && p.entryMode === 'lump') ? formatDigitsWithCommas(String(p.bAmount)) : '';
 
     renderIncomeEntryModeSegmented();
     updateIncomeEntryModeVisibility();
@@ -2873,7 +2900,7 @@ import {
 
   ['expense-amount', 'income-lump-a', 'income-lump-b'].forEach(function (id) {
     document.getElementById(id).addEventListener('input', function (e) {
-      e.target.value = e.target.value.replace(/[^\d]/g, '');
+      reformatAmountInput(e.target);
     });
   });
 
@@ -2916,7 +2943,7 @@ import {
   document.getElementById('income-permonth-rows').addEventListener('input', function (e) {
     const target = e.target;
     if (!target.classList.contains('income-permonth-input')) return;
-    target.value = target.value.replace(/[^\d]/g, '');
+    reformatAmountInput(target);
     const index = Number(target.dataset.index);
     const person = target.dataset.person;
     if (!currentIncomePerMonthValues[index]) currentIncomePerMonthValues[index] = { aAmount: '', bAmount: '' };
