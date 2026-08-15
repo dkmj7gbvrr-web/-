@@ -2471,11 +2471,17 @@ import {
   // restrictions on some mobile browsers (notably iOS Safari), where it can
   // fail silently or throw instead of falling back gracefully -- serving
   // pdf.js and its worker from the same origin sidesteps that entirely.
+  // Bumping this forces a fresh fetch of the vendored files below instead of
+  // a stale cached copy -- the exact same filename staying in place across a
+  // version change is what let a browser serve an old cached pdf.min.mjs
+  // after it had already been swapped out on the server (confirmed by a
+  // stack trace pointing at a line number that only exists in the old file).
+  const PDFJS_VENDOR_VERSION = '4.10.38';
   let pdfjsLibPromise = null;
   function loadPdfJs() {
     if (!pdfjsLibPromise) {
-      pdfjsLibPromise = import('./vendor/pdfjs/pdf.min.mjs').then(function (mod) {
-        mod.GlobalWorkerOptions.workerSrc = './vendor/pdfjs/pdf.worker.min.mjs';
+      pdfjsLibPromise = import('./vendor/pdfjs/pdf.min.mjs?v=' + PDFJS_VENDOR_VERSION).then(function (mod) {
+        mod.GlobalWorkerOptions.workerSrc = './vendor/pdfjs/pdf.worker.min.mjs?v=' + PDFJS_VENDOR_VERSION;
         return mod;
       });
     }
