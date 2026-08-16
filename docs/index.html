@@ -2851,9 +2851,14 @@ import {
     } catch (e) { /* storage unavailable; not fatal */ }
   }
 
+  // Matches on date + amount only, not memo: a manually-entered expense
+  // (typed in ahead of time, e.g. right after a custom-ratio purchase,
+  // before the card statement is even available to import) won't carry the
+  // exact memo text the PDF extracts for the same charge, so requiring an
+  // exact memo match let genuine duplicates slip through uncaught.
   function isLikelyDuplicateExpense(item) {
     return state.expenses.some(function (e) {
-      return e.date === item.date && e.amount === item.amount && e.memo === item.memo;
+      return e.date === item.date && e.amount === item.amount;
     });
   }
 
