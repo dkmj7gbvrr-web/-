@@ -2734,7 +2734,25 @@ import {
   // "前回のお支払い金額 -183,656" listed among the itemized rows on some
   // statements) rather than an actual purchase -- captured so it can be
   // rejected below instead of getting imported as a positive expense.
-  const itemRe = /^\s*(?:(?<y1>\d{4})\/(?<m1>\d{1,2})\/(?<d1>\d{1,2})|(?<m2>\d{1,2})\/(?<d2>\d{1,2})|(?<m3>\d{1,2})月\s*(?<d3>\d{1,2})日|(?<m4>\d{1,2})\s*[^\d\s/]\s+(?:[^\d\s/](?<d4a>\d{1,2})|(?<d4b>\d{1,2})[^\d\s/]))\s+(?<memo>.+?)\s+(?<sign>-\s*)?[¥￥]?(?<amount>[\d,]{3,})円?\s*(?:[(（]\*[)）])?\s*$/;
+  //
+  // A 三井住友カード (Vpass) statement is the confirmed case for two more
+  // shapes handled here: each row can start with a short marker like "B#"
+  // or "#" before the date (skipped by the leading optional group below),
+  // and the year can be written as 2 digits ("26/06/06" for 2026-06-06,
+  // resolved by adding 2000 -- unambiguous vs. the 4-digit-year branch,
+  // which requires exactly 4 leading digits). The same statement also
+  // trails each amount with extra columns (支払区分/回数, often a second
+  // copy of the amount, then a remark mark like "◎") rather than ending
+  // the line right after it -- the amount capture is deliberately the
+  // FIRST sufficiently-long (3+ digit) number found after the memo, with
+  // everything past it accepted and discarded, rather than requiring the
+  // line to end there. This still resolves correctly for the
+  // 支払方法-before-amount shape above (a bare "1回" is only 1 digit, too
+  // short to satisfy the 3-digit minimum, so the lazy memo match keeps
+  // extending past it to the real amount) and for a plain trailing "(*)"
+  // invoice marker (now just absorbed as trailing content instead of
+  // needing its own special case).
+  const itemRe = /^\s*(?:[A-Za-z#＃]{1,3}\s+)?(?:(?<y1>\d{4})\/(?<m1>\d{1,2})\/(?<d1>\d{1,2})|(?<y2>\d{2})\/(?<m5>\d{1,2})\/(?<d5>\d{1,2})|(?<m2>\d{1,2})\/(?<d2>\d{1,2})|(?<m3>\d{1,2})月\s*(?<d3>\d{1,2})日|(?<m4>\d{1,2})\s*[^\d\s/]\s+(?:[^\d\s/](?<d4a>\d{1,2})|(?<d4b>\d{1,2})[^\d\s/]))\s+(?<memo>.+?)\s+(?<sign>-\s*)?[¥￥]?(?<amount>[\d,]{3,})円?\s*.*$/;
 
   // Card statements commonly insert a 支払方法/回数 column ("1回", "リボ",
   // "分割3回", "ボーナス一括") between the merchant name and the amount --
@@ -2754,6 +2772,7 @@ import {
       if (g.sign) return; // a credit/payment line, not a purchase
       let year = null, month, day;
       if (g.y1 !== undefined) { year = Number(g.y1); month = Number(g.m1); day = Number(g.d1); }
+      else if (g.y2 !== undefined) { year = 2000 + Number(g.y2); month = Number(g.m5); day = Number(g.d5); }
       else if (g.m2 !== undefined) { month = Number(g.m2); day = Number(g.d2); }
       else if (g.m3 !== undefined) { month = Number(g.m3); day = Number(g.d3); }
       else { month = Number(g.m4); day = Number(g.d4a !== undefined ? g.d4a : g.d4b); }
