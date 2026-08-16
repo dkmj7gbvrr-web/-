@@ -2255,7 +2255,13 @@ import {
     currentCustomPercent = (e && e.customAPercent != null) ? e.customAPercent : 50;
     currentPaidBy = e ? e.paidBy : 'a';
     splitTypeManuallySet = !!e;
-    customRatioMode = 'percent';
+    // A freshly-chosen 任意の割合 (new expense, or switching an existing
+    // expense's split type away from its own saved customRatio) starts in
+    // amount-input mode by default. Reopening an expense that's ALREADY
+    // saved as customRatio still starts in percent mode, so its exact
+    // stored ratio is visible at a glance instead of just the yen amounts
+    // it happened to produce.
+    customRatioMode = (e && e.splitType === 'customRatio') ? 'percent' : 'amount';
 
     renderExpenseSplitOptions();
     renderExpensePaidBySegmented();
