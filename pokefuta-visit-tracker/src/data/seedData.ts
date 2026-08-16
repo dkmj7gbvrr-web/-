@@ -1,0 +1,136 @@
+import type { Pokefuta } from "../types";
+
+/**
+ * 初期サンプルデータ。
+ *
+ * 「ポケふた」は全国に800枚以上設置されており、この一覧はその全てを
+ * 網羅したものではありません。座標・設置ポケモンは公式サイト
+ * (https://local.pokemon.jp/manhole/) で必ず確認したうえで、
+ * アプリ内の編集機能から正しい情報に更新・追加してください。
+ *
+ * ここでは「ポケふた」発祥の地である鳥取県の市町村を市役所・駅付近の
+ * 目安座標でいくつか収録しています(いずれも verified: false = 未確認)。
+ * 設置ポケモンの情報は誤りを避けるため空欄にしてあります。
+ */
+export const seedData: Pokefuta[] = [
+  {
+    id: "seed-tottori-city",
+    name: "鳥取市のポケふた",
+    prefecture: "鳥取県",
+    city: "鳥取市",
+    address: "鳥取駅周辺(目安)",
+    lat: 35.5011,
+    lng: 134.2351,
+    pokemons: [],
+    note: "座標は鳥取駅付近の目安です。正確な設置場所は公式サイトで確認してください。",
+    verified: false,
+  },
+  {
+    id: "seed-yonago-city",
+    name: "米子市のポケふた",
+    prefecture: "鳥取県",
+    city: "米子市",
+    address: "米子駅周辺(目安)",
+    lat: 35.4287,
+    lng: 133.3309,
+    pokemons: [],
+    note: "座標は米子駅付近の目安です。正確な設置場所は公式サイトで確認してください。",
+    verified: false,
+  },
+  {
+    id: "seed-kurayoshi-city",
+    name: "倉吉市のポケふた",
+    prefecture: "鳥取県",
+    city: "倉吉市",
+    address: "倉吉市中心部(目安)",
+    lat: 35.4306,
+    lng: 133.8228,
+    pokemons: [],
+    note: "座標は倉吉市中心部の目安です。正確な設置場所は公式サイトで確認してください。",
+    verified: false,
+  },
+  {
+    id: "seed-sakaiminato-city",
+    name: "境港市のポケふた",
+    prefecture: "鳥取県",
+    city: "境港市",
+    address: "境港市中心部(目安)",
+    lat: 35.5386,
+    lng: 133.2306,
+    pokemons: [],
+    note: "座標は境港市中心部の目安です。正確な設置場所は公式サイトで確認してください。",
+    verified: false,
+  },
+  {
+    id: "seed-iwami-town",
+    name: "岩美町のポケふた",
+    prefecture: "鳥取県",
+    city: "岩美町",
+    address: "岩美町中心部(目安)",
+    lat: 35.5814,
+    lng: 134.3556,
+    pokemons: [],
+    note: "座標は岩美町中心部の目安です。正確な設置場所は公式サイトで確認してください。",
+    verified: false,
+  },
+  {
+    id: "seed-chizu-town",
+    name: "智頭町のポケふた",
+    prefecture: "鳥取県",
+    city: "智頭町",
+    address: "智頭町中心部(目安)",
+    lat: 35.2686,
+    lng: 134.2306,
+    pokemons: [],
+    note: "座標は智頭町中心部の目安です。正確な設置場所は公式サイトで確認してください。",
+    verified: false,
+  },
+  {
+    id: "seed-daisen-town",
+    name: "大山町のポケふた",
+    prefecture: "鳥取県",
+    city: "大山町",
+    address: "大山町中心部(目安)",
+    lat: 35.4919,
+    lng: 133.5486,
+    pokemons: [],
+    note: "座標は大山町中心部の目安です。正確な設置場所は公式サイトで確認してください。",
+    verified: false,
+  },
+  {
+    id: "seed-yurihama-town",
+    name: "湯梨浜町のポケふた",
+    prefecture: "鳥取県",
+    city: "湯梨浜町",
+    address: "湯梨浜町中心部(目安)",
+    lat: 35.4642,
+    lng: 133.9847,
+    pokemons: [],
+    note: "座標は湯梨浜町中心部の目安です。正確な設置場所は公式サイトで確認してください。",
+    verified: false,
+  },
+  {
+    id: "seed-kotoura-town",
+    name: "琴浦町のポケふた",
+    prefecture: "鳥取県",
+    city: "琴浦町",
+    address: "琴浦町中心部(目安)",
+    lat: 35.4614,
+    lng: 133.7667,
+    pokemons: [],
+    note: "座標は琴浦町中心部の目安です。正確な設置場所は公式サイトで確認してください。",
+    verified: false,
+  },
+  {
+    id: "seed-hokuei-town",
+    name: "北栄町のポケふた",
+    prefecture: "鳥取県",
+    city: "北栄町",
+    address: "北栄町中心部(目安)",
+    lat: 35.4906,
+    lng: 133.8697,
+    pokemons: [],
+    note: "座標は北栄町中心部の目安です。正確な設置場所は公式サイトで確認してください。",
+    verified: false,
+  },
+];
