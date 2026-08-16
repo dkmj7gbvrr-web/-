@@ -2856,9 +2856,17 @@ import {
   // before the card statement is even available to import) won't carry the
   // exact memo text the PDF extracts for the same charge, so requiring an
   // exact memo match let genuine duplicates slip through uncaught.
+  //
+  // The date is allowed to be off by up to a day in either direction: some
+  // issuers (Amex confirmed) print the purchase date in a non-JST timezone,
+  // so a purchase made late in the JST day can land on the PREVIOUS
+  // calendar day in the statement versus what the user typed in locally.
   function isLikelyDuplicateExpense(item) {
+    const itemTime = parseLocalDate(item.date).getTime();
     return state.expenses.some(function (e) {
-      return e.date === item.date && e.amount === item.amount;
+      if (e.amount !== item.amount) return false;
+      const dayDiff = Math.round((parseLocalDate(e.date).getTime() - itemTime) / 86400000);
+      return Math.abs(dayDiff) <= 1;
     });
   }
 
