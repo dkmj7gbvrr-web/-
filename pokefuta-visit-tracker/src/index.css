@@ -1,0 +1,52 @@
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --text: #1c1d21;
+  --text-muted: #666a73;
+  --border: #dde0e5;
+  --accent: #d64545;
+  --accent-dark: #b13333;
+  --visited: #2e7d32;
+  --unvisited: #c62828;
+  --danger: #c62828;
+  color-scheme: light dark;
+
+  font-family: system-ui, "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16171b;
+    --surface: #202127;
+    --text: #f0f0f2;
+    --text-muted: #a4a7b0;
+    --border: #33353d;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  font-family: inherit;
+}
