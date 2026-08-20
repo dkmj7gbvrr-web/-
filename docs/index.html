@@ -391,7 +391,7 @@
     gap: 10px;
     margin-top: 8px;
   }
-  .income-permonth-header .income-permonth-label { width: 76px; flex: none; }
+  .income-permonth-header .income-permonth-label { width: 92px; flex: none; }
   .income-permonth-header .income-permonth-inputs {
     flex: 1;
     display: flex;
@@ -409,7 +409,7 @@
     border-top: 1px solid var(--line);
   }
   .income-permonth-row:first-child { border-top: none; }
-  .income-permonth-label { width: 76px; flex: none; font-size: 13.5px; color: var(--ink-muted); }
+  .income-permonth-label { width: 92px; flex: none; font-size: 13.5px; color: var(--ink-muted); }
   .income-permonth-inputs { flex: 1; display: flex; gap: 8px; }
   .income-permonth-inputs input {
     flex: 1;
@@ -421,6 +421,19 @@
     font-size: 14px;
     color: var(--ink);
   }
+  #income-permonth-rows input.income-permonth-month,
+  #income-extra-rows input.income-extra-label {
+    width: 92px;
+    flex: none;
+    min-width: 0;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    border-radius: 10px;
+    padding: 7px 6px;
+    font-size: 12.5px;
+    color: var(--ink);
+  }
+  .income-extra-section { margin-top: 18px; }
 
   /* --- settings --- */
   .settings-section { margin: 0 20px 24px; }
@@ -1085,8 +1098,15 @@
 
       <div class="field-group" id="income-permonth-fields" style="margin-top:16px;" hidden>
         <label class="field-label">月ごとの手取り額</label>
+        <div class="field-hint" style="padding-top:0; margin-bottom:4px;">各月の年月は必要に応じて変更できます。</div>
         <div class="income-permonth-header" id="income-permonth-header"></div>
         <div id="income-permonth-rows"></div>
+
+        <div class="income-extra-section">
+          <label class="field-label">賞与など（任意・最大3件）</label>
+          <div class="income-permonth-header" id="income-extra-header"></div>
+          <div id="income-extra-rows"></div>
+        </div>
       </div>
 
       <button class="btn btn-danger-ghost" id="income-delete-btn" data-action="delete-income" hidden>この期間を削除</button>
@@ -1983,6 +2003,7 @@ import {
   let splitTypeManuallySet = false;
   let currentIncomeEntryMode = 'lump';
   let currentIncomePerMonthValues = [];
+  let currentIncomeExtraValues = [];
   let editingCategoryId = null;
   let currentCategorySplitType = 'incomeRatio';
   let categorySheetReturnToExpense = false;
@@ -2191,7 +2212,7 @@ import {
     header.innerHTML = '<span class="income-permonth-label"></span><div class="income-permonth-inputs"><span>' + escapeHtml(names.a) + '</span><span>' + escapeHtml(names.b) + '</span></div>';
 
     const rowsContainer = document.getElementById('income-permonth-rows');
-    if (!startVal) { rowsContainer.innerHTML = ''; return; }
+    if (!startVal) { rowsContainer.innerHTML = ''; renderIncomeExtraRows(); return; }
     const parts = startVal.split('-');
     const startYear = Number(parts[0]), startMonth = Number(parts[1]);
     const lookback = incomeLookbackStart(startYear, startMonth, length);
@@ -2201,11 +2222,20 @@ import {
 
     let html = '';
     for (let i = 0; i < length; i++) {
-      const ym = addMonths(lookback.year, lookback.month, i);
       const v = currentIncomePerMonthValues[i];
+      // The year/month a row represents defaults to the auto-computed
+      // lookback month, but the user can freely override it per row (see
+      // the .income-permonth-month <input type=month> below); once
+      // overridden (ymCustom), later changes to the start date / period
+      // length no longer silently reset that row's label.
+      if (!v.ymCustom || v.year == null || v.month == null) {
+        const ym = addMonths(lookback.year, lookback.month, i);
+        v.year = ym.year; v.month = ym.month;
+      }
+      const monthVal = v.year + '-' + String(v.month).padStart(2, '0');
       html += '' +
         '<div class="income-permonth-row">' +
-          '<div class="income-permonth-label">' + ym.year + '年' + ym.month + '月</div>' +
+          '<input type="month" class="income-permonth-month" data-index="' + i + '" value="' + monthVal + '">' +
           '<div class="income-permonth-inputs">' +
             '<input type="text" inputmode="numeric" class="income-permonth-input" data-index="' + i + '" data-person="a" value="' + escapeHtml(v.aAmount) + '">' +
             '<input type="text" inputmode="numeric" class="income-permonth-input" data-index="' + i + '" data-person="b" value="' + escapeHtml(v.bAmount) + '">' +
@@ -2213,11 +2243,40 @@ import {
         '</div>';
     }
     rowsContainer.innerHTML = html;
+    renderIncomeExtraRows();
+  }
+
+  // Up to 3 free-use slots (bonuses etc.) alongside the per-month rows --
+  // no month of their own, just a free-text label plus A/B amounts, folded
+  // into the same period-total used for computing the income ratio.
+  function renderIncomeExtraRows() {
+    const names = currentNames();
+    while (currentIncomeExtraValues.length < 3) currentIncomeExtraValues.push({ label: '', aAmount: '', bAmount: '' });
+    const header = document.getElementById('income-extra-header');
+    header.innerHTML = '<span class="income-permonth-label"></span><div class="income-permonth-inputs"><span>' + escapeHtml(names.a) + '</span><span>' + escapeHtml(names.b) + '</span></div>';
+    const container = document.getElementById('income-extra-rows');
+    let html = '';
+    for (let i = 0; i < currentIncomeExtraValues.length; i++) {
+      const v = currentIncomeExtraValues[i];
+      html += '' +
+        '<div class="income-permonth-row">' +
+          '<input type="text" class="income-extra-label" data-index="' + i + '" placeholder="任意（賞与など）" value="' + escapeHtml(v.label) + '">' +
+          '<div class="income-permonth-inputs">' +
+            '<input type="text" inputmode="numeric" class="income-extra-input" data-index="' + i + '" data-person="a" value="' + escapeHtml(v.aAmount) + '">' +
+            '<input type="text" inputmode="numeric" class="income-extra-input" data-index="' + i + '" data-person="b" value="' + escapeHtml(v.bAmount) + '">' +
+          '</div>' +
+        '</div>';
+    }
+    container.innerHTML = html;
   }
 
   function sumIncomePerMonthValues() {
     let aTotal = 0, bTotal = 0;
     currentIncomePerMonthValues.forEach(function (v) {
+      aTotal += Number(String(v.aAmount).replace(/[^\d]/g, '')) || 0;
+      bTotal += Number(String(v.bAmount).replace(/[^\d]/g, '')) || 0;
+    });
+    currentIncomeExtraValues.forEach(function (v) {
       aTotal += Number(String(v.aAmount).replace(/[^\d]/g, '')) || 0;
       bTotal += Number(String(v.bAmount).replace(/[^\d]/g, '')) || 0;
     });
@@ -2344,7 +2403,14 @@ import {
 
     currentIncomeEntryMode = p ? p.entryMode : 'lump';
     currentIncomePerMonthValues = (p && p.entryMode === 'perMonth' && Array.isArray(p.perMonthAmounts))
-      ? p.perMonthAmounts.map(function (m) { return { aAmount: formatDigitsWithCommas(String(m.aAmount)), bAmount: formatDigitsWithCommas(String(m.bAmount)) }; })
+      ? p.perMonthAmounts.map(function (m) {
+          return { year: m.year, month: m.month, ymCustom: true, aAmount: formatDigitsWithCommas(String(m.aAmount)), bAmount: formatDigitsWithCommas(String(m.bAmount)) };
+        })
+      : [];
+    currentIncomeExtraValues = (p && p.entryMode === 'perMonth' && Array.isArray(p.extraIncomes))
+      ? p.extraIncomes.map(function (m) {
+          return { label: m.label || '', aAmount: formatDigitsWithCommas(String(m.aAmount || '')), bAmount: formatDigitsWithCommas(String(m.bAmount || '')) };
+        })
       : [];
     document.getElementById('income-lump-a').value = (p && p.entryMode === 'lump') ? formatDigitsWithCommas(String(p.aAmount)) : '';
     document.getElementById('income-lump-b').value = (p && p.entryMode === 'lump') ? formatDigitsWithCommas(String(p.bAmount)) : '';
@@ -2362,7 +2428,7 @@ import {
     const startYear = Number(parts[0]), startMonth = Number(parts[1]);
     const months = currentIncomePeriodMonthsValue();
 
-    let aAmount, bAmount, perMonthAmounts = null;
+    let aAmount, bAmount, perMonthAmounts = null, extraIncomes = null;
     if (currentIncomeEntryMode === 'lump') {
       aAmount = Number(document.getElementById('income-lump-a').value.replace(/[^\d]/g, ''));
       bAmount = Number(document.getElementById('income-lump-b').value.replace(/[^\d]/g, ''));
@@ -2373,14 +2439,24 @@ import {
       perMonthAmounts = [];
       const lookback = incomeLookbackStart(startYear, startMonth, months);
       for (let i = 0; i < months; i++) {
-        const ym = addMonths(lookback.year, lookback.month, i);
-        const v = currentIncomePerMonthValues[i] || { aAmount: '', bAmount: '' };
+        const v = currentIncomePerMonthValues[i] || {};
+        const fallback = addMonths(lookback.year, lookback.month, i);
         perMonthAmounts.push({
-          year: ym.year, month: ym.month,
+          year: v.year != null ? v.year : fallback.year,
+          month: v.month != null ? v.month : fallback.month,
           aAmount: Number(String(v.aAmount).replace(/[^\d]/g, '')) || 0,
           bAmount: Number(String(v.bAmount).replace(/[^\d]/g, '')) || 0
         });
       }
+      extraIncomes = currentIncomeExtraValues
+        .map(function (v) {
+          return {
+            label: (v.label || '').trim(),
+            aAmount: Number(String(v.aAmount).replace(/[^\d]/g, '')) || 0,
+            bAmount: Number(String(v.bAmount).replace(/[^\d]/g, '')) || 0
+          };
+        })
+        .filter(function (v) { return v.label || v.aAmount || v.bAmount; });
     }
 
     if (!Number.isFinite(aAmount) || !Number.isFinite(bAmount) || (aAmount <= 0 && bAmount <= 0)) {
@@ -2393,6 +2469,7 @@ import {
       entryMode: currentIncomeEntryMode,
       aAmount: aAmount, bAmount: bAmount,
       perMonthAmounts: perMonthAmounts,
+      extraIncomes: extraIncomes,
       aPercent: computeAPercentFromAmounts(aAmount, bAmount),
       updatedAt: Date.now()
     };
@@ -3215,6 +3292,28 @@ import {
     const person = target.dataset.person;
     if (!currentIncomePerMonthValues[index]) currentIncomePerMonthValues[index] = { aAmount: '', bAmount: '' };
     currentIncomePerMonthValues[index][person === 'a' ? 'aAmount' : 'bAmount'] = target.value;
+  });
+  document.getElementById('income-permonth-rows').addEventListener('change', function (e) {
+    const target = e.target;
+    if (!target.classList.contains('income-permonth-month') || !target.value) return;
+    const index = Number(target.dataset.index);
+    const parts = target.value.split('-');
+    if (!currentIncomePerMonthValues[index]) currentIncomePerMonthValues[index] = { aAmount: '', bAmount: '' };
+    currentIncomePerMonthValues[index].year = Number(parts[0]);
+    currentIncomePerMonthValues[index].month = Number(parts[1]);
+    currentIncomePerMonthValues[index].ymCustom = true;
+  });
+  document.getElementById('income-extra-rows').addEventListener('input', function (e) {
+    const target = e.target;
+    const index = Number(target.dataset.index);
+    if (!currentIncomeExtraValues[index]) currentIncomeExtraValues[index] = { label: '', aAmount: '', bAmount: '' };
+    if (target.classList.contains('income-extra-label')) {
+      currentIncomeExtraValues[index].label = target.value;
+    } else if (target.classList.contains('income-extra-input')) {
+      reformatAmountInput(target);
+      const person = target.dataset.person;
+      currentIncomeExtraValues[index][person === 'a' ? 'aAmount' : 'bAmount'] = target.value;
+    }
   });
 
   document.getElementById('summary-cycle-select').addEventListener('change', function (e) {
