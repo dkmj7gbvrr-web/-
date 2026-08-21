@@ -2197,10 +2197,22 @@ import {
     const parts = startVal.split('-');
     const startYear = Number(parts[0]), startMonth = Number(parts[1]);
     const months = currentIncomePeriodMonthsValue();
+    const appliedLabel = formatMonthRangeLabel(startYear, startMonth, months);
+    // Lump-sum entry is just one total for "some N months" -- it isn't tied
+    // to any specific calendar range, so the hint must not name one (the
+    // per-month entry hint below still can, since those rows each name an
+    // actual, editable year-month).
+    if (currentIncomeEntryMode === 'lump') {
+      el.textContent =
+        '任意の' + months + 'か月分の確定した手取り額をもとに、' +
+        appliedLabel + 'の収入割合を決めます。' +
+        '期間が終わると「収入」タブで新しい期間の入力を求められます。';
+      return;
+    }
     const lookback = incomeLookbackStart(startYear, startMonth, months);
     el.textContent =
       formatMonthRangeLabel(lookback.year, lookback.month, months) + 'の確定した手取り額をもとに、' +
-      formatMonthRangeLabel(startYear, startMonth, months) + 'の収入割合を決めます。' +
+      appliedLabel + 'の収入割合を決めます。' +
       '期間が終わると「収入」タブで新しい期間の入力を求められます。';
   }
 
@@ -3189,6 +3201,7 @@ import {
         currentIncomeEntryMode = target.dataset.mode;
         renderIncomeEntryModeSegmented();
         updateIncomeEntryModeVisibility();
+        updateIncomePeriodHint();
         break;
       case 'add-income': openIncomeSheet(null); break;
       case 'edit-income': openIncomeSheet(target.dataset.id); break;
