@@ -30,7 +30,7 @@ export function PriorityMatrix({
           </span>
         </div>
         <div className="flex-1 overflow-x-auto">
-          <div className="grid min-w-[420px] grid-cols-[auto_repeat(5,1fr)] gap-1">
+          <div className="grid min-w-[420px] grid-cols-[auto_repeat(5,minmax(0,1fr))] gap-1">
             {levels.map((imp) => (
               <div key={imp} className="contents">
                 <div className="flex w-5 items-center justify-center text-[11px] font-semibold text-muted">
@@ -44,7 +44,7 @@ export function PriorityMatrix({
                   return (
                     <div
                       key={urg}
-                      className="flex min-h-[64px] flex-col gap-1 rounded-lg border border-border p-1"
+                      className="flex min-h-[64px] min-w-0 flex-col gap-1 rounded-lg border border-border p-1"
                       style={{
                         backgroundColor:
                           intensity >= 8
