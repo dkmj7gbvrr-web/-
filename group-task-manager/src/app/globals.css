@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f2f2f7;
+  --surface: #ffffff;
+  --foreground: #1c1c1e;
+  --muted: #8e8e93;
+  --border: #e5e5ea;
+  --accent: #0a84ff;
+  --accent-foreground: #ffffff;
+  --danger: #ff3b30;
+  --success: #34c759;
+  --warning: #ff9500;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Hiragino Sans",
+    "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #000000;
+    --surface: #1c1c1e;
+    --foreground: #f2f2f7;
+    --muted: #98989d;
+    --border: #38383a;
+  }
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  min-height: 100%;
+  overscroll-behavior-y: none;
+}
+
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+/* iOSでフォーム要素に16px未満のフォントを使うと自動ズームされるのを防ぐ */
+input,
+textarea,
+select {
+  font-size: 16px;
+}
