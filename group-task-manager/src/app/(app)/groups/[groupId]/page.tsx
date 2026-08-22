@@ -22,6 +22,7 @@ export default async function GroupDetailPage({
       include: {
         owner: { select: { id: true, name: true } },
         assignee: { select: { id: true, name: true } },
+        participants: { select: { completed: true } },
       },
       orderBy: [{ status: "asc" }, { createdAt: "desc" }],
     }),
@@ -33,6 +34,7 @@ export default async function GroupDetailPage({
       include: {
         owner: { select: { id: true, name: true } },
         assignee: { select: { id: true, name: true } },
+        participants: { select: { completed: true } },
       },
       orderBy: [{ status: "asc" }, { createdAt: "desc" }],
     }),
@@ -71,6 +73,13 @@ export default async function GroupDetailPage({
     assigneeId: t.assigneeId,
     assigneeName: t.assignee?.name ?? null,
     coRunners: withCoRunners ? coRunnersFor(t) : [],
+    participantProgress:
+      t.participants.length > 1
+        ? {
+            total: t.participants.length,
+            done: t.participants.filter((p) => p.completed).length,
+          }
+        : null,
   });
 
   const groupTasks = groupTaskRows.map((t) => toItem(t, true));

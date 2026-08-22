@@ -44,6 +44,16 @@ export function DelegateForm({
           <Label htmlFor="message">メッセージ(任意)</Label>
           <Textarea id="message" name="message" rows={2} placeholder="お願いします!" />
         </div>
+        <div>
+          <Label htmlFor="attachment">添付ファイル(任意)</Label>
+          <input
+            id="attachment"
+            name="attachment"
+            type="file"
+            className="block w-full text-[13px] text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-black/[.06] file:px-3 file:py-2 file:text-[13px] file:font-semibold file:text-foreground"
+          />
+          <p className="mt-1 text-[11px] text-muted">5MBまで</p>
+        </div>
         {state.error && <p className="text-[13px] font-medium text-danger">{state.error}</p>}
         {state.success && (
           <p className="text-[13px] font-medium text-success">依頼を送りました</p>

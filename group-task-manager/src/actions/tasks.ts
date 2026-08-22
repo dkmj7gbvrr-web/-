@@ -87,8 +87,93 @@ export async function createTaskAction(
     },
   });
 
+  if (visibility === "GROUP") {
+    const requested = formData.getAll("participantIds").map(String);
+    const memberIds =
+      requested.length > 0
+        ? (
+            await prisma.groupMember.findMany({
+              where: { groupId, userId: { in: requested } },
+              select: { userId: true },
+            })
+          ).map((m) => m.userId)
+        : [];
+    const participantIds = Array.from(new Set([user.id, ...memberIds]));
+
+    await prisma.taskParticipant.createMany({
+      data: participantIds.map((userId) => ({ taskId: task.id, userId })),
+      skipDuplicates: true,
+    });
+  }
+
   revalidatePath(`/groups/${groupId}`);
   redirect(`/groups/${groupId}/tasks/${task.id}`);
+}
+
+/** グループ公開タスクの参加メンバーを、タスク作成者があとから編集する。 */
+export async function updateParticipantsAction(
+  taskId: string,
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const user = await requireUser();
+  const task = await prisma.task.findUniqueOrThrow({ where: { id: taskId } });
+  await requireGroupMember(task.groupId, user.id);
+
+  if (task.ownerId !== user.id) {
+    return { error: "参加メンバーを編集できるのはタスクの作成者のみです" };
+  }
+  if (task.visibility !== "GROUP") {
+    return { error: "グループ公開のタスクのみ参加メンバーを設定できます" };
+  }
+
+  const requested = formData.getAll("participantIds").map(String);
+  const memberIds =
+    requested.length > 0
+      ? (
+          await prisma.groupMember.findMany({
+            where: { groupId: task.groupId, userId: { in: requested } },
+            select: { userId: true },
+          })
+        ).map((m) => m.userId)
+      : [];
+  const nextParticipantIds = new Set([user.id, ...memberIds]);
+
+  await prisma.$transaction([
+    prisma.taskParticipant.deleteMany({
+      where: { taskId, userId: { notIn: Array.from(nextParticipantIds) } },
+    }),
+    prisma.taskParticipant.createMany({
+      data: Array.from(nextParticipantIds).map((userId) => ({ taskId, userId })),
+      skipDuplicates: true,
+    }),
+  ]);
+
+  revalidatePath(`/groups/${task.groupId}/tasks/${taskId}`);
+  return { success: true };
+}
+
+/** 自分自身の完了チェックを切り替える(参加メンバーのみ)。他人のチェックは変更できない。 */
+export async function toggleMyParticipationAction(taskId: string): Promise<void> {
+  const user = await requireUser();
+  const task = await prisma.task.findUniqueOrThrow({ where: { id: taskId } });
+  await requireGroupMember(task.groupId, user.id);
+
+  const participant = await prisma.taskParticipant.findUnique({
+    where: { taskId_userId: { taskId, userId: user.id } },
+  });
+  if (!participant) return;
+
+  await prisma.taskParticipant.update({
+    where: { id: participant.id },
+    data: {
+      completed: !participant.completed,
+      completedAt: !participant.completed ? new Date() : null,
+    },
+  });
+
+  revalidatePath(`/groups/${task.groupId}`);
+  revalidatePath(`/groups/${task.groupId}/tasks/${taskId}`);
 }
 
 export async function updateTaskStatusAction(

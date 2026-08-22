@@ -4,6 +4,10 @@ export const displayNameSchema = z.object({
   name: z.string().trim().min(1, "名前を入力してください").max(20, "名前は20文字以内で入力してください"),
 });
 
+export const loginCodeSchema = z.object({
+  code: z.string().length(10, "10桁のログインコードを入力してください"),
+});
+
 export const createGroupSchema = z.object({
   name: z.string().trim().min(1, "グループ名を入力してください").max(50),
 });

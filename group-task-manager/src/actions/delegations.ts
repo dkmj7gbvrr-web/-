@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/session";
 import { requireGroupMember } from "@/lib/membership";
 import { delegateTaskSchema } from "@/lib/validation";
 import { notifyUser } from "@/lib/notify";
+import { readOptionalAttachment } from "@/lib/attachments";
 import type { ActionState } from "@/actions/identity";
 
 export async function delegateTaskAction(
@@ -45,8 +46,28 @@ export async function delegateTaskAction(
     return { error: "すでにこのメンバーへ依頼を送っています" };
   }
 
+  const attachmentResult = await readOptionalAttachment(formData, "attachment");
+  if (!attachmentResult.ok) {
+    return { error: attachmentResult.error };
+  }
+
+  let attachmentId: string | undefined;
+  if (attachmentResult.file) {
+    const { filename, mimeType, size, data } = attachmentResult.file;
+    const attachment = await prisma.attachment.create({
+      data: {
+        filename,
+        mimeType,
+        size,
+        data: data as unknown as Uint8Array<ArrayBuffer>,
+        uploadedById: user.id,
+      },
+    });
+    attachmentId = attachment.id;
+  }
+
   await prisma.taskDelegation.create({
-    data: { taskId, fromUserId: user.id, toUserId, message: message || null },
+    data: { taskId, fromUserId: user.id, toUserId, message: message || null, attachmentId },
   });
 
   await notifyUser({
@@ -67,7 +88,8 @@ export async function delegateTaskAction(
 
 export async function respondDelegationAction(
   delegationId: string,
-  approve: boolean
+  approve: boolean,
+  comment?: string
 ): Promise<void> {
   const user = await requireUser();
 
@@ -79,11 +101,14 @@ export async function respondDelegationAction(
   if (delegation.toUserId !== user.id) return;
   if (delegation.status !== "PENDING") return;
 
+  const trimmedComment = comment?.trim();
+
   await prisma.taskDelegation.update({
     where: { id: delegationId },
     data: {
       status: approve ? "APPROVED" : "REJECTED",
       respondedAt: new Date(),
+      responseComment: trimmedComment || null,
     },
   });
 
@@ -101,7 +126,7 @@ export async function respondDelegationAction(
     fromUserId: user.id,
     message: `${user.name}さんが「${delegation.task.title}」の依頼を${
       approve ? "承認しました" : "却下しました"
-    }`,
+    }${trimmedComment ? `: ${trimmedComment}` : ""}`,
   });
 
   revalidatePath(`/groups/${delegation.task.groupId}/tasks/${delegation.taskId}`);

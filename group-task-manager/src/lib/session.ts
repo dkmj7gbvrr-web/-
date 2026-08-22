@@ -33,7 +33,7 @@ export async function clearUserCookie() {
   store.delete(USER_COOKIE);
 }
 
-export type CurrentUser = { id: string; name: string };
+export type CurrentUser = { id: string; name: string; loginCode: string | null };
 
 export async function getCurrentUser(): Promise<CurrentUser | null> {
   const store = await cookies();
@@ -42,7 +42,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 
   const user = await prisma.user.findUnique({
     where: { id },
-    select: { id: true, name: true },
+    select: { id: true, name: true, loginCode: true },
   });
 
   // Cookieは残っているのにユーザーが消えている(DBを作り直した等)場合は

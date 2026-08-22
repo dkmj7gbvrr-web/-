@@ -8,7 +8,13 @@ import { clsx } from "@/lib/clsx";
 
 const initialState: ActionState = {};
 
-export function NewTaskForm({ groupId }: { groupId: string }) {
+export function NewTaskForm({
+  groupId,
+  members,
+}: {
+  groupId: string;
+  members: { id: string; name: string }[];
+}) {
   const action = createTaskAction.bind(null, groupId);
   const [state, formAction, isPending] = useActionState(action, initialState);
 
@@ -101,6 +107,31 @@ export function NewTaskForm({ groupId }: { groupId: string }) {
         </div>
         <input type="hidden" name="visibility" value={visibility} />
       </div>
+
+      {visibility === "GROUP" && members.length > 0 && (
+        <div>
+          <Label>参加メンバー(任意)</Label>
+          <p className="mb-2 text-[11px] text-muted">
+            このタスクに一緒に取り組むメンバーを選ぶと、それぞれの完了状況が個別に表示されます。
+          </p>
+          <div className="flex flex-col gap-1.5 rounded-xl border border-border bg-surface p-2">
+            {members.map((m) => (
+              <label
+                key={m.id}
+                className="flex items-center gap-2.5 rounded-lg px-2 py-2 text-[14px] active:bg-black/[.03]"
+              >
+                <input
+                  type="checkbox"
+                  name="participantIds"
+                  value={m.id}
+                  className="h-4 w-4 accent-accent"
+                />
+                {m.name}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
 
       {state.error && <p className="text-[13px] font-medium text-danger">{state.error}</p>}
 

@@ -10,6 +10,7 @@ import { StatusSelector } from "@/components/StatusSelector";
 import { VisibilityToggle } from "@/components/VisibilityToggle";
 import { DelegateForm } from "@/components/DelegateForm";
 import { DelegationActions } from "@/components/DelegationActions";
+import { ParticipantsPanel } from "@/components/ParticipantsPanel";
 import type { TaskStatus, TaskVisibility } from "@/types/task";
 
 export default async function TaskDetailPage({
@@ -30,8 +31,13 @@ export default async function TaskDetailPage({
         include: {
           from: { select: { id: true, name: true } },
           to: { select: { id: true, name: true } },
+          attachment: { select: { id: true, filename: true } },
         },
         orderBy: { createdAt: "desc" },
+      },
+      participants: {
+        include: { user: { select: { id: true, name: true } } },
+        orderBy: { joinedAt: "asc" },
       },
     },
   });
@@ -51,8 +57,14 @@ export default async function TaskDetailPage({
     notFound();
   }
 
-  const members = await prisma.groupMember.findMany({
+  const otherMembers = await prisma.groupMember.findMany({
     where: { groupId, userId: { not: task.ownerId } },
+    include: { user: { select: { id: true, name: true } } },
+    orderBy: { joinedAt: "asc" },
+  });
+
+  const allMembers = await prisma.groupMember.findMany({
+    where: { groupId },
     include: { user: { select: { id: true, name: true } } },
     orderBy: { joinedAt: "asc" },
   });
@@ -155,18 +167,33 @@ export default async function TaskDetailPage({
           />
         </div>
 
+        {task.visibility === "GROUP" && (
+          <ParticipantsPanel
+            taskId={task.id}
+            participants={task.participants.map((p) => ({
+              userId: p.userId,
+              name: p.user.name,
+              completed: p.completed,
+            }))}
+            allMembers={allMembers.map((m) => ({ id: m.user.id, name: m.user.name }))}
+            isOwner={isOwner}
+            currentUserId={user.id}
+          />
+        )}
+
         {pendingForMe && (
           <DelegationActions
             delegationId={pendingForMe.id}
             fromName={pendingForMe.from.name}
             message={pendingForMe.message}
+            attachment={pendingForMe.attachment}
           />
         )}
 
         {isOwner && (
           <DelegateForm
             taskId={task.id}
-            members={members.map((m) => ({ id: m.user.id, name: m.user.name }))}
+            members={otherMembers.map((m) => ({ id: m.user.id, name: m.user.name }))}
           />
         )}
 
@@ -185,6 +212,22 @@ export default async function TaskDetailPage({
                     {d.status === "APPROVED" && "承認済み"}
                     {d.status === "REJECTED" && "却下"}
                   </p>
+                  {d.message && (
+                    <p className="mt-1.5 text-[12.5px] text-foreground">依頼: 「{d.message}」</p>
+                  )}
+                  {d.attachment && (
+                    <a
+                      href={`/api/attachments/${d.attachment.id}`}
+                      className="mt-1.5 inline-flex items-center gap-1 text-[12.5px] font-semibold text-accent"
+                    >
+                      📎 {d.attachment.filename}
+                    </a>
+                  )}
+                  {d.responseComment && (
+                    <p className="mt-1.5 text-[12.5px] text-foreground">
+                      {d.status === "APPROVED" ? "承認コメント" : "却下コメント"}: 「{d.responseComment}」
+                    </p>
+                  )}
                 </Card>
               ))}
             </div>

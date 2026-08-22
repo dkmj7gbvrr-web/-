@@ -2,6 +2,7 @@
 //
 // アカウント登録(メール・パスワード)は持たない。初回に入力した表示名で
 // User を1件つくり、その id をブラウザのCookieに保存して本人確認とする。
+// 別端末・キャッシュ削除後の復帰用に loginCode(一意)も発行する。
 
 generator client {
   provider = "prisma-client"
@@ -43,15 +44,18 @@ enum NotificationType {
 model User {
   id        String   @id @default(cuid())
   name      String
+  loginCode String?  @unique
   createdAt DateTime @default(now())
 
   memberships         GroupMember[]
-  ownedGroups         Group[]          @relation("GroupOwner")
-  ownedTasks          Task[]           @relation("TaskOwner")
-  assignedTasks       Task[]           @relation("TaskAssignee")
-  sentDelegations     TaskDelegation[] @relation("DelegationFrom")
-  receivedDelegations TaskDelegation[] @relation("DelegationTo")
+  ownedGroups         Group[]           @relation("GroupOwner")
+  ownedTasks          Task[]            @relation("TaskOwner")
+  assignedTasks       Task[]            @relation("TaskAssignee")
+  participations      TaskParticipant[]
+  sentDelegations     TaskDelegation[]  @relation("DelegationFrom")
+  receivedDelegations TaskDelegation[]  @relation("DelegationTo")
   notifications       Notification[]
+  attachments         Attachment[]
 }
 
 model Group {
@@ -93,9 +97,10 @@ model Task {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
-  group         Group            @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  owner         User             @relation("TaskOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  assignee      User?            @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  group         Group             @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  owner         User              @relation("TaskOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  assignee      User?             @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  participants  TaskParticipant[]
   delegations   TaskDelegation[]
   notifications Notification[]
 
@@ -103,21 +108,56 @@ model Task {
   @@index([groupId, normalizedTitle])
 }
 
-model TaskDelegation {
-  id          String           @id @default(cuid())
+/// グループ公開タスクに「参加しているメンバー」と、各メンバーごとの
+/// 個別の完了チェック。Aさんは完了・Bさんは未完了、を1つのタスクの中で
+/// 別々に管理する。
+model TaskParticipant {
+  id          String    @id @default(cuid())
   taskId      String
-  fromUserId  String
-  toUserId    String
-  status      DelegationStatus @default(PENDING)
-  message     String?
-  createdAt   DateTime         @default(now())
-  respondedAt DateTime?
+  userId      String
+  completed   Boolean   @default(false)
+  completedAt DateTime?
+  joinedAt    DateTime  @default(now())
 
   task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  from User @relation("DelegationFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
-  to   User @relation("DelegationTo", fields: [toUserId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+}
+
+model TaskDelegation {
+  id              String           @id @default(cuid())
+  taskId          String
+  fromUserId      String
+  toUserId        String
+  status          DelegationStatus @default(PENDING)
+  message         String?
+  attachmentId    String?          @unique
+  responseComment String?
+  createdAt       DateTime         @default(now())
+  respondedAt     DateTime?
+
+  task       Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  from       User        @relation("DelegationFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  to         User        @relation("DelegationTo", fields: [toUserId], references: [id], onDelete: Cascade)
+  attachment Attachment? @relation(fields: [attachmentId], references: [id])
 
   @@index([toUserId, status])
+}
+
+/// 承認依頼に添付するファイル。実データはPostgreSQLにそのまま保存する
+/// (別のストレージサービスを増やさないための軽量構成)。
+model Attachment {
+  id           String   @id @default(cuid())
+  filename     String
+  mimeType     String
+  size         Int
+  data         Bytes
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  uploadedBy User            @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  delegation TaskDelegation?
 }
 
 model Notification {

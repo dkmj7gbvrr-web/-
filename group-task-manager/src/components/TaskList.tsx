@@ -51,6 +51,11 @@ export function TaskList({
               )}
               <span>·</span>
               <Badge tone="default">{VISIBILITY_LABEL[task.visibility]}</Badge>
+              {task.participantProgress && (
+                <Badge tone={task.participantProgress.done === task.participantProgress.total ? "success" : "accent"}>
+                  参加 {task.participantProgress.done}/{task.participantProgress.total}完了
+                </Badge>
+              )}
               {task.dueDate && <span>期限 {formatDueDate(task.dueDate)}</span>}
             </div>
 
