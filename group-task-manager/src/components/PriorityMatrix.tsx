@@ -25,7 +25,7 @@ export function PriorityMatrix({
     <div>
       <div className="flex gap-1.5">
         <div className="flex w-6 shrink-0 flex-col items-center justify-center">
-          <span className="rotate-180 text-[11px] font-semibold text-muted [writing-mode:vertical-rl]">
+          <span className="text-[11px] font-semibold text-muted [writing-mode:vertical-rl]">
             重要度
           </span>
         </div>
