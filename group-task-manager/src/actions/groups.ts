@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { requireUserId } from "@/lib/session";
 import { generateUniqueGroupCode } from "@/lib/groupCode";
 import { createGroupSchema, joinGroupSchema } from "@/lib/validation";
 import type { ActionState } from "@/actions/identity";
@@ -11,7 +11,7 @@ export async function createGroupAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const user = await requireUser();
+  const userId = await requireUserId();
 
   const parsed = createGroupSchema.safeParse({ name: formData.get("name") });
   if (!parsed.success) {
@@ -24,9 +24,9 @@ export async function createGroupAction(
     data: {
       name: parsed.data.name,
       code,
-      ownerId: user.id,
+      ownerId: userId,
       members: {
-        create: { userId: user.id, role: "OWNER" },
+        create: { userId, role: "OWNER" },
       },
     },
   });
@@ -38,7 +38,7 @@ export async function joinGroupAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const user = await requireUser();
+  const userId = await requireUserId();
 
   const parsed = joinGroupSchema.safeParse({ code: formData.get("code") });
   if (!parsed.success) {
@@ -47,21 +47,18 @@ export async function joinGroupAction(
 
   const group = await prisma.group.findUnique({
     where: { code: parsed.data.code },
+    select: { id: true },
   });
 
   if (!group) {
     return { error: "そのコードのグループが見つかりませんでした" };
   }
 
-  const existing = await prisma.groupMember.findUnique({
-    where: { groupId_userId: { groupId: group.id, userId: user.id } },
+  await prisma.groupMember.upsert({
+    where: { groupId_userId: { groupId: group.id, userId } },
+    create: { groupId: group.id, userId, role: "MEMBER" },
+    update: {},
   });
-
-  if (!existing) {
-    await prisma.groupMember.create({
-      data: { groupId: group.id, userId: user.id, role: "MEMBER" },
-    });
-  }
 
   redirect(`/groups/${group.id}`);
 }

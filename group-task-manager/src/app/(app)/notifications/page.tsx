@@ -1,15 +1,15 @@
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { requireUserId } from "@/lib/session";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui";
 import { NotificationItem } from "@/components/NotificationItem";
 import { MarkAllReadButton } from "@/components/MarkAllReadButton";
 
 export default async function NotificationsPage() {
-  const user = await requireUser();
+  const userId = await requireUserId();
 
   const notifications = await prisma.notification.findMany({
-    where: { userId: user.id },
+    where: { userId },
     include: { task: { select: { id: true, groupId: true } } },
     orderBy: { createdAt: "desc" },
     take: 100,

@@ -1,13 +1,13 @@
 import type { ReactNode } from "react";
-import { requireUser } from "@/lib/session";
+import { requireUserId } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { TabBar } from "@/components/TabBar";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const user = await requireUser();
+  const userId = await requireUserId();
 
   const unreadCount = await prisma.notification.count({
-    where: { userId: user.id, isRead: false },
+    where: { userId, isRead: false },
   });
 
   return (

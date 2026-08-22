@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState, useTransition } from "reac
 import { checkDuplicateTasksAction, createTaskAction, type DuplicateMatch } from "@/actions/tasks";
 import type { ActionState } from "@/actions/identity";
 import { Avatar, Button, Input, Label, Textarea } from "@/components/ui";
+import { PriorityScale } from "@/components/PriorityScale";
 import { clsx } from "@/lib/clsx";
 
 const initialState: ActionState = {};
@@ -20,6 +21,8 @@ export function NewTaskForm({
 
   const [title, setTitle] = useState("");
   const [visibility, setVisibility] = useState<"PRIVATE" | "GROUP">("PRIVATE");
+  const [importance, setImportance] = useState(3);
+  const [urgency, setUrgency] = useState(3);
   const [duplicates, setDuplicates] = useState<DuplicateMatch[]>([]);
   const [isChecking, startCheck] = useTransition();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -87,6 +90,18 @@ export function NewTaskForm({
       <div>
         <Label htmlFor="dueDate">期限(任意)</Label>
         <Input id="dueDate" name="dueDate" type="date" />
+      </div>
+
+      <div>
+        <Label>重要度</Label>
+        <PriorityScale value={importance} onChange={setImportance} />
+        <input type="hidden" name="importance" value={importance} />
+      </div>
+
+      <div>
+        <Label>緊急度</Label>
+        <PriorityScale value={urgency} onChange={setUrgency} />
+        <input type="hidden" name="urgency" value={urgency} />
       </div>
 
       <div>

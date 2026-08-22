@@ -56,6 +56,7 @@ model User {
   receivedDelegations TaskDelegation[]  @relation("DelegationTo")
   notifications       Notification[]
   attachments         Attachment[]
+  taskLogEntries      TaskLogEntry[]
 }
 
 model Group {
@@ -94,6 +95,10 @@ model Task {
   visibility      TaskVisibility @default(PRIVATE)
   status          TaskStatus     @default(TODO)
   dueDate         DateTime?
+  /// 重要度 1〜5(5が最重要)
+  importance      Int            @default(3)
+  /// 緊急度 1〜5(5が最も緊急)
+  urgency         Int            @default(3)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
@@ -103,6 +108,7 @@ model Task {
   participants  TaskParticipant[]
   delegations   TaskDelegation[]
   notifications Notification[]
+  logEntries    TaskLogEntry[]
 
   @@index([groupId, visibility])
   @@index([groupId, normalizedTitle])
@@ -158,6 +164,21 @@ model Attachment {
 
   uploadedBy User            @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
   delegation TaskDelegation?
+}
+
+/// タスクの進み具合を日付ごとに書き残すメモ(進捗日誌)。
+/// 「2026/8/1: 今日は〇〇までやった」のように、時系列で並べて表示する。
+model TaskLogEntry {
+  id        String   @id @default(cuid())
+  taskId    String
+  authorId  String
+  content   String
+  createdAt DateTime @default(now())
+
+  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
 }
 
 model Notification {

@@ -1,16 +1,24 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
-import { requireGroupMember } from "@/lib/membership";
+import { requireMembership } from "@/lib/membership";
 import { isSameTask } from "@/lib/similarity";
 import { PageHeader } from "@/components/PageHeader";
 import { Avatar, Badge, Card } from "@/components/ui";
-import { STATUS_LABEL, STATUS_TONE, formatDueDate } from "@/lib/labels";
+import {
+  STATUS_LABEL,
+  STATUS_TONE,
+  formatDueDate,
+  dueDateUrgency,
+  DUE_URGENCY_CLASS,
+  DUE_URGENCY_LABEL,
+} from "@/lib/labels";
 import { StatusSelector } from "@/components/StatusSelector";
 import { VisibilityToggle } from "@/components/VisibilityToggle";
 import { DelegateForm } from "@/components/DelegateForm";
 import { DelegationActions } from "@/components/DelegationActions";
 import { ParticipantsPanel } from "@/components/ParticipantsPanel";
+import { PriorityEditor } from "@/components/PriorityEditor";
+import { TaskLogPanel } from "@/components/TaskLogPanel";
 import type { TaskStatus, TaskVisibility } from "@/types/task";
 
 export default async function TaskDetailPage({
@@ -19,37 +27,49 @@ export default async function TaskDetailPage({
   params: Promise<{ groupId: string; taskId: string }>;
 }) {
   const { groupId, taskId } = await params;
-  const user = await requireUser();
-  await requireGroupMember(groupId, user.id);
 
-  const task = await prisma.task.findUnique({
-    where: { id: taskId },
-    include: {
-      owner: { select: { id: true, name: true } },
-      assignee: { select: { id: true, name: true } },
-      delegations: {
-        include: {
-          from: { select: { id: true, name: true } },
-          to: { select: { id: true, name: true } },
-          attachment: { select: { id: true, filename: true } },
+  // 認証・タスク本体・メンバー一覧はお互いに依存しないので並行して取得する。
+  const [membership, task, allMembers] = await Promise.all([
+    requireMembership(groupId),
+    prisma.task.findUnique({
+      where: { id: taskId },
+      include: {
+        owner: { select: { id: true, name: true } },
+        assignee: { select: { id: true, name: true } },
+        delegations: {
+          include: {
+            from: { select: { id: true, name: true } },
+            to: { select: { id: true, name: true } },
+            attachment: { select: { id: true, filename: true } },
+          },
+          orderBy: { createdAt: "desc" },
         },
-        orderBy: { createdAt: "desc" },
+        participants: {
+          include: { user: { select: { id: true, name: true } } },
+          orderBy: { joinedAt: "asc" },
+        },
+        logEntries: {
+          include: { author: { select: { id: true, name: true } } },
+          orderBy: { createdAt: "desc" },
+        },
       },
-      participants: {
-        include: { user: { select: { id: true, name: true } } },
-        orderBy: { joinedAt: "asc" },
-      },
-    },
-  });
+    }),
+    prisma.groupMember.findMany({
+      where: { groupId },
+      include: { user: { select: { id: true, name: true } } },
+      orderBy: { joinedAt: "asc" },
+    }),
+  ]);
+  const userId = membership.userId;
 
   if (!task || task.groupId !== groupId) {
     notFound();
   }
 
-  const isOwner = task.ownerId === user.id;
-  const isAssignee = task.assigneeId === user.id;
+  const isOwner = task.ownerId === userId;
+  const isAssignee = task.assigneeId === userId;
   const isRelatedToDelegation = task.delegations.some(
-    (d) => d.fromUserId === user.id || d.toUserId === user.id
+    (d) => d.fromUserId === userId || d.toUserId === userId
   );
   const canView =
     task.visibility === "GROUP" || isOwner || isAssignee || isRelatedToDelegation;
@@ -57,20 +77,14 @@ export default async function TaskDetailPage({
     notFound();
   }
 
-  const otherMembers = await prisma.groupMember.findMany({
-    where: { groupId, userId: { not: task.ownerId } },
-    include: { user: { select: { id: true, name: true } } },
-    orderBy: { joinedAt: "asc" },
-  });
+  const otherMembers = allMembers.filter((m) => m.user.id !== task.ownerId);
 
-  const allMembers = await prisma.groupMember.findMany({
-    where: { groupId },
-    include: { user: { select: { id: true, name: true } } },
-    orderBy: { joinedAt: "asc" },
-  });
+  const dueUrgency = task.dueDate
+    ? dueDateUrgency(task.dueDate.toISOString(), task.status as TaskStatus)
+    : "normal";
 
   const pendingForMe = task.delegations.find(
-    (d) => d.status === "PENDING" && d.toUserId === user.id
+    (d) => d.status === "PENDING" && d.toUserId === userId
   );
 
   const coRunners: { userId: string; userName: string }[] = [];
@@ -127,7 +141,12 @@ export default async function TaskDetailPage({
                 </span>
               </>
             )}
-            {task.dueDate && <span>· 期限 {formatDueDate(task.dueDate.toISOString())}</span>}
+            {task.dueDate && (
+              <span className={DUE_URGENCY_CLASS[dueUrgency]}>
+                · 期限 {formatDueDate(task.dueDate.toISOString())}
+                {DUE_URGENCY_LABEL[dueUrgency] && ` (${DUE_URGENCY_LABEL[dueUrgency]})`}
+              </span>
+            )}
           </div>
 
           <div className="mt-3">
@@ -167,6 +186,13 @@ export default async function TaskDetailPage({
           />
         </div>
 
+        <PriorityEditor
+          taskId={task.id}
+          importance={task.importance}
+          urgency={task.urgency}
+          editable={isOwner}
+        />
+
         {task.visibility === "GROUP" && (
           <ParticipantsPanel
             taskId={task.id}
@@ -177,7 +203,7 @@ export default async function TaskDetailPage({
             }))}
             allMembers={allMembers.map((m) => ({ id: m.user.id, name: m.user.name }))}
             isOwner={isOwner}
-            currentUserId={user.id}
+            currentUserId={userId}
           />
         )}
 
@@ -233,6 +259,16 @@ export default async function TaskDetailPage({
             </div>
           </div>
         )}
+
+        <TaskLogPanel
+          taskId={task.id}
+          entries={task.logEntries.map((e) => ({
+            id: e.id,
+            content: e.content,
+            createdAt: e.createdAt.toISOString(),
+            authorName: e.author.name,
+          }))}
+        />
       </div>
     </>
   );

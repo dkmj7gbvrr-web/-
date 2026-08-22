@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { clsx } from "@/lib/clsx";
 import { TaskList } from "@/components/TaskList";
+import { PriorityMatrix } from "@/components/PriorityMatrix";
 import type { TaskListItem } from "@/types/task";
 
 export function GroupTaskTabs({
@@ -14,7 +15,13 @@ export function GroupTaskTabs({
   groupTasks: TaskListItem[];
   myTasks: TaskListItem[];
 }) {
-  const [tab, setTab] = useState<"group" | "mine">("group");
+  const [tab, setTab] = useState<"group" | "mine" | "matrix">("group");
+
+  const matrixTasks = useMemo(() => {
+    const byId = new Map<string, TaskListItem>();
+    for (const t of [...groupTasks, ...myTasks]) byId.set(t.id, t);
+    return Array.from(byId.values());
+  }, [groupTasks, myTasks]);
 
   return (
     <div>
@@ -25,21 +32,26 @@ export function GroupTaskTabs({
         <TabButton active={tab === "mine"} onClick={() => setTab("mine")}>
           自分のタスク
         </TabButton>
+        <TabButton active={tab === "matrix"} onClick={() => setTab("matrix")}>
+          マトリクス
+        </TabButton>
       </div>
 
-      {tab === "group" ? (
+      {tab === "group" && (
         <TaskList
           tasks={groupTasks}
           groupId={groupId}
           emptyMessage="グループに公開されているタスクはまだありません"
         />
-      ) : (
+      )}
+      {tab === "mine" && (
         <TaskList
           tasks={myTasks}
           groupId={groupId}
           emptyMessage="タスクを追加してみましょう"
         />
       )}
+      {tab === "matrix" && <PriorityMatrix tasks={matrixTasks} groupId={groupId} />}
     </div>
   );
 }

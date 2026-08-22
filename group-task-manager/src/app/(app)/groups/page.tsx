@@ -1,15 +1,15 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { requireUserId } from "@/lib/session";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, Badge } from "@/components/ui";
 import { CreateGroupForm, JoinGroupForm } from "@/components/GroupForms";
 
 export default async function GroupsPage() {
-  const user = await requireUser();
+  const userId = await requireUserId();
 
   const memberships = await prisma.groupMember.findMany({
-    where: { userId: user.id },
+    where: { userId },
     include: {
       group: {
         include: {

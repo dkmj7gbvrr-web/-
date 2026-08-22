@@ -14,11 +14,14 @@ export async function delegateTaskAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const user = await requireUser();
+  // ユーザー情報とタスク本体はお互い独立なので並行して取得する。
+  const [user, task] = await Promise.all([
+    requireUser(),
+    prisma.task.findUniqueOrThrow({ where: { id: taskId } }),
+  ]);
 
-  const task = await prisma.task.findUniqueOrThrow({ where: { id: taskId } });
-  await requireGroupMember(task.groupId, user.id);
-
+  // 送信者が所有者であること自体がメンバーシップの証明になるため、
+  // 送信者側の requireGroupMember は呼ばない。
   if (task.ownerId !== user.id) {
     return { error: "このタスクの担当依頼を送れるのはタスクの作成者のみです" };
   }
@@ -37,6 +40,7 @@ export async function delegateTaskAction(
     return { error: "自分自身には依頼できません" };
   }
 
+  // 依頼先はこちらで確認が必要(所有者チェックは使えないため)。
   await requireGroupMember(task.groupId, toUserId);
 
   const existingPending = await prisma.taskDelegation.findFirst({
@@ -91,33 +95,35 @@ export async function respondDelegationAction(
   approve: boolean,
   comment?: string
 ): Promise<void> {
-  const user = await requireUser();
-
-  const delegation = await prisma.taskDelegation.findUniqueOrThrow({
-    where: { id: delegationId },
-    include: { task: true, from: true },
-  });
+  const [user, delegation] = await Promise.all([
+    requireUser(),
+    prisma.taskDelegation.findUniqueOrThrow({
+      where: { id: delegationId },
+      include: { task: true, from: true },
+    }),
+  ]);
 
   if (delegation.toUserId !== user.id) return;
   if (delegation.status !== "PENDING") return;
 
   const trimmedComment = comment?.trim();
 
-  await prisma.taskDelegation.update({
-    where: { id: delegationId },
-    data: {
-      status: approve ? "APPROVED" : "REJECTED",
-      respondedAt: new Date(),
-      responseComment: trimmedComment || null,
-    },
-  });
-
-  if (approve) {
-    await prisma.task.update({
-      where: { id: delegation.taskId },
-      data: { assigneeId: user.id },
-    });
-  }
+  await Promise.all([
+    prisma.taskDelegation.update({
+      where: { id: delegationId },
+      data: {
+        status: approve ? "APPROVED" : "REJECTED",
+        respondedAt: new Date(),
+        responseComment: trimmedComment || null,
+      },
+    }),
+    approve
+      ? prisma.task.update({
+          where: { id: delegation.taskId },
+          data: { assigneeId: user.id },
+        })
+      : Promise.resolve(),
+  ]);
 
   await notifyUser({
     userId: delegation.fromUserId,

@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
-import { requireGroupMember } from "@/lib/membership";
+import { requireMembership } from "@/lib/membership";
 import { PageHeader } from "@/components/PageHeader";
 import { Avatar, Badge, Card } from "@/components/ui";
 import { CopyCodeButton } from "@/components/CopyCodeButton";
@@ -11,8 +10,7 @@ export default async function GroupMembersPage({
   params: Promise<{ groupId: string }>;
 }) {
   const { groupId } = await params;
-  const user = await requireUser();
-  const membership = await requireGroupMember(groupId, user.id);
+  const membership = await requireMembership(groupId);
 
   const members = await prisma.groupMember.findMany({
     where: { groupId },
@@ -48,7 +46,7 @@ export default async function GroupMembersPage({
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[14px] font-semibold">
                     {m.user.name}
-                    {m.user.id === user.id && (
+                    {m.user.id === membership.userId && (
                       <span className="ml-1.5 text-[12px] font-normal text-muted">(あなた)</span>
                     )}
                   </p>

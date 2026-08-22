@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
-import { requireGroupMember } from "@/lib/membership";
+import { requireMembership } from "@/lib/membership";
 import { isSameTask } from "@/lib/similarity";
 import { PageHeader } from "@/components/PageHeader";
 import { GroupTaskTabs } from "@/components/GroupTaskTabs";
@@ -13,8 +12,8 @@ export default async function GroupDetailPage({
   params: Promise<{ groupId: string }>;
 }) {
   const { groupId } = await params;
-  const user = await requireUser();
-  const membership = await requireGroupMember(groupId, user.id);
+  const membership = await requireMembership(groupId);
+  const userId = membership.userId;
 
   const [groupTaskRows, myTaskRows] = await Promise.all([
     prisma.task.findMany({
@@ -29,7 +28,7 @@ export default async function GroupDetailPage({
     prisma.task.findMany({
       where: {
         groupId,
-        OR: [{ ownerId: user.id }, { assigneeId: user.id }],
+        OR: [{ ownerId: userId }, { assigneeId: userId }],
       },
       include: {
         owner: { select: { id: true, name: true } },
@@ -80,6 +79,8 @@ export default async function GroupDetailPage({
             done: t.participants.filter((p) => p.completed).length,
           }
         : null,
+    importance: t.importance,
+    urgency: t.urgency,
   });
 
   const groupTasks = groupTaskRows.map((t) => toItem(t, true));

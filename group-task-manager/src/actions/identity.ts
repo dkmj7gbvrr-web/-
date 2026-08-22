@@ -5,7 +5,12 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { displayNameSchema, loginCodeSchema } from "@/lib/validation";
 import { generateUniqueLoginCode, normalizeLoginCode } from "@/lib/loginCode";
-import { clearUserCookie, getCurrentUser, requireUser, setUserCookie } from "@/lib/session";
+import {
+  clearUserCookie,
+  getCurrentUser,
+  requireUserId,
+  setUserCookie,
+} from "@/lib/session";
 
 export type ActionState = {
   error?: string;
@@ -91,7 +96,7 @@ export async function renameAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const user = await requireUser();
+  const userId = await requireUserId();
 
   const parsed = displayNameSchema.safeParse({ name: formData.get("name") });
   if (!parsed.success) {
@@ -99,7 +104,7 @@ export async function renameAction(
   }
 
   await prisma.user.update({
-    where: { id: user.id },
+    where: { id: userId },
     data: { name: parsed.data.name },
   });
 

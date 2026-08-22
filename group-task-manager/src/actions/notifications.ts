@@ -2,21 +2,21 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { requireUserId } from "@/lib/session";
 
 export async function markNotificationReadAction(notificationId: string): Promise<void> {
-  const user = await requireUser();
+  const userId = await requireUserId();
   await prisma.notification.updateMany({
-    where: { id: notificationId, userId: user.id },
+    where: { id: notificationId, userId },
     data: { isRead: true },
   });
   revalidatePath("/notifications");
 }
 
 export async function markAllNotificationsReadAction(): Promise<void> {
-  const user = await requireUser();
+  const userId = await requireUserId();
   await prisma.notification.updateMany({
-    where: { userId: user.id, isRead: false },
+    where: { userId, isRead: false },
     data: { isRead: true },
   });
   revalidatePath("/notifications");

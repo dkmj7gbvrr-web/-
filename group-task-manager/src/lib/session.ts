@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -35,7 +36,12 @@ export async function clearUserCookie() {
 
 export type CurrentUser = { id: string; name: string; loginCode: string | null };
 
-export async function getCurrentUser(): Promise<CurrentUser | null> {
+/**
+ * React.cache() でリクエスト単位にメモ化する。同じ1リクエストの中で
+ * layout・page・複数のコンポーネントがそれぞれ getCurrentUser を呼んでも、
+ * DB問い合わせは1回だけになる(Next.jsのリクエストメモ化パターン)。
+ */
+export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   const store = await cookies();
   const id = store.get(USER_COOKIE)?.value;
   if (!id) return null;
@@ -48,10 +54,22 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   // Cookieは残っているのにユーザーが消えている(DBを作り直した等)場合は
   // 未ログイン扱いにして、名前入力からやり直してもらう。
   return user ?? null;
-}
+});
 
 export async function requireUser(): Promise<CurrentUser> {
   const user = await getCurrentUser();
   if (!user) redirect("/welcome");
   return user;
+}
+
+/**
+ * IDだけで十分な処理向けの軽量版。Cookieの値をそのまま返すだけでDBには
+ * 問い合わせない(表示名などが必要ない書き込み処理の高速化用)。
+ * Cookie自体が無ければ /welcome に飛ばす。
+ */
+export async function requireUserId(): Promise<string> {
+  const store = await cookies();
+  const id = store.get(USER_COOKIE)?.value;
+  if (!id) redirect("/welcome");
+  return id;
 }

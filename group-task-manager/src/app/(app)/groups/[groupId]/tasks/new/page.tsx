@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
-import { requireGroupMember } from "@/lib/membership";
+import { requireMembership } from "@/lib/membership";
 import { PageHeader } from "@/components/PageHeader";
 import { NewTaskForm } from "@/components/NewTaskForm";
 
@@ -10,11 +9,10 @@ export default async function NewTaskPage({
   params: Promise<{ groupId: string }>;
 }) {
   const { groupId } = await params;
-  const user = await requireUser();
-  await requireGroupMember(groupId, user.id);
+  const membership = await requireMembership(groupId);
 
   const members = await prisma.groupMember.findMany({
-    where: { groupId, userId: { not: user.id } },
+    where: { groupId, userId: { not: membership.userId } },
     include: { user: { select: { id: true, name: true } } },
     orderBy: { joinedAt: "asc" },
   });

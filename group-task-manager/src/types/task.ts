@@ -15,4 +15,6 @@ export interface TaskListItem {
   assigneeName: string | null;
   coRunners: { userId: string; userName: string }[];
   participantProgress: { total: number; done: number } | null;
+  importance: number;
+  urgency: number;
 }

@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { Avatar, Badge, Card } from "@/components/ui";
-import { STATUS_LABEL, STATUS_TONE, VISIBILITY_LABEL, formatDueDate } from "@/lib/labels";
+import {
+  STATUS_LABEL,
+  STATUS_TONE,
+  VISIBILITY_LABEL,
+  formatDueDate,
+  dueDateUrgency,
+  DUE_URGENCY_CLASS,
+} from "@/lib/labels";
 import type { TaskListItem } from "@/types/task";
 
 export function TaskList({
@@ -56,7 +63,11 @@ export function TaskList({
                   参加 {task.participantProgress.done}/{task.participantProgress.total}完了
                 </Badge>
               )}
-              {task.dueDate && <span>期限 {formatDueDate(task.dueDate)}</span>}
+              {task.dueDate && (
+                <span className={DUE_URGENCY_CLASS[dueDateUrgency(task.dueDate, task.status)]}>
+                  期限 {formatDueDate(task.dueDate)}
+                </span>
+              )}
             </div>
 
             {task.coRunners.length > 0 && (
