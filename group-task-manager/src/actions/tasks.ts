@@ -7,7 +7,7 @@ import { requireUser } from "@/lib/session";
 import { requireGroupMember } from "@/lib/membership";
 import { normalizeTitle, isSameTask } from "@/lib/similarity";
 import { createTaskSchema, updateTaskStatusSchema } from "@/lib/validation";
-import type { ActionState } from "@/actions/auth";
+import type { ActionState } from "@/actions/identity";
 
 export type DuplicateMatch = {
   taskId: string;

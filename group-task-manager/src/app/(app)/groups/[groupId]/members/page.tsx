@@ -16,7 +16,7 @@ export default async function GroupMembersPage({
 
   const members = await prisma.groupMember.findMany({
     where: { groupId },
-    include: { user: { select: { id: true, name: true, email: true } } },
+    include: { user: { select: { id: true, name: true } } },
     orderBy: { joinedAt: "asc" },
   });
 
@@ -46,8 +46,12 @@ export default async function GroupMembersPage({
               <Card key={m.id} className="flex items-center gap-3 p-3.5">
                 <Avatar name={m.user.name} />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[14px] font-semibold">{m.user.name}</p>
-                  <p className="truncate text-[12px] text-muted">{m.user.email}</p>
+                  <p className="truncate text-[14px] font-semibold">
+                    {m.user.name}
+                    {m.user.id === user.id && (
+                      <span className="ml-1.5 text-[12px] font-normal text-muted">(あなた)</span>
+                    )}
+                  </p>
                 </div>
                 {m.role === "OWNER" && <Badge tone="accent">管理者</Badge>}
               </Card>

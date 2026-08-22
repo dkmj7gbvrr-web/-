@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { generateUniqueGroupCode } from "@/lib/groupCode";
 import { createGroupSchema, joinGroupSchema } from "@/lib/validation";
-import type { ActionState } from "@/actions/auth";
+import type { ActionState } from "@/actions/identity";
 
 export async function createGroupAction(
   _prev: ActionState,

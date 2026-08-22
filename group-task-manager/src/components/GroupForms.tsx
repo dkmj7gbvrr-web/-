@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { createGroupAction, joinGroupAction } from "@/actions/groups";
-import type { ActionState } from "@/actions/auth";
+import type { ActionState } from "@/actions/identity";
 import { Button, Card, Input, Label } from "@/components/ui";
 
 const initialState: ActionState = {};

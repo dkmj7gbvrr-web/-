@@ -6,7 +6,7 @@ import { requireUser } from "@/lib/session";
 import { requireGroupMember } from "@/lib/membership";
 import { delegateTaskSchema } from "@/lib/validation";
 import { notifyUser } from "@/lib/notify";
-import type { ActionState } from "@/actions/auth";
+import type { ActionState } from "@/actions/identity";
 
 export async function delegateTaskAction(
   taskId: string,
@@ -53,7 +53,6 @@ export async function delegateTaskAction(
     userId: toUserId,
     type: "DELEGATION_REQUEST",
     taskId: task.id,
-    groupId: task.groupId,
     fromUserId: user.id,
     message: `${user.name}さんから「${task.title}」の承認依頼が届きました${
       message ? `: ${message}` : ""
@@ -99,7 +98,6 @@ export async function respondDelegationAction(
     userId: delegation.fromUserId,
     type: approve ? "DELEGATION_APPROVED" : "DELEGATION_REJECTED",
     taskId: delegation.taskId,
-    groupId: delegation.task.groupId,
     fromUserId: user.id,
     message: `${user.name}さんが「${delegation.task.title}」の依頼を${
       approve ? "承認しました" : "却下しました"

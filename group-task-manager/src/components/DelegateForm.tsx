@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { delegateTaskAction } from "@/actions/delegations";
-import type { ActionState } from "@/actions/auth";
+import type { ActionState } from "@/actions/identity";
 import { Button, Card, Label, Textarea } from "@/components/ui";
 
 const initialState: ActionState = {};

@@ -1,28 +1,29 @@
-import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { logoutAction } from "@/actions/auth";
+import { signOutAction } from "@/actions/identity";
 import { PageHeader } from "@/components/PageHeader";
-import { Card, Button } from "@/components/ui";
-import { ProfileForm } from "@/components/ProfileForm";
+import { Button, Card } from "@/components/ui";
+import { RenameForm } from "@/components/RenameForm";
 
 export default async function SettingsPage() {
   const user = await requireUser();
-  const dbUser = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
 
   return (
     <>
       <PageHeader title="設定" />
       <div className="flex flex-col gap-5 px-4 py-4">
         <Card className="p-4">
-          <h2 className="mb-3 text-[15px] font-semibold">プロフィール</h2>
-          <ProfileForm name={dbUser.name} teamsWebhookUrl={dbUser.teamsWebhookUrl ?? ""} />
+          <h2 className="mb-3 text-[15px] font-semibold">表示名</h2>
+          <RenameForm name={user.name} />
         </Card>
 
         <Card className="p-4">
-          <p className="mb-3 text-[13px] text-muted">{dbUser.email}</p>
-          <form action={logoutAction}>
+          <h2 className="mb-2 text-[15px] font-semibold">この端末について</h2>
+          <p className="mb-3 text-[12px] leading-relaxed text-muted">
+            あなたはこのブラウザに保存された情報で識別されています。別の端末や別のブラウザから開くと別の人として扱われるため、その端末でもう一度名前を入力し、参加コードでグループに入り直してください。
+          </p>
+          <form action={signOutAction}>
             <Button type="submit" variant="secondary" className="w-full">
-              ログアウト
+              この端末からログアウト
             </Button>
           </form>
         </Card>

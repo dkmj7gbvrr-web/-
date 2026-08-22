@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { checkDuplicateTasksAction, createTaskAction, type DuplicateMatch } from "@/actions/tasks";
-import type { ActionState } from "@/actions/auth";
+import type { ActionState } from "@/actions/identity";
 import { Avatar, Button, Input, Label, Textarea } from "@/components/ui";
 import { clsx } from "@/lib/clsx";
 

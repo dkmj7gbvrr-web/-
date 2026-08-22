@@ -1,6 +1,7 @@
-// Prisma schema for the group task manager app.
-// SQLite has no native enum type, so status/role/type-like fields are
-// plain String columns, validated with zod at the application boundary.
+// TaskCircle — グループでタスクを共有するアプリのデータ定義。
+//
+// アカウント登録(メール・パスワード)は持たない。初回に入力した表示名で
+// User を1件つくり、その id をブラウザのCookieに保存して本人確認とする。
 
 generator client {
   provider = "prisma-client"
@@ -8,24 +9,49 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
+}
+
+enum MemberRole {
+  OWNER
+  MEMBER
+}
+
+enum TaskVisibility {
+  PRIVATE
+  GROUP
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+enum DelegationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum NotificationType {
+  DELEGATION_REQUEST
+  DELEGATION_APPROVED
+  DELEGATION_REJECTED
 }
 
 model User {
-  id              String   @id @default(cuid())
-  email           String   @unique
-  passwordHash    String
-  name            String
-  teamsWebhookUrl String?
-  createdAt       DateTime @default(now())
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
 
-  memberships       GroupMember[]
-  ownedGroups       Group[]              @relation("GroupOwner")
-  ownedTasks        Task[]               @relation("TaskOwner")
-  assignedTasks     Task[]               @relation("TaskAssignee")
-  sentDelegations   TaskDelegation[]     @relation("DelegationFrom")
-  receivedDelegations TaskDelegation[]   @relation("DelegationTo")
-  notifications     Notification[]
+  memberships         GroupMember[]
+  ownedGroups         Group[]          @relation("GroupOwner")
+  ownedTasks          Task[]           @relation("TaskOwner")
+  assignedTasks       Task[]           @relation("TaskAssignee")
+  sentDelegations     TaskDelegation[] @relation("DelegationFrom")
+  receivedDelegations TaskDelegation[] @relation("DelegationTo")
+  notifications       Notification[]
 }
 
 model Group {
@@ -35,17 +61,17 @@ model Group {
   ownerId   String
   createdAt DateTime @default(now())
 
-  owner   User          @relation("GroupOwner", fields: [ownerId], references: [id])
+  owner   User          @relation("GroupOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   members GroupMember[]
   tasks   Task[]
 }
 
 model GroupMember {
-  id       String   @id @default(cuid())
+  id       String     @id @default(cuid())
   groupId  String
   userId   String
-  role     String   @default("MEMBER") // OWNER | MEMBER
-  joinedAt DateTime @default(now())
+  role     MemberRole @default(MEMBER)
+  joinedAt DateTime   @default(now())
 
   group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -54,23 +80,23 @@ model GroupMember {
 }
 
 model Task {
-  id              String    @id @default(cuid())
+  id              String         @id @default(cuid())
   groupId         String
   ownerId         String
   assigneeId      String?
   title           String
   normalizedTitle String
   description     String?
-  visibility      String    @default("PRIVATE") // PRIVATE | GROUP
-  status          String    @default("TODO") // TODO | IN_PROGRESS | DONE
+  visibility      TaskVisibility @default(PRIVATE)
+  status          TaskStatus     @default(TODO)
   dueDate         DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
-  group        Group            @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  owner        User             @relation("TaskOwner", fields: [ownerId], references: [id])
-  assignee     User?            @relation("TaskAssignee", fields: [assigneeId], references: [id])
-  delegations  TaskDelegation[]
+  group         Group            @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  owner         User             @relation("TaskOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  assignee      User?            @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  delegations   TaskDelegation[]
   notifications Notification[]
 
   @@index([groupId, visibility])
@@ -78,31 +104,31 @@ model Task {
 }
 
 model TaskDelegation {
-  id          String    @id @default(cuid())
+  id          String           @id @default(cuid())
   taskId      String
   fromUserId  String
   toUserId    String
-  status      String    @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELED
+  status      DelegationStatus @default(PENDING)
   message     String?
-  createdAt   DateTime  @default(now())
+  createdAt   DateTime         @default(now())
   respondedAt DateTime?
 
   task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  from User @relation("DelegationFrom", fields: [fromUserId], references: [id])
-  to   User @relation("DelegationTo", fields: [toUserId], references: [id])
+  from User @relation("DelegationFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  to   User @relation("DelegationTo", fields: [toUserId], references: [id], onDelete: Cascade)
 
   @@index([toUserId, status])
 }
 
 model Notification {
-  id          String    @id @default(cuid())
-  userId      String
-  type        String // DELEGATION_REQUEST | DELEGATION_APPROVED | DELEGATION_REJECTED
-  taskId      String?
-  fromUserId  String?
-  message     String
-  isRead      Boolean   @default(false)
-  createdAt   DateTime  @default(now())
+  id         String           @id @default(cuid())
+  userId     String
+  type       NotificationType
+  taskId     String?
+  fromUserId String?
+  message    String
+  isRead     Boolean          @default(false)
+  createdAt  DateTime         @default(now())
 
   user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   task Task? @relation(fields: [taskId], references: [id], onDelete: Cascade)

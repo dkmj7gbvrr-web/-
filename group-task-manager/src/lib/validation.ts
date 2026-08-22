@@ -1,14 +1,7 @@
 import { z } from "zod";
 
-export const registerSchema = z.object({
-  name: z.string().trim().min(1, "名前を入力してください").max(50),
-  email: z.string().trim().toLowerCase().email("メールアドレスの形式が正しくありません"),
-  password: z.string().min(8, "パスワードは8文字以上で入力してください").max(100),
-});
-
-export const loginSchema = z.object({
-  email: z.string().trim().toLowerCase().email(),
-  password: z.string().min(1),
+export const displayNameSchema = z.object({
+  name: z.string().trim().min(1, "名前を入力してください").max(20, "名前は20文字以内で入力してください"),
 });
 
 export const createGroupSchema = z.object({
@@ -16,11 +9,7 @@ export const createGroupSchema = z.object({
 });
 
 export const joinGroupSchema = z.object({
-  code: z
-    .string()
-    .trim()
-    .toUpperCase()
-    .length(6, "コードは6文字です"),
+  code: z.string().trim().toUpperCase().length(6, "コードは6文字です"),
 });
 
 export const taskVisibilityValues = ["PRIVATE", "GROUP"] as const;
@@ -40,14 +29,4 @@ export const updateTaskStatusSchema = z.object({
 export const delegateTaskSchema = z.object({
   toUserId: z.string().min(1, "依頼先のメンバーを選択してください"),
   message: z.string().trim().max(500).optional().or(z.literal("")),
-});
-
-export const profileSchema = z.object({
-  name: z.string().trim().min(1).max(50),
-  teamsWebhookUrl: z
-    .string()
-    .trim()
-    .url("Webhook URLの形式が正しくありません")
-    .optional()
-    .or(z.literal("")),
 });
