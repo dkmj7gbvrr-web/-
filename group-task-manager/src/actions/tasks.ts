@@ -263,9 +263,15 @@ export async function addLogEntryAction(
     return { error: parsed.error.issues[0]?.message ?? "入力内容を確認してください" };
   }
 
-  const task = await prisma.task.findUniqueOrThrow({ where: { id: taskId } });
-  if (task.ownerId !== userId && task.assigneeId !== userId) {
-    return { error: "メモを追加できるのはタスクの作成者・担当者のみです" };
+  const [task, participant] = await Promise.all([
+    prisma.task.findUniqueOrThrow({ where: { id: taskId } }),
+    prisma.taskParticipant.findUnique({
+      where: { taskId_userId: { taskId, userId } },
+    }),
+  ]);
+  const isAuthorized = task.ownerId === userId || task.assigneeId === userId || participant !== null;
+  if (!isAuthorized) {
+    return { error: "メモを追加できるのはタスクの作成者・担当者・参加メンバーのみです" };
   }
 
   await prisma.taskLogEntry.create({

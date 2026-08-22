@@ -43,13 +43,6 @@ export async function delegateTaskAction(
   // 依頼先はこちらで確認が必要(所有者チェックは使えないため)。
   await requireGroupMember(task.groupId, toUserId);
 
-  const existingPending = await prisma.taskDelegation.findFirst({
-    where: { taskId, toUserId, status: "PENDING" },
-  });
-  if (existingPending) {
-    return { error: "すでにこのメンバーへ依頼を送っています" };
-  }
-
   const attachmentResult = await readOptionalAttachment(formData, "attachment");
   if (!attachmentResult.ok) {
     return { error: attachmentResult.error };

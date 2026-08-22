@@ -83,9 +83,11 @@ export default async function TaskDetailPage({
     ? dueDateUrgency(task.dueDate.toISOString(), task.status as TaskStatus)
     : "normal";
 
-  const pendingForMe = task.delegations.find(
+  const pendingForMe = task.delegations.filter(
     (d) => d.status === "PENDING" && d.toUserId === userId
   );
+
+  const isParticipant = task.participants.some((p) => p.userId === userId);
 
   const coRunners: { userId: string; userName: string }[] = [];
   if (task.visibility === "GROUP" && task.status !== "DONE") {
@@ -207,14 +209,15 @@ export default async function TaskDetailPage({
           />
         )}
 
-        {pendingForMe && (
+        {pendingForMe.map((d) => (
           <DelegationActions
-            delegationId={pendingForMe.id}
-            fromName={pendingForMe.from.name}
-            message={pendingForMe.message}
-            attachment={pendingForMe.attachment}
+            key={d.id}
+            delegationId={d.id}
+            fromName={d.from.name}
+            message={d.message}
+            attachment={d.attachment}
           />
-        )}
+        ))}
 
         {isOwner && (
           <DelegateForm
@@ -262,6 +265,7 @@ export default async function TaskDetailPage({
 
         <TaskLogPanel
           taskId={task.id}
+          editable={isOwner || isAssignee || isParticipant}
           entries={task.logEntries.map((e) => ({
             id: e.id,
             content: e.content,
