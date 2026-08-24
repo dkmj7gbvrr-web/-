@@ -1007,6 +1007,10 @@
         <input type="text" id="expense-memo" placeholder="例: スーパーで食材" maxlength="60">
       </div>
       <div class="field-group">
+        <label class="field-label" for="expense-note">備考</label>
+        <input type="text" id="expense-note" placeholder="例: 東京都渋谷区" maxlength="120">
+      </div>
+      <div class="field-group">
         <label class="field-label" for="expense-date">日付</label>
         <input type="date" id="expense-date">
       </div>
@@ -1783,6 +1787,7 @@ import {
             '<span>' + escapeHtml(splitLabel(e.splitType, names)) + '</span><span>・</span>' +
             '<span>立替: ' + escapeHtml(paidByLabel(e.paidBy, names)) + '</span><span>・</span>' +
             categoryChipHtml(e.category) +
+            (e.note ? '<span>・</span><span>' + escapeHtml(e.note) + '</span>' : '') +
           '</div>' +
         '</div>' +
         '<div class="amount">' + formatYen(e.amount) + '</div>' +
@@ -2313,6 +2318,7 @@ import {
   function populateExpenseSheetFields(e, showDeleteButton) {
     document.getElementById('expense-sheet-title').textContent = showDeleteButton ? '支出を編集' : '支出を追加';
     document.getElementById('expense-memo').value = e ? e.memo : '';
+    document.getElementById('expense-note').value = e && e.note ? e.note : '';
     document.getElementById('expense-date').value = e ? e.date : toDateInputValue(new Date());
     document.getElementById('expense-amount').value = e ? formatDigitsWithCommas(String(e.amount)) : '';
     document.getElementById('expense-delete-btn').hidden = !showDeleteButton;
@@ -2346,8 +2352,9 @@ import {
     if (!amountRaw || !Number.isFinite(amount) || amount <= 0) { toast('金額を入力してください'); return; }
     const date = document.getElementById('expense-date').value || toDateInputValue(new Date());
     const memo = document.getElementById('expense-memo').value.trim();
+    const note = document.getElementById('expense-note').value.trim();
     const customAPercent = currentSplitType === 'customRatio' ? currentCustomPercent : null;
-    const payload = { date: date, amount: amount, memo: memo, splitType: currentSplitType, customAPercent: customAPercent, paidBy: currentPaidBy, category: currentCategory };
+    const payload = { date: date, amount: amount, memo: memo, note: note, splitType: currentSplitType, customAPercent: customAPercent, paidBy: currentPaidBy, category: currentCategory };
 
     if (editingPendingImportIndex !== null) {
       Object.assign(pendingImportItems[editingPendingImportIndex], payload);
@@ -3114,6 +3121,7 @@ import {
                 '<span>' + escapeHtml(splitLabel(item.splitType, names)) + '</span><span>・</span>' +
                 '<span>立替: ' + escapeHtml(paidByLabel(item.paidBy, names)) + '</span><span>・</span>' +
                 categoryChipHtml(item.category) +
+                (item.note ? '<span>・</span><span>' + escapeHtml(item.note) + '</span>' : '') +
               '</div>' +
             '</div>' +
             '<div class="amount">' + formatYen(item.amount) + '</div>' +
@@ -3137,7 +3145,7 @@ import {
       toCommit.forEach(function (item) {
         const ref = doc(expensesCol(currentCode));
         batch.set(ref, {
-          date: item.date, amount: item.amount, memo: item.memo,
+          date: item.date, amount: item.amount, memo: item.memo, note: item.note || '',
           splitType: item.splitType, customAPercent: item.customAPercent,
           paidBy: item.paidBy, category: item.category, updatedAt: Date.now()
         });
