@@ -577,6 +577,18 @@
   .sheet-btn-primary { color: var(--accent); font-weight: 700; }
   .sheet-body { overflow-y: auto; padding: 18px 20px 28px; }
 
+  .manual-body { line-height: 1.6; }
+  .manual-section { margin-bottom: 22px; }
+  .manual-section:last-child { margin-bottom: 0; }
+  .manual-section h3 { font-size: 15px; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
+  .manual-section p { font-size: 13.5px; color: var(--ink-muted); margin: 0 0 6px; }
+  .manual-section p:last-child { margin-bottom: 0; }
+  .manual-section ul, .manual-section ol { padding-left: 20px; margin: 6px 0 0; }
+  .manual-section li { font-size: 13.5px; color: var(--ink-muted); margin-bottom: 6px; }
+  .manual-section li:last-child { margin-bottom: 0; }
+  .manual-section li strong { color: var(--ink); }
+  .manual-note { font-size: 12px; color: var(--ink-muted); margin-top: 10px; }
+
   .import-sheet { max-height: 94dvh; }
   .import-sheet-body { flex: 1; }
   .import-sheet-footer {
@@ -918,6 +930,13 @@
       <div class="page-header"><h1>設定</h1></div>
 
       <div class="settings-section">
+        <div class="section-title">ヘルプ</div>
+        <div class="settings-actions">
+          <button class="btn btn-secondary" data-action="open-manual">使い方ガイドを見る</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
         <div class="section-title">世帯コード</div>
         <div class="field-card">
           <div class="field"><label>現在のコード</label><span class="num" id="settings-code-value"></span></div>
@@ -1114,6 +1133,91 @@
       </div>
 
       <button class="btn btn-danger-ghost" id="income-delete-btn" data-action="delete-income" hidden>この期間を削除</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet-backdrop" id="manual-sheet-backdrop" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="manual-sheet-title">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <button class="sheet-btn" data-action="close-sheet" data-sheet="manual">閉じる</button>
+      <div class="sheet-title" id="manual-sheet-title">使い方ガイド</div>
+      <button class="sheet-btn" style="visibility:hidden;">閉じる</button>
+    </div>
+    <div class="sheet-body manual-body">
+      <div class="manual-section">
+        <p>ふたりの生活費を「世帯コード」だけで共有するアプリです。ログインは不要で、同じ世帯コードを入力した端末同士でデータがリアルタイムに同期されます。世帯コードは他の人に教えないでください。</p>
+      </div>
+
+      <div class="manual-section">
+        <h3>支出を記録する</h3>
+        <p>支出タブ右上の「＋」から支出を追加します。</p>
+        <ul>
+          <li><strong>メモ</strong>：何に使ったかの短い説明</li>
+          <li><strong>備考</strong>：メモとは別に、住所や補足情報などを自由に書ける欄です</li>
+          <li><strong>日付・金額</strong></li>
+          <li><strong>ジャンル</strong>：食料品・外食などから選択。メモの内容から自動で推測されます。設定タブから新しいジャンルも追加できます</li>
+        </ul>
+      </div>
+
+      <div class="manual-section">
+        <h3>負担の分け方</h3>
+        <p>支出ごとに、ふたりでどう分けるか選べます。</p>
+        <ul>
+          <li>半々で負担</li>
+          <li>Aのみ／Bのみ負担</li>
+          <li>収入割合で負担：収入タブで設定した割合に応じて自動計算</li>
+          <li>任意の割合で負担：%か金額を指定して自由に分けられます（例：Aが2,000円、Bが600円など）</li>
+        </ul>
+      </div>
+
+      <div class="manual-section">
+        <h3>実際に立て替えた人</h3>
+        <p>「A」「B」に加えて「共有」（共有カードでの支払い）を選べます。共有カードの支出は、集計タブで通常の負担額（グロス）と、共有口座への実際の精算額（ネット）の両方が表示されます。</p>
+      </div>
+
+      <div class="manual-section">
+        <h3>カード明細を取り込む</h3>
+        <p>支出タブの取り込みボタンから、クレジットカード会社が発行するPDF明細をアップロードすると、日付・金額・店名を自動で読み取って一覧に追加できます。</p>
+        <ul>
+          <li>複数のカード会社の明細フォーマットに対応しています</li>
+          <li>店名からジャンルを自動推測し、一度手動で直すと次回から記憶されます</li>
+          <li>文字化けしてしまった店名は「画像から読み取る」ボタンでOCR（文字認識）による再取得が可能です</li>
+          <li>入力済みの支出と日付（前後1日まで）・金額が一致する行は「登録済みかも」として表示され、二重登録を防止します</li>
+        </ul>
+      </div>
+
+      <div class="manual-section">
+        <h3>収入の設定</h3>
+        <p>「収入割合で負担」を使う場合は、収入タブで期間ごとの手取り額を入力します。</p>
+        <ul>
+          <li>まとめて入力：期間全体の合計額だけを入力します</li>
+          <li>月ごとに入力：月ごとの金額を入力します。各行の年月は自由に変更でき、賞与などの臨時収入欄（最大3件）も追加できます</li>
+        </ul>
+      </div>
+
+      <div class="manual-section">
+        <h3>集計・精算</h3>
+        <p>集計タブで、締め日ごとの請求サイクルの負担額・精算額を確認できます。精算が終わったサイクルは「精算済み」にできます。</p>
+      </div>
+
+      <div class="manual-section">
+        <h3>バックアップ・データ削除</h3>
+        <p>設定タブからいつでもデータをファイルに書き出せます。世帯データを削除すると、同じ世帯コードを使っているふたり両方の画面から消えるのでご注意ください。</p>
+      </div>
+
+      <div class="manual-section">
+        <h3>iPhoneでホーム画面に追加する</h3>
+        <p>Safariでこのページを開いている状態で:</p>
+        <ol>
+          <li>画面下部（機種によっては上部）にある「共有」ボタン（四角から上に矢印が出ているアイコン）をタップします</li>
+          <li>一覧を下にスクロールし、「ホーム画面に追加」をタップします</li>
+          <li>表示名を確認し、右上の「追加」をタップします</li>
+          <li>ホーム画面にアイコンが追加されます。そこから開くとアドレスバーのない全画面表示になり、アプリのように使えます</li>
+        </ol>
+        <p class="manual-note">※Androidの場合は、Chromeのメニューから「アプリをインストール」または「ホーム画面に追加」を選ぶと同様に追加できます。</p>
+      </div>
     </div>
   </div>
 </div>
@@ -3226,6 +3330,7 @@ import {
         break;
       case 'close-sheet': closeSheet(target.dataset.sheet + '-sheet-backdrop'); break;
       case 'toggle-settled': toggleSettled(target.dataset.key); break;
+      case 'open-manual': showSheet('manual-sheet-backdrop'); break;
       case 'export-data': exportBackup(); break;
       case 'reset-data': resetAllData(); break;
       case 'create-household': createHousehold(); break;
