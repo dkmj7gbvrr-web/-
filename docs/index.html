@@ -1365,7 +1365,23 @@ import {
     const startBase = new Date(prev.year, prev.month - 1, startDay);
     const start = new Date(startBase.getFullYear(), startBase.getMonth(), startBase.getDate() + 1, 0, 0, 0, 0);
 
-    return { start: start, end: end, ym: ym, label: ym.year + '年' + ym.month + '月締め分' };
+    // The cycle is labeled by whichever calendar month it covers MORE days
+    // of, not simply the month the closing day falls in -- e.g. 8/7-9/6
+    // covers 25 days of August vs. 6 of September, so it reads as "August"
+    // even though it technically closes in September. `ym` itself (used
+    // for income-period lookups and the cycle's identity/key) is untouched;
+    // only this display label changes.
+    let labelYear = ym.year, labelMonth = ym.month;
+    if (start.getFullYear() !== end.getFullYear() || start.getMonth() !== end.getMonth()) {
+      const daysInStartMonth = daysInMonth(start.getFullYear(), start.getMonth() + 1) - start.getDate() + 1;
+      const daysInEndMonth = end.getDate();
+      if (daysInStartMonth > daysInEndMonth) {
+        labelYear = start.getFullYear();
+        labelMonth = start.getMonth() + 1;
+      }
+    }
+
+    return { start: start, end: end, ym: ym, label: labelYear + '年' + labelMonth + '月締め分' };
   }
 
   function cycleContaining(date, closingDay) {
