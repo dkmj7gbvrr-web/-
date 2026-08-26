@@ -651,7 +651,8 @@
   }
   .field-group input[type="text"],
   .field-group input[type="date"],
-  .field-group input[type="month"] {
+  .field-group input[type="month"],
+  .field-group select {
     width: 100%;
     border: 1px solid var(--line);
     background: var(--surface-2);
@@ -1132,6 +1133,13 @@
         </div>
       </div>
 
+      <div class="section-label" style="margin-top:16px;">収入割合</div>
+      <div class="field-hint" id="income-ratio-calc-hint" style="padding-top:0; margin-bottom:8px;"></div>
+      <div class="field-group">
+        <label class="field-label" id="income-ratio-select-label" for="income-ratio-select">Aさんの負担割合（1%刻みで調整できます）</label>
+        <select id="income-ratio-select"></select>
+      </div>
+
       <button class="btn btn-danger-ghost" id="income-delete-btn" data-action="delete-income" hidden>この期間を削除</button>
     </div>
   </div>
@@ -1414,12 +1422,14 @@ import {
     const period = findIncomePeriod(ym, periods);
     return period ? period.aPercent : 50;
   }
+  // Unrounded: the exact computed ratio, shown to the user (to 2 decimal
+  // places) alongside a 1%-step dropdown so they can fine-tune the value
+  // that actually gets saved, rather than silently rounding it themselves.
   function computeAPercentFromAmounts(aTotal, bTotal) {
     const total = aTotal + bTotal;
     if (total <= 0) return 50;
     const raw = (aTotal / total) * 100;
-    const rounded = Math.round(raw / 5) * 5;
-    return Math.min(100, Math.max(0, rounded));
+    return Math.min(100, Math.max(0, raw));
   }
 
   function splitByPercent(amount, aPercent) {
@@ -2297,6 +2307,7 @@ import {
     document.getElementById('income-lump-a-label').textContent = escapeHtml(names.a) + 'さんの期間合計';
     document.getElementById('income-lump-b-label').textContent = escapeHtml(names.b) + 'さんの期間合計';
     if (currentIncomeEntryMode === 'perMonth') renderIncomePerMonthRows();
+    updateIncomeRatioPreview();
   }
 
   function currentIncomePeriodMonthsValue() {
@@ -2349,7 +2360,7 @@ import {
     header.innerHTML = '<span class="income-permonth-label"></span><div class="income-permonth-inputs"><span>' + escapeHtml(names.a) + '</span><span>' + escapeHtml(names.b) + '</span></div>';
 
     const rowsContainer = document.getElementById('income-permonth-rows');
-    if (!startVal) { rowsContainer.innerHTML = ''; renderIncomeExtraRows(); return; }
+    if (!startVal) { rowsContainer.innerHTML = ''; renderIncomeExtraRows(); updateIncomeRatioPreview(); return; }
     const parts = startVal.split('-');
     const startYear = Number(parts[0]), startMonth = Number(parts[1]);
     const lookback = incomeLookbackStart(startYear, startMonth, length);
@@ -2381,6 +2392,7 @@ import {
     }
     rowsContainer.innerHTML = html;
     renderIncomeExtraRows();
+    updateIncomeRatioPreview();
   }
 
   // Up to 3 free-use slots (bonuses etc.) alongside the per-month rows --
@@ -2418,6 +2430,40 @@ import {
       bTotal += Number(String(v.bAmount).replace(/[^\d]/g, '')) || 0;
     });
     return { aTotal: aTotal, bTotal: bTotal };
+  }
+
+  function currentIncomeTotals() {
+    if (currentIncomeEntryMode === 'lump') {
+      const aTotal = Number(document.getElementById('income-lump-a').value.replace(/[^\d]/g, '')) || 0;
+      const bTotal = Number(document.getElementById('income-lump-b').value.replace(/[^\d]/g, '')) || 0;
+      return { aTotal: aTotal, bTotal: bTotal };
+    }
+    return sumIncomePerMonthValues();
+  }
+
+  function populateIncomeRatioSelectOptions() {
+    const select = document.getElementById('income-ratio-select');
+    if (select.options.length) return;
+    let html = '';
+    for (let p = 0; p <= 100; p++) {
+      html += '<option value="' + p + '">' + p + '% ／ ' + (100 - p) + '%</option>';
+    }
+    select.innerHTML = html;
+  }
+
+  // Live preview: shows the exact computed ratio to 2 decimal places, and
+  // resets the 1%-step dropdown to the nearest whole percent every time the
+  // underlying amounts change. The dropdown itself is the source of truth
+  // for the percentage that actually gets saved -- editing it afterward
+  // (without touching the amounts again) sticks.
+  function updateIncomeRatioPreview() {
+    const names = currentNames();
+    const totals = currentIncomeTotals();
+    const raw = computeAPercentFromAmounts(totals.aTotal, totals.bTotal);
+    document.getElementById('income-ratio-calc-hint').textContent =
+      '計算結果：' + names.a + ' ' + raw.toFixed(2) + '% ／ ' + names.b + ' ' + (100 - raw).toFixed(2) + '%';
+    document.getElementById('income-ratio-select-label').textContent = names.a + 'さんの負担割合（1%刻みで調整できます）';
+    document.getElementById('income-ratio-select').value = String(Math.round(raw));
   }
 
   function openExpenseSheet(id) {
@@ -2555,7 +2601,14 @@ import {
     document.getElementById('income-lump-b').value = (p && p.entryMode === 'lump') ? formatDigitsWithCommas(String(p.bAmount)) : '';
 
     renderIncomeEntryModeSegmented();
+    populateIncomeRatioSelectOptions();
     updateIncomeEntryModeVisibility();
+    // updateIncomeEntryModeVisibility() just reset the ratio dropdown to the
+    // nearest whole percent of the raw calculation; when reopening an
+    // existing period, restore whatever percentage was actually saved
+    // (which may have been manually fine-tuned away from that nearest
+    // whole-percent default).
+    if (p) document.getElementById('income-ratio-select').value = String(p.aPercent);
     updateIncomePeriodHint();
     showSheet('income-sheet-backdrop');
   }
@@ -2609,7 +2662,7 @@ import {
       aAmount: aAmount, bAmount: bAmount,
       perMonthAmounts: perMonthAmounts,
       extraIncomes: extraIncomes,
-      aPercent: computeAPercentFromAmounts(aAmount, bAmount),
+      aPercent: Number(document.getElementById('income-ratio-select').value),
       updatedAt: Date.now()
     };
 
@@ -3389,6 +3442,9 @@ import {
       reformatAmountInput(e.target);
     });
   });
+  ['income-lump-a', 'income-lump-b'].forEach(function (id) {
+    document.getElementById(id).addEventListener('input', updateIncomeRatioPreview);
+  });
 
   // Keep the custom-ratio calculator (percent-mode label or amount-mode
   // fields) live-synced as the total expense amount is typed.
@@ -3434,6 +3490,7 @@ import {
     const person = target.dataset.person;
     if (!currentIncomePerMonthValues[index]) currentIncomePerMonthValues[index] = { aAmount: '', bAmount: '' };
     currentIncomePerMonthValues[index][person === 'a' ? 'aAmount' : 'bAmount'] = target.value;
+    updateIncomeRatioPreview();
   });
   document.getElementById('income-permonth-rows').addEventListener('change', function (e) {
     const target = e.target;
@@ -3456,6 +3513,7 @@ import {
       const person = target.dataset.person;
       currentIncomeExtraValues[index][person === 'a' ? 'aAmount' : 'bAmount'] = target.value;
     }
+    updateIncomeRatioPreview();
   });
 
   document.getElementById('summary-cycle-select').addEventListener('change', function (e) {
