@@ -1053,7 +1053,7 @@
 
         <div id="custom-ratio-percent-fields">
           <div class="custom-ratio-label" id="expense-custom-ratio-label"></div>
-          <input type="range" id="expense-custom-slider" min="0" max="100" step="5" value="50">
+          <input type="range" id="expense-custom-slider" min="0" max="100" step="1" value="50">
         </div>
 
         <div id="custom-ratio-amount-fields" hidden>
@@ -2223,7 +2223,12 @@ import {
     document.getElementById('custom-ratio-amount-fields').hidden = customRatioMode !== 'amount';
 
     if (customRatioMode === 'percent') {
-      document.getElementById('expense-custom-slider').value = Math.round(currentCustomPercent / 5) * 5;
+      // Match the slider's granularity to the label's own rounding (whole
+      // percent) -- a stored ratio like 76.92% previously snapped the
+      // slider thumb to the nearest 5% mark (75%) while the label still
+      // read "77%", making an untouched, already-saved custom split look
+      // like it had been reset to a coarser value on reopen.
+      document.getElementById('expense-custom-slider').value = Math.round(currentCustomPercent);
       updateCustomRatioLabel();
     } else {
       syncCustomAmountFieldsFromPercent();
