@@ -1,0 +1,72 @@
+// 消耗品残量トラッカー — データ定義。
+//
+// 本人確認はアカウント登録(メール・パスワード)を持たない。「誰ですか」画面で
+// 名前を選ぶ/入力するとUserが1件つくられ、その id をブラウザのCookieに保存する
+// (group-task-managerと同じ方式)。厳密な認証は行わない前提のアプリ。
+//
+// 買い物リストは独立したテーブルを持たない。Item.status が LOW / OUT の
+// ものを買い物リストとして表示し、「買った」を押すと status を MANY に
+// 戻すだけで買い物リストから自動的に消える(常にItemが単一の正)。
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum StockStatus {
+  MANY // 多い
+  NORMAL // 普通
+  LOW // 少ない
+  OUT // 切れた
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  loginCode String?  @unique
+  createdAt DateTime @default(now())
+
+  updatedItems Item[]         @relation("ItemLastUpdatedBy")
+  historyEntries StatusHistoryEntry[]
+}
+
+/// カテゴリは固定enumにせず自由入力の文字列にしている(「あったら良い機能」の
+/// カテゴリフィルタは、実際に使われている値をDISTINCTで拾って選択肢にする)。
+/// 新規追加フォームでは洗剤・紙類・調味料・日用品などをよく使う候補として
+/// サジェストしつつ、自由に追加できるようにする。
+model Item {
+  id        String      @id @default(cuid())
+  name      String
+  category  String
+  status    StockStatus @default(NORMAL)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  lastUpdatedById String?
+  lastUpdatedBy   User?   @relation("ItemLastUpdatedBy", fields: [lastUpdatedById], references: [id])
+
+  history StatusHistoryEntry[]
+
+  @@index([category])
+  @@index([status])
+}
+
+/// 品目ごとの残量変更履歴(「あったら良い機能」)。ItemのstatusとupdatedAtは
+/// 常に最新の状態を指すだけなので、変更のたびにここへ1行追記する。
+model StatusHistoryEntry {
+  id        String      @id @default(cuid())
+  itemId    String
+  userId    String?
+  fromStatus StockStatus?
+  toStatus  StockStatus
+  createdAt DateTime    @default(now())
+
+  item Item  @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([itemId, createdAt])
+}
