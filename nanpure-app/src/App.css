@@ -1,0 +1,446 @@
+.app {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+  gap: 16px;
+  max-width: 960px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ---------- 難易度選択 ---------- */
+
+.difficulty-select {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding-top: 32px;
+  text-align: center;
+  width: 100%;
+}
+
+.difficulty-select h1 {
+  font-size: 32px;
+  letter-spacing: 0.08em;
+}
+
+.difficulty-select .lead {
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+.difficulty-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  width: 100%;
+  max-width: 720px;
+}
+
+.difficulty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--panel-bg);
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+
+.difficulty-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+}
+
+.difficulty-card__level {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.difficulty-card__label {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.difficulty-card__desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* ---------- 生成中 ---------- */
+
+.generating {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--text-muted);
+}
+
+.generating__spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 4px solid var(--border);
+  border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- ゲームヘッダー ---------- */
+
+.game-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 480px;
+  gap: 8px;
+}
+
+.game-header__back,
+.game-header__new {
+  border: 1px solid var(--border);
+  background: var(--panel-bg);
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.game-header__info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.3;
+}
+
+.game-header__difficulty {
+  font-weight: 700;
+}
+
+.game-header__timer {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* ---------- メインレイアウト ---------- */
+
+.game-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+}
+
+@media (min-width: 720px) {
+  .game-main {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: center;
+  }
+}
+
+.board-area {
+  position: relative;
+  width: min(92vw, 480px);
+}
+
+.side-area {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(92vw, 480px);
+}
+
+/* ---------- 盤面 ---------- */
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  grid-template-rows: repeat(9, 1fr);
+  aspect-ratio: 1;
+  width: 100%;
+  background: var(--panel-bg);
+  border: 2px solid var(--border-strong);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.cell {
+  border: none;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-bg);
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+}
+
+.cell--block-left {
+  border-left: 2px solid var(--border-strong);
+}
+
+.cell--block-top {
+  border-top: 2px solid var(--border-strong);
+}
+
+.cell--edge-right {
+  border-right: none;
+}
+
+.cell--edge-bottom {
+  border-bottom: none;
+}
+
+.cell--peer {
+  background: var(--peer-bg);
+}
+
+.cell--same-value {
+  background: var(--same-value-bg);
+}
+
+.cell--selected {
+  background: var(--selected-bg);
+}
+
+.cell--conflict .cell__value {
+  color: var(--error);
+}
+
+.cell--conflict {
+  background: var(--error-bg);
+}
+
+.cell--hint-secondary {
+  background: var(--hint-secondary-bg);
+}
+
+.cell--hint-primary {
+  background: var(--hint-primary-bg);
+}
+
+.cell__value {
+  font-size: clamp(16px, 4.4vw, 26px);
+  font-weight: 500;
+  color: var(--user-text);
+}
+
+.cell--given .cell__value {
+  color: var(--given-text);
+  font-weight: 700;
+}
+
+.cell__notes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  width: 100%;
+  height: 100%;
+  padding: 2px;
+}
+
+.cell__note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(7px, 1.8vw, 11px);
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.cell__note--hint {
+  color: var(--accent-contrast);
+  background: #ffb020;
+  border-radius: 3px;
+  font-weight: 700;
+}
+
+/* ---------- クリア表示 ---------- */
+
+.solved-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 22, 28, 0.72);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #fff;
+}
+
+.solved-overlay__title {
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.solved-overlay__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.solved-overlay__actions button {
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+}
+
+/* ---------- ナンバーパッド ---------- */
+
+.number-pad {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: var(--shadow);
+}
+
+.number-pad__digits {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 6px;
+}
+
+.number-pad__digit {
+  position: relative;
+  aspect-ratio: 1;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.number-pad__digit:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.number-pad__remaining {
+  position: absolute;
+  bottom: 2px;
+  right: 4px;
+  font-size: 9px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.number-pad__tools {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.number-pad__tool {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--bg);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.number-pad__tool--active {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border-color: var(--accent);
+}
+
+/* ---------- ヒントパネル ---------- */
+
+.hint-panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hint-panel--idle {
+  align-items: center;
+}
+
+.hint-panel__request {
+  width: 100%;
+  border: none;
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hint-panel__technique {
+  font-weight: 700;
+  color: var(--accent);
+  font-size: 13px;
+}
+
+.hint-panel__text {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.hint-panel__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.hint-panel__apply {
+  flex: 1;
+  border: none;
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hint-panel__close {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: var(--bg);
+  cursor: pointer;
+}
