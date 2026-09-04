@@ -47,6 +47,7 @@ function App() {
             pullsSincePity={game.player.pullCountSinceRare}
             onPullSingle={game.pullSingle}
             onPullMulti={game.pullMulti}
+            onAddStones={game.addStones}
           />
         )}
         {tab === 'box' && <MonsterBoxScreen ownedMonsters={game.ownedMonsters} />}

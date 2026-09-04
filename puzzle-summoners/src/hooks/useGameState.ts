@@ -119,6 +119,11 @@ export const useGameState = () => {
     setPlayer(createInitialPlayerState())
   }, [])
 
+  // このアプリは実際の課金を伴わないため、遊びたいときにいつでも魔法石を補充できるようにしている
+  const addStones = useCallback((amount: number) => {
+    setPlayer((prev) => ({ ...prev, stones: prev.stones + amount }))
+  }, [])
+
   return {
     player,
     ownedMonsters,
@@ -133,6 +138,7 @@ export const useGameState = () => {
     isStageCleared,
     completeStage,
     resetProgress,
+    addStones,
   }
 }
 
