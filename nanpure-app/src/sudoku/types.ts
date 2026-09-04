@@ -52,4 +52,6 @@ export interface GeneratedPuzzle {
   difficulty: Difficulty
   givenCount: number
   ratedTier: TechniqueTier
+  /** この問題を再現するための乱数seed（同じ難易度・同じseedなら常に同一の問題になる） */
+  seed: number
 }

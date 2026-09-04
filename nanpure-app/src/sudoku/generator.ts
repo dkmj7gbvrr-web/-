@@ -1,5 +1,7 @@
 import { cloneGrid, computeCandidates, isComplete } from './board'
 import { applyStepToCandidates, findNextStep } from './techniques'
+import { mulberry32, randomSeed } from './rng'
+import type { Rng } from './rng'
 import { countSolutions, generateSolvedGrid } from './solver'
 import type { Difficulty, GeneratedPuzzle, Grid, TechniqueTier } from './types'
 
@@ -20,10 +22,10 @@ const RANGES: Record<Difficulty, DifficultyRange> = {
   5: { minGivenFloor: 20, minTier: 5, maxTier: 6, requireStuck: true },
 }
 
-const shuffledIndices = (): number[] => {
+const shuffledIndices = (rng: Rng): number[] => {
   const arr = Array.from({ length: 81 }, (_, i) => i)
   for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
+    const j = Math.floor(rng() * (i + 1))
     ;[arr[i], arr[j]] = [arr[j], arr[i]]
   }
   return arr
@@ -74,12 +76,12 @@ const MAX_CARVE_PASSES = 4
  * それ以外はmaxTierを超えない範囲でできるだけ間引く（マス除去のたびに評価し直し、
  * 難易度の上限を超える除去は取り消す）ことで、指定難易度ぎりぎりの問題を作る。
  */
-const carve = (solved: Grid, range: DifficultyRange): Grid => {
+const carve = (solved: Grid, range: DifficultyRange, rng: Rng): Grid => {
   const grid = cloneGrid(solved)
 
   for (let pass = 0; pass < MAX_CARVE_PASSES; pass++) {
     let improved = false
-    for (const cell of shuffledIndices()) {
+    for (const cell of shuffledIndices(rng)) {
       if (countGivens(grid) <= range.minGivenFloor) return grid
       if (grid[cell] === 0) continue
 
@@ -106,21 +108,32 @@ const carve = (solved: Grid, range: DifficultyRange): Grid => {
   return grid
 }
 
-const TIME_BUDGET_MS = 4000
+export interface GeneratePuzzleOptions {
+  /**
+   * 生成に使う乱数のseed。同じ難易度・同じseedを指定すると常に同一の問題が生成される
+   * （URLなどで問題を共有し、複数人が全く同じ盤面で対戦するのに使う）。省略時はランダム。
+   */
+  seed?: number
+  maxAttempts?: number
+}
 
 /**
  * 指定難易度のナンプレを生成する。
  * 完成盤面をランダム生成→難易度上限を超えない範囲でできるだけ間引く→実装済み技巧で評価、を
- * 目標の難易度レンジに達するか時間予算を使い切るまで繰り返す。
+ * 目標の難易度レンジに達するかmaxAttemptsに達するまで繰り返す。
+ * 生成過程はすべてseedから作った乱数生成器（rng）にのみ依存するため、同じseedからは
+ * 実行環境やタイミングに関わらず常にビット単位で同一の問題が再現される。
  */
-export const generatePuzzle = (difficulty: Difficulty, maxAttempts = 40): GeneratedPuzzle => {
+export const generatePuzzle = (difficulty: Difficulty, options: GeneratePuzzleOptions = {}): GeneratedPuzzle => {
+  const seed = options.seed ?? randomSeed()
+  const maxAttempts = options.maxAttempts ?? 40
+  const rng = mulberry32(seed)
   const range = RANGES[difficulty]
   let best: GeneratedPuzzle | null = null
-  const deadline = Date.now() + TIME_BUDGET_MS
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const solution = generateSolvedGrid()
-    const puzzle = carve(solution, range)
+    const solution = generateSolvedGrid(rng)
+    const puzzle = carve(solution, range, rng)
     const givenCount = countGivens(puzzle)
     const ratedTier = rateDifficulty(puzzle)
 
@@ -134,6 +147,7 @@ export const generatePuzzle = (difficulty: Difficulty, maxAttempts = 40): Genera
       difficulty,
       givenCount,
       ratedTier,
+      seed,
     }
 
     if (tierOk) return candidate
@@ -145,8 +159,6 @@ export const generatePuzzle = (difficulty: Difficulty, maxAttempts = 40): Genera
       const candDiff = Math.abs(ratedTier - range.minTier)
       if (candDiff < bestDiff) best = candidate
     }
-
-    if (Date.now() > deadline) break
   }
 
   return best as GeneratedPuzzle

@@ -3,10 +3,28 @@ import './App.css'
 import { Board } from './components/Board'
 import { DifficultySelector } from './components/DifficultySelector'
 import { HintPanel } from './components/HintPanel'
+import { InviteShare } from './components/InviteShare'
 import { NumberPad } from './components/NumberPad'
 import { useSudokuGame } from './hooks/useSudokuGame'
 import { DIFFICULTIES } from './sudoku/types'
-import type { Digit } from './sudoku/types'
+import type { Difficulty, Digit } from './sudoku/types'
+
+const VALID_LEVELS: Difficulty[] = [1, 2, 3, 4, 5]
+
+const parseSharedPuzzle = (): { level: Difficulty; seed: number } | null => {
+  const params = new URLSearchParams(window.location.search)
+  const levelParam = params.get('level')
+  const seedParam = params.get('seed')
+  if (!levelParam || !seedParam) return null
+
+  const level = Number(levelParam)
+  if (!VALID_LEVELS.includes(level as Difficulty)) return null
+
+  const seed = Number.parseInt(seedParam, 36)
+  if (!Number.isFinite(seed)) return null
+
+  return { level: level as Difficulty, seed }
+}
 
 const formatTime = (totalSeconds: number): string => {
   const m = Math.floor(totalSeconds / 60)
@@ -70,6 +88,13 @@ function App() {
     return () => window.removeEventListener('keydown', handler)
   }, [puzzle, isSolved, selected, inputDigit, eraseSelected, undo, setSelected])
 
+  useEffect(() => {
+    const shared = parseSharedPuzzle()
+    if (shared) startNewGame(shared.level, shared.seed)
+    // 起動時のURL共有問題の読み込みは一度だけ行う
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   if (difficulty === null) {
     return (
       <div className="app">
@@ -105,6 +130,8 @@ function App() {
           新しい問題
         </button>
       </header>
+
+      <InviteShare difficulty={difficulty} seed={puzzle.seed} />
 
       <main className="game-main">
         <div className="board-area">

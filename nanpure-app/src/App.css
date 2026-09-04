@@ -143,6 +143,21 @@
   font-size: 13px;
 }
 
+/* ---------- 招待リンク ---------- */
+
+.invite-share {
+  width: 100%;
+  max-width: 480px;
+  border: 1px dashed var(--accent);
+  border-radius: 8px;
+  padding: 10px;
+  background: transparent;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+
 /* ---------- メインレイアウト ---------- */
 
 .game-main {
