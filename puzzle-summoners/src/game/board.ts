@@ -179,17 +179,47 @@ export interface CascadeResult {
   readonly groups: readonly MatchGroup[]
 }
 
-/** マッチが無くなるまで「消去→落下→補充」を繰り返し、発生した全コンボを集計する */
-export const resolveCascades = (board: Board, rng: Rng): CascadeResult => {
+export interface CascadeStep {
+  /** この段で消えるマス（アニメーション用のハイライト対象） */
+  readonly matchedCells: readonly Position[]
+  readonly groups: readonly MatchGroup[]
+  /** マッチしたマスを消しただけの盤面（落下・補充前） */
+  readonly boardAfterClear: Board
+  /** 落下・補充まで終えた、この段の最終盤面 */
+  readonly boardAfterSettle: Board
+}
+
+/**
+ * マッチが無くなるまで「消去→落下→補充」を1段ずつ繰り返し、各段の状態を記録する。
+ * 演出（ハイライト→消去→落下）を段階的に見せるためにBattleScreenから利用する。
+ */
+export const resolveCascadeSteps = (board: Board, rng: Rng): CascadeStep[] => {
+  const steps: CascadeStep[] = []
   let current = board
-  const groups: MatchGroup[] = []
 
   for (;;) {
-    const found = findMatchGroups(current)
-    if (found.length === 0) break
-    groups.push(...found)
-    current = refill(applyGravity(removeGroups(current, found)), rng)
+    const groups = findMatchGroups(current)
+    if (groups.length === 0) break
+
+    const boardAfterClear = removeGroups(current, groups)
+    const boardAfterSettle = refill(applyGravity(boardAfterClear), rng)
+    steps.push({
+      matchedCells: groups.flatMap((g) => g.cells),
+      groups,
+      boardAfterClear,
+      boardAfterSettle,
+    })
+    current = boardAfterSettle
   }
 
-  return { finalBoard: current, groups }
+  return steps
+}
+
+/** マッチが無くなるまで「消去→落下→補充」を繰り返し、発生した全コンボを集計する */
+export const resolveCascades = (board: Board, rng: Rng): CascadeResult => {
+  const steps = resolveCascadeSteps(board, rng)
+  return {
+    finalBoard: steps.length > 0 ? steps[steps.length - 1].boardAfterSettle : board,
+    groups: steps.flatMap((s) => s.groups),
+  }
 }

@@ -1,11 +1,13 @@
-import { useMemo, useRef, useState } from 'react'
-import type { Board } from '../game/board'
-import { createRandomBoard, resolveCascades } from '../game/board'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { Board, CascadeStep } from '../game/board'
+import { createRandomBoard, resolveCascadeSteps } from '../game/board'
 import { computeTeamStats, computeTurnResult } from '../game/battle'
+import type { TeamStats } from '../game/battle'
 import { mulberry32, randomSeed } from '../game/rng'
 import type { AttackElement, MonsterDef, Stage } from '../game/types'
 import { ELEMENT_META } from '../game/orbTheme'
 import { OrbBoard } from './OrbBoard'
+import type { OrbAnimState } from './OrbBoard'
 import { HpBar } from './HpBar'
 import type { StageClearOutcome } from '../hooks/useGameState'
 
@@ -26,23 +28,71 @@ interface PendingBoost {
   readonly multiplier: number
 }
 
+interface FloatingText {
+  readonly id: number
+  readonly target: 'enemy' | 'team'
+  readonly text: string
+  readonly kind: 'damage' | 'heal'
+}
+
+interface ComboPopup {
+  readonly id: number
+  readonly combo: number
+}
+
 type BattleStatus = 'playing' | 'won' | 'lost'
+
+const HIGHLIGHT_MS = 220
+const CLEAR_MS = 200
+const SETTLE_MS = 420
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+const positionsToAnimMap = (positions: readonly { row: number; col: number }[], state: OrbAnimState) => {
+  const map = new Map<string, OrbAnimState>()
+  for (const { row, col } of positions) map.set(`${row}-${col}`, state)
+  return map
+}
+
+const collectRefilledPositions = (boardAfterClear: Board) => {
+  const positions: { row: number; col: number }[] = []
+  boardAfterClear.forEach((rowCells, row) => {
+    rowCells.forEach((cell, col) => {
+      if (cell === null) positions.push({ row, col })
+    })
+  })
+  return positions
+}
 
 export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: BattleScreenProps) => {
   const [rng] = useState(() => mulberry32(randomSeed()))
   const team = useMemo(() => computeTeamStats(partyMonsterDefs), [partyMonsterDefs])
 
   const [board, setBoard] = useState<Board>(() => createRandomBoard(rng))
+  const [cellAnim, setCellAnim] = useState<ReadonlyMap<string, OrbAnimState> | undefined>(undefined)
   const [enemyHp, setEnemyHp] = useState(stage.enemy.maxHp)
   const [teamHp, setTeamHp] = useState(team.maxHp)
   const [status, setStatus] = useState<BattleStatus>('playing')
+  const [animating, setAnimating] = useState(false)
   const [log, setLog] = useState<LogEntry[]>([])
   const [outcome, setOutcome] = useState<StageClearOutcome | null>(null)
   const [skillCooldowns, setSkillCooldowns] = useState<number[]>(() =>
     partyMonsterDefs.map((m) => m.activeSkill.maxCooldown),
   )
   const [pendingBoost, setPendingBoost] = useState<PendingBoost | null>(null)
+  const [floatingTexts, setFloatingTexts] = useState<FloatingText[]>([])
+  const [comboPopup, setComboPopup] = useState<ComboPopup | null>(null)
   const logIdRef = useRef(0)
+  const floatingIdRef = useRef(0)
+  const comboIdRef = useRef(0)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   const pushLog = (text: string) => {
     logIdRef.current += 1
@@ -50,8 +100,17 @@ export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: Batt
     setLog((prev) => [{ id, text }, ...prev].slice(0, 6))
   }
 
+  const spawnFloatingText = (target: 'enemy' | 'team', text: string, kind: 'damage' | 'heal') => {
+    floatingIdRef.current += 1
+    setFloatingTexts((prev) => [...prev, { id: floatingIdRef.current, target, text, kind }])
+  }
+
+  const removeFloatingText = (id: number) => {
+    setFloatingTexts((prev) => prev.filter((f) => f.id !== id))
+  }
+
   const handleUseSkill = (index: number) => {
-    if (status !== 'playing') return
+    if (status !== 'playing' || animating) return
     const monster = partyMonsterDefs[index]
     if (!monster || skillCooldowns[index] > 0) return
 
@@ -61,6 +120,7 @@ export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: Batt
     if (effect.kind === 'damage') {
       const nextEnemyHp = Math.max(0, enemyHp - effect.amount)
       setEnemyHp(nextEnemyHp)
+      spawnFloatingText('enemy', `-${effect.amount}`, 'damage')
       pushLog(`${monster.name}のスキル「${skill.name}」！ ${stage.enemy.name}に${effect.amount}ダメージ！`)
       if (nextEnemyHp <= 0) {
         setStatus('won')
@@ -69,6 +129,7 @@ export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: Batt
       }
     } else if (effect.kind === 'heal') {
       setTeamHp(Math.min(team.maxHp, teamHp + effect.amount))
+      spawnFloatingText('team', `+${effect.amount}`, 'heal')
       pushLog(`${monster.name}のスキル「${skill.name}」！ HPが${effect.amount}回復した`)
     } else {
       setPendingBoost({ element: effect.element, multiplier: effect.multiplier })
@@ -80,14 +141,80 @@ export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: Batt
     setSkillCooldowns((prev) => prev.map((c, i) => (i === index ? skill.maxCooldown : c)))
   }
 
-  const handleDragEnd = (finalBoard: Board) => {
-    if (status !== 'playing') return
+  const playCascadeSteps = async (steps: readonly CascadeStep[], activeTeam: TeamStats) => {
+    let currentEnemyHp = enemyHp
+    let currentTeamHp = teamHp
+    let cumulativeCombo = 0
 
-    const { finalBoard: settledBoard, groups } = resolveCascades(finalBoard, rng)
-    setBoard(settledBoard)
+    for (const step of steps) {
+      setCellAnim(positionsToAnimMap(step.matchedCells, 'highlight'))
+      await sleep(HIGHLIGHT_MS)
+      if (!mountedRef.current) return
+
+      setCellAnim(positionsToAnimMap(step.matchedCells, 'clearing'))
+      await sleep(CLEAR_MS)
+      if (!mountedRef.current) return
+
+      const refilled = collectRefilledPositions(step.boardAfterClear)
+      setBoard(step.boardAfterSettle)
+      setCellAnim(positionsToAnimMap(refilled, 'popping'))
+
+      cumulativeCombo += step.groups.length
+      const stepResult = computeTurnResult(step.groups, activeTeam)
+
+      if (stepResult.damageToEnemy > 0) {
+        currentEnemyHp = Math.max(0, currentEnemyHp - stepResult.damageToEnemy)
+        setEnemyHp(currentEnemyHp)
+        spawnFloatingText('enemy', `-${stepResult.damageToEnemy}`, 'damage')
+      }
+      if (stepResult.healAmount > 0) {
+        currentTeamHp = Math.min(team.maxHp, currentTeamHp + stepResult.healAmount)
+        setTeamHp(currentTeamHp)
+        spawnFloatingText('team', `+${stepResult.healAmount}`, 'heal')
+      }
+
+      comboIdRef.current += 1
+      setComboPopup({ id: comboIdRef.current, combo: cumulativeCombo })
+      pushLog(`${cumulativeCombo}コンボ！ ${stage.enemy.name}に${stepResult.damageToEnemy}ダメージ！`)
+
+      if (currentEnemyHp <= 0) {
+        setStatus('won')
+        setOutcome(onFinish(true))
+        pushLog(`${stage.enemy.name}を倒した！`)
+        setCellAnim(undefined)
+        setAnimating(false)
+        return
+      }
+
+      await sleep(SETTLE_MS)
+      if (!mountedRef.current) return
+      setCellAnim(undefined)
+    }
+
+    const damageTaken = stage.enemy.atk
+    const nextTeamHp = Math.max(0, currentTeamHp - damageTaken)
+    setTeamHp(nextTeamHp)
+    spawnFloatingText('team', `-${damageTaken}`, 'damage')
+    pushLog(`${stage.enemy.name}の攻撃！ ${damageTaken}ダメージを受けた`)
+
+    if (nextTeamHp <= 0) {
+      setStatus('lost')
+      onFinish(false)
+    }
+
+    setAnimating(false)
+  }
+
+  const handleDragEnd = (finalBoard: Board) => {
+    if (status !== 'playing' || animating) return
+
+    setBoard(finalBoard)
+    setComboPopup(null)
+
+    const steps = resolveCascadeSteps(finalBoard, rng)
     setSkillCooldowns((prev) => prev.map((c) => Math.max(0, c - 1)))
 
-    const activeTeam = pendingBoost
+    const activeTeam: TeamStats = pendingBoost
       ? {
           ...team,
           atkByElement: {
@@ -98,40 +225,13 @@ export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: Batt
       : team
     if (pendingBoost) setPendingBoost(null)
 
-    if (groups.length === 0) {
+    if (steps.length === 0) {
       pushLog('コンボなし…')
       return
     }
 
-    const result = computeTurnResult(groups, activeTeam)
-    const nextEnemyHp = result.damageToEnemy > 0 ? Math.max(0, enemyHp - result.damageToEnemy) : enemyHp
-    const healedTeamHp = result.healAmount > 0 ? Math.min(team.maxHp, teamHp + result.healAmount) : teamHp
-
-    if (result.damageToEnemy > 0) {
-      setEnemyHp(nextEnemyHp)
-      pushLog(`${result.comboCount}コンボ！ ${stage.enemy.name}に${result.damageToEnemy}ダメージ！`)
-    }
-    if (result.healAmount > 0) {
-      setTeamHp(healedTeamHp)
-      pushLog(`回復！ HPが${result.healAmount}回復した`)
-    }
-
-    if (nextEnemyHp <= 0) {
-      setStatus('won')
-      setOutcome(onFinish(true))
-      pushLog(`${stage.enemy.name}を倒した！`)
-      return
-    }
-
-    const damageTaken = stage.enemy.atk
-    const nextTeamHp = Math.max(0, healedTeamHp - damageTaken)
-    setTeamHp(nextTeamHp)
-    pushLog(`${stage.enemy.name}の攻撃！ ${damageTaken}ダメージを受けた`)
-
-    if (nextTeamHp <= 0) {
-      setStatus('lost')
-      onFinish(false)
-    }
+    setAnimating(true)
+    void playCascadeSteps(steps, activeTeam)
   }
 
   const enemyMeta = ELEMENT_META[stage.enemy.element]
@@ -151,9 +251,28 @@ export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: Batt
         </div>
         <div className="enemy-info">
           <div className="enemy-name">{stage.enemy.name}</div>
-          <HpBar current={enemyHp} max={stage.enemy.maxHp} color="#d9534f" />
+          <div className="hp-bar-anchor">
+            <HpBar current={enemyHp} max={stage.enemy.maxHp} color="#d9534f" />
+            {floatingTexts
+              .filter((f) => f.target === 'enemy')
+              .map((f) => (
+                <span
+                  key={f.id}
+                  className={`floating-text floating-text--${f.kind}`}
+                  onAnimationEnd={() => removeFloatingText(f.id)}
+                >
+                  {f.text}
+                </span>
+              ))}
+          </div>
         </div>
       </div>
+
+      {comboPopup && (
+        <div key={comboPopup.id} className={`combo-popup${comboPopup.combo >= 5 ? ' combo-popup--mega' : ''}`}>
+          {comboPopup.combo} COMBO!
+        </div>
+      )}
 
       <div className="battle-log">
         {log.map((entry) => (
@@ -168,7 +287,20 @@ export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: Batt
           リーダー: {team.leaderName ?? 'なし'}
           {partyMonsterDefs[0] && <span className="team-panel-leader-skill">（{partyMonsterDefs[0].leaderSkill.name}）</span>}
         </span>
-        <HpBar current={teamHp} max={team.maxHp} color="#5cb85c" />
+        <div className="hp-bar-anchor">
+          <HpBar current={teamHp} max={team.maxHp} color="#5cb85c" />
+          {floatingTexts
+            .filter((f) => f.target === 'team')
+            .map((f) => (
+              <span
+                key={f.id}
+                className={`floating-text floating-text--${f.kind}`}
+                onAnimationEnd={() => removeFloatingText(f.id)}
+              >
+                {f.text}
+              </span>
+            ))}
+        </div>
       </div>
 
       {pendingBoost && (
@@ -180,7 +312,7 @@ export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: Batt
       <div className="skill-bar">
         {partyMonsterDefs.map((monster, index) => {
           const cooldown = skillCooldowns[index] ?? 0
-          const ready = cooldown === 0 && status === 'playing'
+          const ready = cooldown === 0 && status === 'playing' && !animating
           return (
             <button
               key={index}
@@ -198,7 +330,7 @@ export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: Batt
         })}
       </div>
 
-      <OrbBoard board={board} disabled={status !== 'playing'} onDragEnd={handleDragEnd} />
+      <OrbBoard board={board} disabled={status !== 'playing' || animating} onDragEnd={handleDragEnd} cellAnim={cellAnim} />
 
       {status !== 'playing' && (
         <div className="battle-result-overlay">

@@ -6,10 +6,14 @@ import { ELEMENT_META } from '../game/orbTheme'
 
 const DRAG_TIME_MS = 5000
 
+export type OrbAnimState = 'highlight' | 'clearing' | 'popping'
+
 interface OrbBoardProps {
   readonly board: Board
   readonly disabled: boolean
   readonly onDragEnd: (finalBoard: Board) => void
+  /** マス "row-col" ごとの演出状態（コンボ消去のハイライト・消去・出現アニメーション用） */
+  readonly cellAnim?: ReadonlyMap<string, OrbAnimState>
 }
 
 const stepToward = (from: Position, to: Position): Position => {
@@ -19,7 +23,7 @@ const stepToward = (from: Position, to: Position): Position => {
   return { row: from.row, col: from.col + Math.sign(to.col - from.col) }
 }
 
-export const OrbBoard = ({ board, disabled, onDragEnd }: OrbBoardProps) => {
+export const OrbBoard = ({ board, disabled, onDragEnd, cellAnim }: OrbBoardProps) => {
   // 親から渡された盤面（ターン確定後の新しい盤面）が変わったら表示を追従させる
   const [syncedBoard, setSyncedBoard] = useState(board)
   const [displayBoard, setDisplayBoard] = useState<Board>(board)
@@ -139,10 +143,11 @@ export const OrbBoard = ({ board, disabled, onDragEnd }: OrbBoardProps) => {
             if (cell === null) return null
             const meta = ELEMENT_META[cell]
             const isDragging = draggingPos?.row === row && draggingPos?.col === col
+            const anim = cellAnim?.get(`${row}-${col}`)
             return (
               <div
                 key={`${row}-${col}`}
-                className={`orb${isDragging ? ' orb--dragging' : ''}`}
+                className={`orb${isDragging ? ' orb--dragging' : ''}${anim ? ` orb--${anim}` : ''}`}
                 style={{
                   gridRow: row + 1,
                   gridColumn: col + 1,

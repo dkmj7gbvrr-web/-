@@ -7,6 +7,7 @@ import {
   isAdjacent,
   refill,
   removeGroups,
+  resolveCascadeSteps,
   resolveCascades,
   swapCells,
   type Board,
@@ -146,5 +147,35 @@ describe('resolveCascades', () => {
     const result = resolveCascades(board, mulberry32(10))
     expect(result.groups.length).toBeGreaterThanOrEqual(2)
     expect(findMatchGroups(result.finalBoard)).toHaveLength(0)
+  })
+})
+
+describe('resolveCascadeSteps', () => {
+  it('マッチがなければステップは空になる', () => {
+    const board = createRandomBoard(mulberry32(2))
+    expect(resolveCascadeSteps(board, mulberry32(2))).toHaveLength(0)
+  })
+
+  it('連鎖するとステップが複数回に分かれ、各ステップのboardAfterSettleが次のステップの入力になる', () => {
+    const board: Board = [
+      ['fire', 'fire', 'fire', 'water', 'water', 'water'],
+      ['wood', 'light', 'dark', 'wood', 'light', 'dark'],
+    ]
+    const steps = resolveCascadeSteps(board, mulberry32(10))
+    expect(steps.length).toBeGreaterThanOrEqual(1)
+
+    for (const step of steps) {
+      // boardAfterClearはマッチしたマスがすべて空になっている
+      for (const { row, col } of step.matchedCells) {
+        expect(step.boardAfterClear[row][col]).toBeNull()
+      }
+      // boardAfterSettleは落下・補充が完了しており、空マスが一切残っていない
+      expect(step.boardAfterSettle.flat().every((cell) => cell !== null)).toBe(true)
+    }
+
+    // resolveCascadesの最終盤面・合計コンボ数と整合する
+    const combined = resolveCascades(board, mulberry32(10))
+    expect(steps.at(-1)?.boardAfterSettle).toEqual(combined.finalBoard)
+    expect(steps.reduce((sum, s) => sum + s.groups.length, 0)).toBe(combined.groups.length)
   })
 })
