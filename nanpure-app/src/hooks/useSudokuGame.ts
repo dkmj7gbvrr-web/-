@@ -52,6 +52,7 @@ export const useSudokuGame = () => {
   const [isGenerating, setIsGenerating] = useState(false)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [hint, setHint] = useState<HintDisplay | null>(null)
+  const [history, setHistory] = useState<CellState[][]>([])
 
   const hintCandidatesRef = useRef<CandidateMap | null>(null)
   const timerRef = useRef<number | null>(null)
@@ -91,6 +92,7 @@ export const useSudokuGame = () => {
       setBoard(createBoard(generated.puzzle))
       setSelected(null)
       setElapsedSeconds(0)
+      setHistory([])
       setIsGenerating(false)
     }, 0)
   }, [])
@@ -101,6 +103,7 @@ export const useSudokuGame = () => {
     setBoard([])
     setSelected(null)
     setHint(null)
+    setHistory([])
     hintCandidatesRef.current = null
   }, [])
 
@@ -113,11 +116,11 @@ export const useSudokuGame = () => {
     setHint(null)
   }
 
-  const placeValue = useCallback((index: number, digit: Digit) => {
-    setBoard((prev) => {
-      const cell = prev[index]
-      if (cell.given) return prev
-      const next = prev.slice()
+  const placeValue = useCallback(
+    (index: number, digit: Digit) => {
+      const cell = board[index]
+      if (!cell || cell.given) return
+      const next = board.slice()
       next[index] = { ...cell, value: digit, notes: 0 }
       if (digit !== 0) {
         const bit = digitBit(digit)
@@ -127,33 +130,48 @@ export const useSudokuGame = () => {
           }
         }
       }
-      return next
-    })
-    onBoardMutated()
-  }, [])
+      setHistory((h) => [...h, board])
+      setBoard(next)
+      onBoardMutated()
+    },
+    [board],
+  )
 
-  const toggleNote = useCallback((index: number, digit: Digit) => {
-    setBoard((prev) => {
-      const cell = prev[index]
-      if (cell.given || cell.value !== 0) return prev
-      const next = prev.slice()
+  const toggleNote = useCallback(
+    (index: number, digit: Digit) => {
+      const cell = board[index]
+      if (!cell || cell.given || cell.value !== 0) return
+      const next = board.slice()
       const bit = digitBit(digit)
       next[index] = { ...cell, notes: cell.notes ^ bit }
-      return next
-    })
-  }, [])
+      setHistory((h) => [...h, board])
+      setBoard(next)
+    },
+    [board],
+  )
 
-  const eraseCell = useCallback((index: number) => {
-    setBoard((prev) => {
-      const cell = prev[index]
-      if (cell.given) return prev
-      if (cell.value === 0 && cell.notes === 0) return prev
-      const next = prev.slice()
+  const eraseCell = useCallback(
+    (index: number) => {
+      const cell = board[index]
+      if (!cell || cell.given) return
+      if (cell.value === 0 && cell.notes === 0) return
+      const next = board.slice()
       next[index] = { ...cell, value: 0, notes: 0 }
-      return next
-    })
-    onBoardMutated()
-  }, [])
+      setHistory((h) => [...h, board])
+      setBoard(next)
+      onBoardMutated()
+    },
+    [board],
+  )
+
+  const undo = useCallback(() => {
+    if (history.length === 0) return
+    const previousBoard = history[history.length - 1]
+    setHistory(history.slice(0, -1))
+    setBoard(previousBoard)
+    setHint(null)
+    hintCandidatesRef.current = null
+  }, [history])
 
   const inputDigit = useCallback(
     (digit: Digit) => {
@@ -217,18 +235,17 @@ export const useSudokuGame = () => {
 
   const applyHintElimination = useCallback(() => {
     if (!hint || hint.kind !== 'step' || hint.step.fill) return
-    setBoard((prev) => {
-      const next = prev.slice()
-      for (const { index, digit } of hint.step.eliminations) {
-        const bit = digitBit(digit)
-        if (next[index].notes & bit) {
-          next[index] = { ...next[index], notes: next[index].notes & ~bit }
-        }
+    const next = board.slice()
+    for (const { index, digit } of hint.step.eliminations) {
+      const bit = digitBit(digit)
+      if (next[index].notes & bit) {
+        next[index] = { ...next[index], notes: next[index].notes & ~bit }
       }
-      return next
-    })
+    }
+    setHistory((h) => [...h, board])
+    setBoard(next)
     setHint(null)
-  }, [hint])
+  }, [board, hint])
 
   const remainingCounts = useMemo(() => {
     const counts: Record<Digit, number> = { 0: 0, 1: 9, 2: 9, 3: 9, 4: 9, 5: 9, 6: 9, 7: 9, 8: 9, 9: 9 }
@@ -256,6 +273,8 @@ export const useSudokuGame = () => {
     backToMenu,
     inputDigit,
     eraseSelected,
+    undo,
+    canUndo: history.length > 0,
     requestHint,
     applyHintFill,
     applyHintElimination,
