@@ -6,9 +6,11 @@ on:
       - main
       - claude/pokefuta-visit-tracker-f4uqq5
       - claude/nanpure-app-dev-u0i5aq
+      - claude/test-tube-liquid-game-4trso3
     paths:
       - "pokefuta-visit-tracker/**"
       - "nanpure-app/**"
+      - "test-tube-liquid-game/**"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 
@@ -33,6 +35,7 @@ jobs:
           cache-dependency-path: |
             pokefuta-visit-tracker/package-lock.json
             nanpure-app/package-lock.json
+            test-tube-liquid-game/package-lock.json
 
       - name: Build pokefuta-visit-tracker
         working-directory: pokefuta-visit-tracker
@@ -46,12 +49,21 @@ jobs:
           npm ci
           npm run build
 
+      - name: Build test-tube-liquid-game
+        working-directory: test-tube-liquid-game
+        run: |
+          npm ci
+          npm run test
+          npm run build
+
       - name: Assemble combined site
         run: |
           mkdir -p site
           cp -r pokefuta-visit-tracker/dist/. site/
           mkdir -p site/nanpure-app
           cp -r nanpure-app/dist/. site/nanpure-app/
+          mkdir -p site/test-tube-liquid-game
+          cp -r test-tube-liquid-game/dist/. site/test-tube-liquid-game/
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

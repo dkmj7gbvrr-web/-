@@ -1,0 +1,270 @@
+.app {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+  gap: 16px;
+  max-width: 960px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ---------- 難易度選択 ---------- */
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding-top: 32px;
+  text-align: center;
+  width: 100%;
+}
+
+.menu__title {
+  font-size: 32px;
+  letter-spacing: 0.08em;
+}
+
+.menu__lead {
+  color: var(--text-muted);
+  margin-bottom: 16px;
+  max-width: 420px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.menu__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  width: 100%;
+  max-width: 560px;
+}
+
+.menu__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 18px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--panel-bg);
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  transition:
+    transform 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.menu__item:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+}
+
+.menu__item-label {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.menu__item-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* ---------- 生成中 ---------- */
+
+.generating {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--text-muted);
+}
+
+.generating__spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 4px solid var(--border);
+  border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- ゲームヘッダー ---------- */
+
+.game-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 640px;
+  gap: 8px;
+}
+
+.game-header__back,
+.game-header__new {
+  border: 1px solid var(--border);
+  background: var(--panel-bg);
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.game-header__info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  line-height: 1.3;
+}
+
+.game-header__difficulty {
+  font-weight: 700;
+}
+
+.game-header__stat {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* ---------- メインレイアウト ---------- */
+
+.game-main {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+  max-width: 640px;
+}
+
+.tube-area {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 14px;
+  padding: 24px 8px 8px;
+  width: 100%;
+}
+
+/* ---------- 試験管 ---------- */
+
+.tube {
+  border: none;
+  background: none;
+  padding: 8px 4px 0;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  transition: transform 0.15s ease;
+}
+
+.tube:hover {
+  transform: translateY(-4px);
+}
+
+.tube--selected {
+  transform: translateY(-16px);
+}
+
+.tube__glass {
+  display: flex;
+  flex-direction: column-reverse;
+  width: 44px;
+  height: 128px;
+  border: 3px solid var(--border-strong);
+  border-top: none;
+  border-radius: 0 0 14px 14px;
+  overflow: hidden;
+  background: var(--glass-fill);
+  box-shadow: var(--shadow);
+}
+
+.tube--selected .tube__glass {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59, 111, 224, 0.35);
+}
+
+.tube--sorted .tube__glass {
+  border-color: #22c55e;
+}
+
+.tube__segment {
+  flex: 1;
+}
+
+.tube__segment--empty {
+  background: transparent;
+}
+
+/* ---------- ツールバー ---------- */
+
+.toolbar {
+  display: flex;
+  gap: 10px;
+}
+
+.toolbar button {
+  border: 1px solid var(--border);
+  background: var(--panel-bg);
+  border-radius: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.toolbar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ---------- クリア表示 ---------- */
+
+.solved-overlay {
+  position: absolute;
+  inset: -16px;
+  background: rgba(20, 22, 28, 0.72);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #fff;
+}
+
+.solved-overlay__title {
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.solved-overlay__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.solved-overlay__actions button {
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+}
