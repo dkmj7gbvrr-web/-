@@ -80,14 +80,14 @@ export const useSudokuGame = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [puzzle, isSolved])
 
-  const startNewGame = useCallback((level: Difficulty) => {
+  const startNewGame = useCallback((level: Difficulty, seed?: number) => {
     setIsGenerating(true)
     setDifficulty(level)
     setHint(null)
     hintCandidatesRef.current = null
     // 生成中はUIをブロックしすぎないよう次のタスクに回す
     window.setTimeout(() => {
-      const generated = generatePuzzle(level)
+      const generated = generatePuzzle(level, { seed })
       setPuzzle(generated)
       setBoard(createBoard(generated.puzzle))
       setSelected(null)
