@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import type { Board, CascadeStep } from '../game/board'
 import { createRandomBoard, resolveCascadeSteps } from '../game/board'
 import { computeTeamStats, computeTurnResult } from '../game/battle'
@@ -318,7 +319,7 @@ export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: Batt
               key={index}
               type="button"
               className={`skill-button${ready ? ' skill-button--ready' : ''}`}
-              style={{ background: ELEMENT_META[monster.element].color }}
+              style={{ '--skill-color': ELEMENT_META[monster.element].color } as CSSProperties}
               disabled={!ready}
               onClick={() => handleUseSkill(index)}
               title={`${monster.activeSkill.name}: ${monster.activeSkill.description}`}

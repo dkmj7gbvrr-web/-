@@ -608,13 +608,16 @@
   align-items: center;
   justify-content: center;
   gap: 1px;
-  color: var(--accent-contrast);
+  background-color: var(--skill-color, var(--bg-alt));
+  /* クールタイム中は背景の上に暗いスクリムを重ねるだけにし、文字色そのものは暗くしない（属性色によっては
+     filterで明度を下げると文字まで沈んで読めなくなるため） */
+  background-image: linear-gradient(rgba(8, 6, 20, 0.62), rgba(8, 6, 20, 0.62));
+  color: #fff;
   cursor: pointer;
-  filter: grayscale(0.85) brightness(0.55);
 }
 
 .skill-button--ready {
-  filter: none;
+  background-image: none;
   border-color: var(--gold);
   box-shadow: 0 0 10px rgba(243, 193, 75, 0.6);
 }
@@ -626,12 +629,15 @@
 .skill-button-icon {
   font-size: 1.1rem;
   line-height: 1;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6));
 }
 
 .skill-button-status {
   font-size: 0.55rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
 }
 
 .orb-board-wrapper {
