@@ -21,9 +21,9 @@ export const MonsterBoxScreen = ({ ownedMonsters }: MonsterBoxScreenProps) => {
     <div className="screen">
       <h2>モンスターボックス</h2>
       <p className="screen-lead">所持数: {ownedMonsters.length}体（図鑑: {grouped.length}種類）</p>
-      <div className="monster-grid">
+      <div className="monster-grid monster-grid--detailed">
         {grouped.map(({ def, count }) => (
-          <MonsterCard key={def.id} def={def} badge={count > 1 ? `×${count}` : undefined} />
+          <MonsterCard key={def.id} def={def} badge={count > 1 ? `×${count}` : undefined} showSkills />
         ))}
       </div>
     </div>

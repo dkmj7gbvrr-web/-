@@ -1,4 +1,4 @@
-import type { AttackElement, MonsterDef, Rarity } from './types'
+import type { ActiveSkill, AttackElement, LeaderSkill, MonsterDef, Rarity, SkillEffect } from './types'
 
 interface RarityStats {
   readonly hp: number
@@ -17,12 +17,85 @@ const STATS_BY_RARITY: Record<Rarity, RarityStats> = {
   6: { hp: 1300, atk: 480, rcv: 150, leaderMultiplier: 3.0 },
 }
 
+interface RaritySkill {
+  readonly cooldown: number
+  readonly damageAmount: number
+  readonly healAmount: number
+  readonly boostMultiplier: number
+}
+
+/** レアリティが上がるほどスキルは強力かつクールタイムが短くなる */
+const SKILL_BY_RARITY: Record<Rarity, RaritySkill> = {
+  1: { cooldown: 12, damageAmount: 400, healAmount: 300, boostMultiplier: 1.3 },
+  2: { cooldown: 11, damageAmount: 700, healAmount: 500, boostMultiplier: 1.5 },
+  3: { cooldown: 10, damageAmount: 1100, healAmount: 800, boostMultiplier: 1.7 },
+  4: { cooldown: 9, damageAmount: 1700, healAmount: 1200, boostMultiplier: 2.0 },
+  5: { cooldown: 7, damageAmount: 2600, healAmount: 1800, boostMultiplier: 2.5 },
+  6: { cooldown: 6, damageAmount: 4000, healAmount: 2600, boostMultiplier: 3.0 },
+}
+
+/** 属性ごとのアクティブスキルの系統（攻撃・回復・強化） */
+const ACTIVE_SKILL_THEME: Record<AttackElement, { readonly name: string; readonly kind: SkillEffect['kind'] }> = {
+  fire: { name: '火炎弾', kind: 'damage' },
+  water: { name: '癒しの雫', kind: 'heal' },
+  wood: { name: '木の息吹', kind: 'boost' },
+  light: { name: '聖なる光', kind: 'heal' },
+  dark: { name: '闇の衝撃', kind: 'damage' },
+}
+
 const ELEMENT_LABEL: Record<AttackElement, string> = {
   fire: '火',
   water: '水',
   wood: '木',
   light: '光',
   dark: '闇',
+}
+
+/** 属性・レアリティごとのリーダースキルの二つ名（レアリティが上がるほど格上の名になる） */
+const LEADER_TITLE_BY_ELEMENT: Record<AttackElement, readonly string[]> = {
+  fire: ['小さな火種', '燃え盛る闘志', '業火の加護', '紅蓮の号令', '不死鳥の祝福', '紅蓮竜皇の威光'],
+  water: ['清流のしずく', '流れる意志', '深海の守り', '蒼海の号令', '氷結の祝福', '蒼海竜皇の威光'],
+  wood: ['芽吹きの力', '若葉の息吹', '森の守り', '大樹の号令', '豊穣の祝福', '翠嵐竜皇の威光'],
+  light: ['淡い光', '導きの光', '聖なる守り', '光帝の号令', '大天使の祝福', '光輝竜皇の威光'],
+  dark: ['忍び寄る影', '闇の意志', '冥府の守り', '冥府公の号令', '堕天の祝福', '暗黒竜皇の威光'],
+}
+
+const buildLeaderSkill = (element: AttackElement, rarity: Rarity, multiplier: number): LeaderSkill => ({
+  name: LEADER_TITLE_BY_ELEMENT[element][rarity - 1],
+  element,
+  multiplier,
+  description: `${ELEMENT_LABEL[element]}属性の攻撃力が${multiplier}倍になる。`,
+})
+
+const buildActiveSkill = (element: AttackElement, rarity: Rarity): ActiveSkill => {
+  const theme = ACTIVE_SKILL_THEME[element]
+  const skill = SKILL_BY_RARITY[rarity]
+
+  if (theme.kind === 'damage') {
+    const effect: SkillEffect = { kind: 'damage', amount: skill.damageAmount }
+    return {
+      name: theme.name,
+      description: `敵に${skill.damageAmount}ダメージを与える。（${skill.cooldown}ターンに1回）`,
+      maxCooldown: skill.cooldown,
+      effect,
+    }
+  }
+  if (theme.kind === 'heal') {
+    const effect: SkillEffect = { kind: 'heal', amount: skill.healAmount }
+    return {
+      name: theme.name,
+      description: `HPを${skill.healAmount}回復する。（${skill.cooldown}ターンに1回）`,
+      maxCooldown: skill.cooldown,
+      effect,
+    }
+  }
+  const effect: SkillEffect = { kind: 'boost', element, multiplier: skill.boostMultiplier }
+  return {
+    name: theme.name,
+    description: `1ターンの間、${ELEMENT_LABEL[element]}属性の攻撃力が${skill.boostMultiplier}倍になる。（${skill.cooldown}ターンに1回）`,
+    maxCooldown: skill.cooldown,
+    effect,
+  }
 }
 
 interface RawMonster {
@@ -81,11 +154,8 @@ export const MONSTERS: readonly MonsterDef[] = RAW_MONSTERS.map((raw) => {
     baseHp: stats.hp,
     baseAtk: stats.atk,
     baseRcv: stats.rcv,
-    leaderSkill: {
-      element: raw.element,
-      multiplier: stats.leaderMultiplier,
-      description: `${ELEMENT_LABEL[raw.element]}属性の攻撃力が${stats.leaderMultiplier}倍になる。`,
-    },
+    leaderSkill: buildLeaderSkill(raw.element, raw.rarity, stats.leaderMultiplier),
+    activeSkill: buildActiveSkill(raw.element, raw.rarity),
     description: raw.description,
   }
 })

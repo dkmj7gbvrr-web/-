@@ -1,4 +1,4 @@
-import type { Element } from './types'
+import type { Element, SkillEffect } from './types'
 
 export interface ElementMeta {
   readonly label: string
@@ -14,6 +14,12 @@ export const ELEMENT_META: Record<Element, ElementMeta> = {
   light: { label: '光', color: '#d8ae2c', glow: '#fff2a8', icon: '✨' },
   dark: { label: '闇', color: '#7a4fc4', glow: '#c9a8ff', icon: '🌙' },
   heart: { label: '回復', color: '#e0568c', glow: '#ffb3d1', icon: '❤️' },
+}
+
+export const SKILL_KIND_ICON: Record<SkillEffect['kind'], string> = {
+  damage: '💥',
+  heal: '✚',
+  boost: '⬆️',
 }
 
 export const RARITY_STAR_COLOR: Record<number, string> = {

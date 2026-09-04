@@ -226,6 +226,10 @@
   gap: 10px;
 }
 
+.monster-grid--detailed {
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+}
+
 .monster-card {
   position: relative;
   display: flex;
@@ -258,6 +262,39 @@
   font-weight: 700;
   padding: 2px 6px;
   border-radius: 999px;
+}
+
+.monster-card-skill-icon {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+}
+
+.monster-card-skills {
+  align-self: stretch;
+  text-align: left;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.monster-card-skills strong {
+  color: var(--text);
+  font-size: 0.74rem;
 }
 
 .monster-card-portrait {
@@ -331,6 +368,32 @@
 
 .party-slot-empty {
   font-size: 1.5rem;
+  color: var(--text-muted);
+}
+
+.leader-skill-panel {
+  background: linear-gradient(135deg, rgba(243, 193, 75, 0.14), var(--panel-bg) 60%);
+  border: 1px solid var(--gold);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.leader-skill-tag {
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  color: var(--gold);
+  text-transform: uppercase;
+}
+
+.leader-skill-panel h3 {
+  font-size: 1.05rem;
+}
+
+.leader-skill-panel p {
+  font-size: 0.82rem;
   color: var(--text-muted);
 }
 
@@ -514,6 +577,63 @@
   font-size: 0.85rem;
 }
 
+.team-panel-leader-skill {
+  color: var(--gold);
+  font-size: 0.78rem;
+}
+
+.boost-banner {
+  background: rgba(124, 92, 255, 0.18);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  text-align: center;
+  color: var(--text);
+}
+
+.skill-bar {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.skill-button {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  color: var(--accent-contrast);
+  cursor: pointer;
+  filter: grayscale(0.85) brightness(0.55);
+}
+
+.skill-button--ready {
+  filter: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 10px rgba(243, 193, 75, 0.6);
+}
+
+.skill-button:disabled {
+  cursor: not-allowed;
+}
+
+.skill-button-icon {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.skill-button-status {
+  font-size: 0.55rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 .orb-board-wrapper {
   display: flex;
   flex-direction: column;
@@ -592,4 +712,128 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+/* --- Gacha reveal --- */
+@keyframes gacha-pop-in {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes gacha-burst-ring {
+  0% {
+    transform: translate(-50%, -50%) scale(0.2);
+    opacity: 0.9;
+    border-width: 6px;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.8);
+    opacity: 0;
+    border-width: 1px;
+  }
+}
+
+@keyframes gacha-flash-pulse {
+  0% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes gacha-mystery-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 rgba(124, 92, 255, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 18px rgba(124, 92, 255, 0.6);
+  }
+}
+
+.gacha-reveal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 4, 16, 0.9);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px 16px;
+  overflow-y: auto;
+  cursor: pointer;
+}
+
+.gacha-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle, var(--flash-color), transparent 70%);
+  animation: gacha-flash-pulse 0.7s ease-out forwards;
+}
+
+.gacha-reveal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 10px;
+  max-width: 460px;
+  width: 100%;
+  cursor: default;
+}
+
+.gacha-reveal-slot {
+  min-height: 128px;
+  display: flex;
+}
+
+.gacha-mystery-card {
+  flex: 1;
+  border: none;
+  background: var(--bg-alt);
+  border: 2px dashed var(--border-strong);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  animation: gacha-mystery-pulse 1.4s ease-in-out infinite;
+}
+
+.gacha-reveal-card {
+  position: relative;
+  flex: 1;
+  display: flex;
+  animation: gacha-pop-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.gacha-reveal-card--burst::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  border: 6px solid var(--burst-color);
+  pointer-events: none;
+  animation: gacha-burst-ring 0.7s ease-out both;
+}
+
+.gacha-reveal-footer {
+  cursor: default;
 }

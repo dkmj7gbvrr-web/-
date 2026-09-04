@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { PullRecord } from '../game/gacha'
 import { PITY_THRESHOLD } from '../game/gacha'
-import { MonsterCard } from './MonsterCard'
+import { GachaRevealOverlay } from './GachaRevealOverlay'
 
 interface GachaScreenProps {
   readonly stones: number
@@ -20,7 +20,7 @@ export const GachaScreen = ({
   onPullSingle,
   onPullMulti,
 }: GachaScreenProps) => {
-  const [results, setResults] = useState<readonly PullRecord[] | null>(null)
+  const [reveal, setReveal] = useState<readonly PullRecord[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const runPull = (fn: () => readonly PullRecord[] | null) => {
@@ -30,7 +30,7 @@ export const GachaScreen = ({
       setError('魔法石が足りません！')
       return
     }
-    setResults(pulls)
+    setReveal(pulls)
   }
 
   return (
@@ -53,20 +53,7 @@ export const GachaScreen = ({
 
       {error && <p className="error-text">{error}</p>}
 
-      {results && (
-        <div className="gacha-results">
-          <h3>召喚結果</h3>
-          <div className="gacha-results-grid">
-            {results.map((pull, index) => (
-              <MonsterCard
-                key={`${pull.monster.id}-${index}`}
-                def={pull.monster}
-                badge={pull.pityTriggered ? '天井' : pull.monster.rarity >= 5 ? 'PICKUP' : undefined}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+      {reveal && <GachaRevealOverlay pulls={reveal} onClose={() => setReveal(null)} />}
     </div>
   )
 }

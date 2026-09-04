@@ -3,7 +3,7 @@ import type { Board } from '../game/board'
 import { createRandomBoard, resolveCascades } from '../game/board'
 import { computeTeamStats, computeTurnResult } from '../game/battle'
 import { mulberry32, randomSeed } from '../game/rng'
-import type { MonsterDef, Stage } from '../game/types'
+import type { AttackElement, MonsterDef, Stage } from '../game/types'
 import { ELEMENT_META } from '../game/orbTheme'
 import { OrbBoard } from './OrbBoard'
 import { HpBar } from './HpBar'
@@ -21,6 +21,11 @@ interface LogEntry {
   readonly text: string
 }
 
+interface PendingBoost {
+  readonly element: AttackElement
+  readonly multiplier: number
+}
+
 type BattleStatus = 'playing' | 'won' | 'lost'
 
 export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: BattleScreenProps) => {
@@ -33,6 +38,10 @@ export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: Batt
   const [status, setStatus] = useState<BattleStatus>('playing')
   const [log, setLog] = useState<LogEntry[]>([])
   const [outcome, setOutcome] = useState<StageClearOutcome | null>(null)
+  const [skillCooldowns, setSkillCooldowns] = useState<number[]>(() =>
+    partyMonsterDefs.map((m) => m.activeSkill.maxCooldown),
+  )
+  const [pendingBoost, setPendingBoost] = useState<PendingBoost | null>(null)
   const logIdRef = useRef(0)
 
   const pushLog = (text: string) => {
@@ -41,18 +50,60 @@ export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: Batt
     setLog((prev) => [{ id, text }, ...prev].slice(0, 6))
   }
 
+  const handleUseSkill = (index: number) => {
+    if (status !== 'playing') return
+    const monster = partyMonsterDefs[index]
+    if (!monster || skillCooldowns[index] > 0) return
+
+    const skill = monster.activeSkill
+    const effect = skill.effect
+
+    if (effect.kind === 'damage') {
+      const nextEnemyHp = Math.max(0, enemyHp - effect.amount)
+      setEnemyHp(nextEnemyHp)
+      pushLog(`${monster.name}のスキル「${skill.name}」！ ${stage.enemy.name}に${effect.amount}ダメージ！`)
+      if (nextEnemyHp <= 0) {
+        setStatus('won')
+        setOutcome(onFinish(true))
+        pushLog(`${stage.enemy.name}を倒した！`)
+      }
+    } else if (effect.kind === 'heal') {
+      setTeamHp(Math.min(team.maxHp, teamHp + effect.amount))
+      pushLog(`${monster.name}のスキル「${skill.name}」！ HPが${effect.amount}回復した`)
+    } else {
+      setPendingBoost({ element: effect.element, multiplier: effect.multiplier })
+      pushLog(
+        `${monster.name}のスキル「${skill.name}」！ 次のターン${ELEMENT_META[effect.element].label}属性の攻撃力が${effect.multiplier}倍に！`,
+      )
+    }
+
+    setSkillCooldowns((prev) => prev.map((c, i) => (i === index ? skill.maxCooldown : c)))
+  }
+
   const handleDragEnd = (finalBoard: Board) => {
     if (status !== 'playing') return
 
     const { finalBoard: settledBoard, groups } = resolveCascades(finalBoard, rng)
     setBoard(settledBoard)
+    setSkillCooldowns((prev) => prev.map((c) => Math.max(0, c - 1)))
+
+    const activeTeam = pendingBoost
+      ? {
+          ...team,
+          atkByElement: {
+            ...team.atkByElement,
+            [pendingBoost.element]: team.atkByElement[pendingBoost.element] * pendingBoost.multiplier,
+          },
+        }
+      : team
+    if (pendingBoost) setPendingBoost(null)
 
     if (groups.length === 0) {
       pushLog('コンボなし…')
       return
     }
 
-    const result = computeTurnResult(groups, team)
+    const result = computeTurnResult(groups, activeTeam)
     const nextEnemyHp = result.damageToEnemy > 0 ? Math.max(0, enemyHp - result.damageToEnemy) : enemyHp
     const healedTeamHp = result.healAmount > 0 ? Math.min(team.maxHp, teamHp + result.healAmount) : teamHp
 
@@ -113,8 +164,38 @@ export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: Batt
       </div>
 
       <div className="team-panel">
-        <span>リーダー: {team.leaderName ?? 'なし'}</span>
+        <span>
+          リーダー: {team.leaderName ?? 'なし'}
+          {partyMonsterDefs[0] && <span className="team-panel-leader-skill">（{partyMonsterDefs[0].leaderSkill.name}）</span>}
+        </span>
         <HpBar current={teamHp} max={team.maxHp} color="#5cb85c" />
+      </div>
+
+      {pendingBoost && (
+        <p className="boost-banner">
+          ⬆ 次のターン{ELEMENT_META[pendingBoost.element].label}属性の攻撃力が{pendingBoost.multiplier}倍！
+        </p>
+      )}
+
+      <div className="skill-bar">
+        {partyMonsterDefs.map((monster, index) => {
+          const cooldown = skillCooldowns[index] ?? 0
+          const ready = cooldown === 0 && status === 'playing'
+          return (
+            <button
+              key={index}
+              type="button"
+              className={`skill-button${ready ? ' skill-button--ready' : ''}`}
+              style={{ background: ELEMENT_META[monster.element].color }}
+              disabled={!ready}
+              onClick={() => handleUseSkill(index)}
+              title={`${monster.activeSkill.name}: ${monster.activeSkill.description}`}
+            >
+              <span className="skill-button-icon">{ELEMENT_META[monster.element].icon}</span>
+              <span className="skill-button-status">{ready ? 'スキル' : cooldown}</span>
+            </button>
+          )
+        })}
       </div>
 
       <OrbBoard board={board} disabled={status !== 'playing'} onDragEnd={handleDragEnd} />

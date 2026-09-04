@@ -54,6 +54,14 @@ export const PartyScreen = ({ partySlots, ownedMonsters, onSetSlot }: PartyScree
         ))}
       </div>
 
+      {partySlots[0] && (
+        <div className="leader-skill-panel">
+          <span className="leader-skill-tag">リーダースキル</span>
+          <h3>{partySlots[0].def.leaderSkill.name}</h3>
+          <p>{partySlots[0].def.leaderSkill.description}</p>
+        </div>
+      )}
+
       <div className="team-stats-preview">
         <h3>チームステータス</h3>
         <p>最大HP: {Math.round(team.maxHp)} / RCV: {Math.round(team.rcv)}</p>
