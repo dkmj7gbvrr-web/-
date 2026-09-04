@@ -36,6 +36,9 @@ export const GachaScreen = ({
   return (
     <div className="screen gacha-screen">
       <h2>ガチャ召喚の間</h2>
+      <div className="gacha-banner">
+        <span className="gacha-banner-icon">🔮</span>
+      </div>
       <p className="gacha-lead">魔法石を捧げて、新たな仲間モンスターを召喚しよう。</p>
       <p className="gacha-pity">次の天井まであと{Math.max(0, PITY_THRESHOLD - pullsSincePity)}回（天井到達で5★以上確定）</p>
 

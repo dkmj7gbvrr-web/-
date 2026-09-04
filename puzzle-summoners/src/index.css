@@ -13,7 +13,12 @@
   --success: #58d68d;
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 
-  font: 16px/1.5 system-ui, 'Hiragino Sans', 'Yu Gothic', 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Shippori Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', serif;
+  --font-body: system-ui, 'Hiragino Sans', 'Yu Gothic', 'Segoe UI', Roboto, sans-serif;
+
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
   color-scheme: dark;
   color: var(--text);
   background: var(--bg);
@@ -25,6 +30,15 @@
 
 * {
   box-sizing: border-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
 }
 
 body {
@@ -44,11 +58,24 @@ button {
   color: inherit;
 }
 
+button:focus-visible,
+.orb-board:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
 h1,
 h2,
 h3,
 p {
   margin: 0;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  text-wrap: balance;
 }
 
 ol,
