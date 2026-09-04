@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { PullRecord } from '../game/gacha'
 import { PITY_THRESHOLD } from '../game/gacha'
 import { GachaLever } from './GachaLever'
+import { GachaReelTeaser } from './GachaReelTeaser'
 import { GachaRevealOverlay } from './GachaRevealOverlay'
 
 interface GachaScreenProps {
@@ -26,6 +27,7 @@ export const GachaScreen = ({
   onAddStones,
 }: GachaScreenProps) => {
   const [mode, setMode] = useState<1 | 10>(1)
+  const [teaserPulls, setTeaserPulls] = useState<readonly PullRecord[] | null>(null)
   const [reveal, setReveal] = useState<readonly PullRecord[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -37,7 +39,7 @@ export const GachaScreen = ({
       setError('魔法石が足りません！')
       return
     }
-    setReveal(pulls)
+    setTeaserPulls(pulls)
   }
 
   const cost = mode === 1 ? singleCost : multiCost
@@ -74,6 +76,15 @@ export const GachaScreen = ({
 
       {error && <p className="error-text">{error}</p>}
 
+      {teaserPulls && (
+        <GachaReelTeaser
+          pulls={teaserPulls}
+          onDone={() => {
+            setReveal(teaserPulls)
+            setTeaserPulls(null)
+          }}
+        />
+      )}
       {reveal && <GachaRevealOverlay pulls={reveal} onClose={() => setReveal(null)} />}
     </div>
   )

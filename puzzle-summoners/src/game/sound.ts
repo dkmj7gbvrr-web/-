@@ -105,3 +105,45 @@ export const playEggCrack = (rarity: Rarity): void => {
   playNoiseBurst(ctx, now, 0.1, 0.35, 2400)
   playNoiseBurst(ctx, now + 0.03, 0.08 + rarity * 0.02, 0.2, 1400)
 }
+
+/** スロットリールが1つ止まる「カチッ」という音。reelIndexが大きいほど高い音にして緊張感を積み上げる */
+export const playReelStop = (reelIndex: number): void => {
+  const ctx = getContext()
+  if (!ctx) return
+  const now = ctx.currentTime
+  playTone(ctx, 260 + reelIndex * 90, now, 0.09, 0.18, 'square')
+  playNoiseBurst(ctx, now, 0.03, 0.12, 3200)
+}
+
+/** リーチ中に鳴らす、音程が徐々に駆け上がる緊張感の音（パチンコのリーチ演出のイメージ） */
+export const playTensionRise = (durationSec: number): void => {
+  const ctx = getContext()
+  if (!ctx) return
+  const now = ctx.currentTime
+  const osc = ctx.createOscillator()
+  const gainNode = ctx.createGain()
+  osc.type = 'sawtooth'
+  osc.frequency.setValueAtTime(140, now)
+  osc.frequency.exponentialRampToValueAtTime(520, now + durationSec)
+  gainNode.gain.setValueAtTime(0, now)
+  gainNode.gain.linearRampToValueAtTime(0.07, now + 0.1)
+  gainNode.gain.linearRampToValueAtTime(0.1, now + durationSec * 0.8)
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, now + durationSec + 0.1)
+  osc.connect(gainNode)
+  gainNode.connect(ctx.destination)
+  osc.start(now)
+  osc.stop(now + durationSec + 0.15)
+}
+
+/** 大当たり演出（レア確定バナー表示時）のファンファーレ。レアリティが高いほど音数が増える */
+export const playBigWinFanfare = (rarity: Rarity): void => {
+  const ctx = getContext()
+  if (!ctx) return
+  const now = ctx.currentTime
+  const notes = [523.25, 659.25, 783.99, 987.77, 1174.66]
+  const noteCount = rarity >= 6 ? 5 : rarity >= 5 ? 4 : 3
+  for (let i = 0; i < noteCount; i++) {
+    playTone(ctx, notes[i], now + i * 0.09, 0.4, 0.14, 'triangle')
+  }
+  playTone(ctx, notes[noteCount - 1] * 2, now + noteCount * 0.09, 0.6, 0.1, 'sine')
+}

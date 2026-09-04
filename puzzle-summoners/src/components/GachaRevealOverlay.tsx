@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import type { CSSProperties } from 'react'
 import type { PullRecord } from '../game/gacha'
+import { withCssVar } from '../game/cssVar'
 import { EGG_THEME, RARITY_STAR_COLOR } from '../game/orbTheme'
-import { playEggCrack, playGachaChime } from '../game/sound'
+import { playBigWinFanfare, playEggCrack, playGachaChime } from '../game/sound'
 import { MonsterCard } from './MonsterCard'
 
 interface GachaRevealOverlayProps {
@@ -10,14 +10,23 @@ interface GachaRevealOverlayProps {
   readonly onClose: () => void
 }
 
-const withCssVar = (name: string, value: string): CSSProperties => ({ [name]: value }) as CSSProperties
-
 const SHAKE_MS = 280
+const BIG_WIN_LABEL: Partial<Record<number, string>> = {
+  5: '激レア確定！！',
+  6: 'LEGEND!!!',
+}
+
+interface BigWinBanner {
+  readonly id: number
+  readonly rarity: number
+}
 
 export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) => {
   const [revealedCount, setRevealedCount] = useState(0)
   const [crackingIndex, setCrackingIndex] = useState<number | null>(null)
+  const [bigWin, setBigWin] = useState<BigWinBanner | null>(null)
   const timeoutRef = useRef<number | null>(null)
+  const bigWinIdRef = useRef(0)
 
   const isDone = revealedCount >= pulls.length
 
@@ -26,8 +35,14 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
     const index = revealedCount
     setCrackingIndex(index)
     const id = window.setTimeout(() => {
-      playEggCrack(pulls[index].monster.rarity)
-      playGachaChime(pulls[index].monster.rarity)
+      const rarity = pulls[index].monster.rarity
+      playEggCrack(rarity)
+      playGachaChime(rarity)
+      if (rarity >= 5) {
+        playBigWinFanfare(rarity)
+        bigWinIdRef.current += 1
+        setBigWin({ id: bigWinIdRef.current, rarity })
+      }
       setCrackingIndex(null)
       setRevealedCount(index + 1)
     }, SHAKE_MS)
@@ -67,6 +82,12 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
           className="gacha-flash"
           style={withCssVar('--flash-color', RARITY_STAR_COLOR[highestRevealedRarity])}
         />
+      )}
+
+      {bigWin && (
+        <div key={bigWin.id} className={`gacha-bigwin-banner gacha-bigwin-banner--tier${bigWin.rarity}`}>
+          {BIG_WIN_LABEL[bigWin.rarity]}
+        </div>
       )}
 
       <div className="gacha-reveal-grid" onClick={(event) => event.stopPropagation()}>
