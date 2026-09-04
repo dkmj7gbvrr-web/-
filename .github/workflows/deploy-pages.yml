@@ -1,12 +1,14 @@
-name: Deploy pokefuta-visit-tracker to GitHub Pages
+name: Deploy Pages
 
 on:
   push:
     branches:
       - main
       - claude/pokefuta-visit-tracker-f4uqq5
+      - claude/nanpure-app-dev-u0i5aq
     paths:
       - "pokefuta-visit-tracker/**"
+      - "nanpure-app/**"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 
@@ -28,15 +30,33 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: pokefuta-visit-tracker/package-lock.json
-      - run: npm ci
+          cache-dependency-path: |
+            pokefuta-visit-tracker/package-lock.json
+            nanpure-app/package-lock.json
+
+      - name: Build pokefuta-visit-tracker
         working-directory: pokefuta-visit-tracker
-      - run: npm run build
-        working-directory: pokefuta-visit-tracker
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build nanpure-app
+        working-directory: nanpure-app
+        run: |
+          npm ci
+          npm run build
+
+      - name: Assemble combined site
+        run: |
+          mkdir -p site
+          cp -r pokefuta-visit-tracker/dist/. site/
+          mkdir -p site/nanpure-app
+          cp -r nanpure-app/dist/. site/nanpure-app/
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: pokefuta-visit-tracker/dist
+          path: site
 
   deploy:
     needs: build
