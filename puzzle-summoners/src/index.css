@@ -1,0 +1,58 @@
+:root {
+  --bg: #12101c;
+  --bg-alt: #1b1830;
+  --panel-bg: #211d38;
+  --border: #3a3560;
+  --border-strong: #574fa0;
+  --text: #f1eefc;
+  --text-muted: #a79fd6;
+  --accent: #7c5cff;
+  --accent-contrast: #ffffff;
+  --gold: #f3c14b;
+  --error: #ff6b6b;
+  --success: #58d68d;
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+
+  font: 16px/1.5 system-ui, 'Hiragino Sans', 'Yu Gothic', 'Segoe UI', Roboto, sans-serif;
+  color-scheme: dark;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100svh;
+  background: radial-gradient(circle at top, var(--bg-alt), var(--bg) 70%);
+}
+
+#root {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+ol,
+ul {
+  margin: 0;
+  padding-left: 1.2em;
+}
