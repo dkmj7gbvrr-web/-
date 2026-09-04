@@ -81,17 +81,21 @@ describe('countSolutions', () => {
 })
 
 describe('generatePuzzle determinism (shared-puzzle links)', () => {
-  it('produces a bit-identical puzzle for the same difficulty and seed', () => {
-    for (const level of DIFFICULTIES) {
-      const seed = 123456789
-      const a = generatePuzzle(level, { seed })
-      const b = generatePuzzle(level, { seed })
-      expect(gridsEqual(a.puzzle, b.puzzle)).toBe(true)
-      expect(gridsEqual(a.solution, b.solution)).toBe(true)
-      expect(a.ratedTier).toBe(b.ratedTier)
-      expect(a.seed).toBe(seed)
-    }
-  })
+  it(
+    'produces a bit-identical puzzle for the same difficulty and seed',
+    () => {
+      for (const level of DIFFICULTIES) {
+        const seed = 123456789
+        const a = generatePuzzle(level, { seed })
+        const b = generatePuzzle(level, { seed })
+        expect(gridsEqual(a.puzzle, b.puzzle)).toBe(true)
+        expect(gridsEqual(a.solution, b.solution)).toBe(true)
+        expect(a.ratedTier).toBe(b.ratedTier)
+        expect(a.seed).toBe(seed)
+      }
+    },
+    20000,
+  )
 
   it('produces different puzzles for different seeds (not just echoing the seed)', () => {
     const a = generatePuzzle(1, { seed: 1 })

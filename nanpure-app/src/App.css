@@ -297,6 +297,13 @@
   font-weight: 700;
 }
 
+.cell__note--same-value {
+  color: var(--accent-contrast);
+  background: var(--user-text);
+  border-radius: 3px;
+  font-weight: 700;
+}
+
 /* ---------- クリア表示 ---------- */
 
 .solved-overlay {

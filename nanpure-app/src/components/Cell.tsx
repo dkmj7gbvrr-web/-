@@ -10,6 +10,8 @@ interface Props {
   isConflict: boolean
   hintLevel: 'primary' | 'secondary' | null
   hintDigits: Set<Digit> | null
+  /** 選択中のマスに入っている数字。空マスのメモの中の同じ数字を目立たせるのに使う */
+  sameValueDigit: Digit | null
   onSelect: (index: number) => void
 }
 
@@ -22,6 +24,7 @@ export const Cell = ({
   isConflict,
   hintLevel,
   hintDigits,
+  sameValueDigit,
   onSelect,
 }: Props) => {
   const row = Math.floor(index / 9)
@@ -53,13 +56,15 @@ export const Cell = ({
           {Array.from({ length: 9 }, (_, i) => (i + 1) as Digit).map((d) => {
             const noted = (state.notes & (1 << (d - 1))) !== 0
             const emphasized = hintDigits?.has(d) ?? false
+            const sameValue = noted && sameValueDigit === d
             return (
               <span
                 key={d}
                 className={
                   'cell__note' +
                   (noted ? ' cell__note--on' : '') +
-                  (emphasized ? ' cell__note--hint' : '')
+                  (emphasized ? ' cell__note--hint' : '') +
+                  (sameValue ? ' cell__note--same-value' : '')
                 }
               >
                 {noted || emphasized ? d : ''}

@@ -61,6 +61,7 @@ export const Board = ({ board, selected, conflicts, hint, onSelect }: Props) => 
             isConflict={conflicts.has(index)}
             hintLevel={hintLevel}
             hintDigits={hintDigitsByCell.get(index) ?? null}
+            sameValueDigit={selectedValue !== 0 ? selectedValue : null}
             onSelect={onSelect}
           />
         )
