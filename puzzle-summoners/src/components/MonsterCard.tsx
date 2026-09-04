@@ -1,3 +1,4 @@
+import { withCssVar } from '../game/cssVar'
 import type { MonsterDef } from '../game/types'
 import { ELEMENT_META, RARITY_STAR_COLOR, SKILL_KIND_ICON } from '../game/orbTheme'
 
@@ -13,20 +14,25 @@ interface MonsterCardProps {
 export const MonsterCard = ({ def, selected, onClick, badge, showSkills }: MonsterCardProps) => {
   const meta = ELEMENT_META[def.element]
   const starColor = RARITY_STAR_COLOR[def.rarity]
+  const hasRays = def.rarity >= 5
 
   return (
     <button
       type="button"
-      className={`monster-card${selected ? ' monster-card--selected' : ''}${onClick ? '' : ' monster-card--static'}`}
+      className={`monster-card monster-card--r${def.rarity}${selected ? ' monster-card--selected' : ''}${onClick ? '' : ' monster-card--static'}`}
       onClick={onClick}
-      style={{ borderColor: starColor }}
+      style={{ borderColor: starColor, ...withCssVar('--rarity-glow', starColor) }}
     >
+      {def.rarity >= 6 && <span className="monster-card-legend-ribbon">LEGEND</span>}
       {badge && <span className="monster-card-badge">{badge}</span>}
       <span className="monster-card-skill-icon" title={def.activeSkill.name}>
         {SKILL_KIND_ICON[def.activeSkill.effect.kind]}
       </span>
-      <div className="monster-card-portrait" style={{ background: meta.color }}>
-        {meta.icon}
+      <div className="monster-card-portrait-wrap">
+        {hasRays && <div className="monster-card-rays" />}
+        <div className="monster-card-portrait" style={{ background: meta.color }}>
+          {meta.icon}
+        </div>
       </div>
       <div className="monster-card-stars" style={{ color: starColor }}>
         {'★'.repeat(def.rarity)}

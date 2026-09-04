@@ -24,7 +24,7 @@ const playTone = (
   osc.type = type
   osc.frequency.setValueAtTime(frequency, startTime)
   gainNode.gain.setValueAtTime(0, startTime)
-  gainNode.gain.linearRampToValueAtTime(gain, startTime + 0.015)
+  gainNode.gain.linearRampToValueAtTime(gain, startTime + 0.012)
   gainNode.gain.exponentialRampToValueAtTime(0.0001, startTime + duration)
   osc.connect(gainNode)
   gainNode.connect(ctx.destination)
@@ -32,7 +32,7 @@ const playTone = (
   osc.stop(startTime + duration + 0.02)
 }
 
-/** ホワイトノイズのバースト（バンドパス通過）を鳴らす。卵が割れる「パキッ」という音や機械音に使う */
+/** ホワイトノイズのバースト（バンドパス通過）を鳴らす。卵が割れる音や機械音に使う */
 const playNoiseBurst = (ctx: AudioContext, startTime: number, duration: number, gain: number, filterHz: number) => {
   const bufferSize = Math.ceil(ctx.sampleRate * duration)
   const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate)
@@ -88,34 +88,52 @@ export const playLeverClunk = (): void => {
   playTone(ctx, 55, now + 0.05, 0.22, 0.18, 'square')
 }
 
-/** 卵が落ちて着地する「ポトッ」という音 */
-export const playEggDrop = (): void => {
-  const ctx = getContext()
-  if (!ctx) return
-  const now = ctx.currentTime
-  playTone(ctx, 180, now, 0.12, 0.1, 'sine')
-  playNoiseBurst(ctx, now, 0.06, 0.05, 800)
-}
-
-/** 卵が割れる瞬間の「パキッ」という音。レアリティが高いほど余韻が長い */
+/**
+ * 卵が割れる瞬間の音。衝撃音→複数の破片が弾ける音→（レア度が高い場合）余韻のきらめき、
+ * という3段構えにして単調にならないようにしている
+ */
 export const playEggCrack = (rarity: Rarity): void => {
   const ctx = getContext()
   if (!ctx) return
   const now = ctx.currentTime
-  playNoiseBurst(ctx, now, 0.1, 0.35, 2400)
-  playNoiseBurst(ctx, now + 0.03, 0.08 + rarity * 0.02, 0.2, 1400)
+
+  // 衝撃（低音のドスッ）
+  playTone(ctx, 70, now, 0.12, 0.22, 'triangle')
+  // 殻が弾け飛ぶ破片音を数回ずらして重ねる
+  playNoiseBurst(ctx, now + 0.01, 0.09, 0.4, 2600)
+  playNoiseBurst(ctx, now + 0.05, 0.07, 0.28, 1800)
+  playNoiseBurst(ctx, now + 0.09, 0.1, 0.2, 3400)
+  if (rarity >= 3) {
+    playNoiseBurst(ctx, now + 0.14, 0.09, 0.16, 2200)
+  }
+
+  // レア度が高いほど、割れた後にきらめくような余韻を足す
+  if (rarity >= 4) {
+    const shimmerNotes = [1046.5, 1318.5, 1568]
+    const count = rarity >= 6 ? 3 : rarity >= 5 ? 2 : 1
+    for (let i = 0; i < count; i++) {
+      playTone(ctx, shimmerNotes[i], now + 0.22 + i * 0.09, 0.5, 0.08, 'sine')
+    }
+  }
 }
 
-/** スロットリールが1つ止まる「カチッ」という音。reelIndexが大きいほど高い音にして緊張感を積み上げる */
-export const playReelStop = (reelIndex: number): void => {
+/**
+ * 卵の殻の色がグルグルと入れ替わる「ルーレット」演出の1コマごとに鳴らす軽いティック音。
+ * progress(0〜1)が進むほど音程が上がり、isLockでロックイン（確定）の一撃を鳴らす
+ */
+export const playFlickerTick = (progress: number, isLock: boolean): void => {
   const ctx = getContext()
   if (!ctx) return
   const now = ctx.currentTime
-  playTone(ctx, 260 + reelIndex * 90, now, 0.09, 0.18, 'square')
-  playNoiseBurst(ctx, now, 0.03, 0.12, 3200)
+  if (isLock) {
+    playTone(ctx, 200 + progress * 500, now, 0.22, 0.22, 'square')
+    playNoiseBurst(ctx, now, 0.04, 0.15, 4000)
+    return
+  }
+  playTone(ctx, 320 + progress * 380, now, 0.055, 0.08, 'square')
 }
 
-/** リーチ中に鳴らす、音程が徐々に駆け上がる緊張感の音（パチンコのリーチ演出のイメージ） */
+/** ルーレット演出の終盤に鳴らす、音程が駆け上がる緊張感の音（大当たり候補が続く時に使う） */
 export const playTensionRise = (durationSec: number): void => {
   const ctx = getContext()
   if (!ctx) return
@@ -123,11 +141,11 @@ export const playTensionRise = (durationSec: number): void => {
   const osc = ctx.createOscillator()
   const gainNode = ctx.createGain()
   osc.type = 'sawtooth'
-  osc.frequency.setValueAtTime(140, now)
-  osc.frequency.exponentialRampToValueAtTime(520, now + durationSec)
+  osc.frequency.setValueAtTime(160, now)
+  osc.frequency.exponentialRampToValueAtTime(560, now + durationSec)
   gainNode.gain.setValueAtTime(0, now)
-  gainNode.gain.linearRampToValueAtTime(0.07, now + 0.1)
-  gainNode.gain.linearRampToValueAtTime(0.1, now + durationSec * 0.8)
+  gainNode.gain.linearRampToValueAtTime(0.05, now + 0.1)
+  gainNode.gain.linearRampToValueAtTime(0.08, now + durationSec * 0.8)
   gainNode.gain.exponentialRampToValueAtTime(0.0001, now + durationSec + 0.1)
   osc.connect(gainNode)
   gainNode.connect(ctx.destination)

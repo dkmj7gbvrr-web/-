@@ -408,7 +408,16 @@
   font-size: 0.74rem;
 }
 
+.monster-card-portrait-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .monster-card-portrait {
+  position: relative;
+  z-index: 1;
   width: 48px;
   height: 48px;
   border-radius: 50%;
@@ -416,6 +425,114 @@
   align-items: center;
   justify-content: center;
   font-size: 1.4rem;
+}
+
+.monster-card-rays {
+  position: absolute;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: repeating-conic-gradient(var(--rarity-glow) 0deg 8deg, transparent 8deg 24deg);
+  opacity: 0.55;
+  animation: monster-rays-spin 7s linear infinite;
+}
+
+@keyframes monster-rays-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- レアリティ別の演出（3★以上ほど豪華に） --- */
+.monster-card--r3 {
+  box-shadow: 0 0 10px -2px var(--rarity-glow);
+}
+
+.monster-card--r4 {
+  position: relative;
+  overflow: hidden;
+  animation: monster-card-glow-pulse 2.4s ease-in-out infinite;
+}
+
+.monster-card--r5 {
+  position: relative;
+  overflow: hidden;
+  animation: monster-card-glow-pulse 2s ease-in-out infinite;
+}
+
+.monster-card--r5 .monster-card-portrait {
+  width: 56px;
+  height: 56px;
+  font-size: 1.6rem;
+}
+
+.monster-card--r6 {
+  position: relative;
+  overflow: hidden;
+  animation: monster-card-glow-pulse-legend 3s ease-in-out infinite;
+}
+
+.monster-card--r6 .monster-card-portrait {
+  width: 60px;
+  height: 60px;
+  font-size: 1.7rem;
+}
+
+@keyframes monster-card-glow-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 10px 0 var(--rarity-glow);
+  }
+  50% {
+    box-shadow: 0 0 22px 4px var(--rarity-glow);
+  }
+}
+
+@keyframes monster-card-glow-pulse-legend {
+  0%,
+  100% {
+    box-shadow: 0 0 14px 2px rgba(255, 111, 111, 0.7);
+  }
+  33% {
+    box-shadow: 0 0 20px 4px rgba(232, 185, 63, 0.8);
+  }
+  66% {
+    box-shadow: 0 0 20px 4px rgba(176, 115, 224, 0.7);
+  }
+}
+
+.monster-card--r4::after,
+.monster-card--r5::after,
+.monster-card--r6::after {
+  content: '';
+  position: absolute;
+  inset: -60%;
+  background: linear-gradient(115deg, transparent 42%, rgba(255, 255, 255, 0.4) 50%, transparent 58%);
+  animation: monster-shimmer-sweep 2.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes monster-shimmer-sweep {
+  0% {
+    transform: translateX(-70%);
+  }
+  100% {
+    transform: translateX(70%);
+  }
+}
+
+.monster-card-legend-ribbon {
+  position: absolute;
+  top: 8px;
+  left: -28px;
+  transform: rotate(-40deg);
+  background: linear-gradient(90deg, #ff6f6f, #e8b93f);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  padding: 2px 30px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
 }
 
 .monster-card-stars {
@@ -1026,79 +1143,21 @@
   animation: gacha-flash-pulse 0.7s ease-out forwards;
 }
 
-/* --- レバー演出直後のリーチ（リール）ティザー --- */
-.gacha-reel-teaser {
-  gap: 28px;
+/* --- 卵のルーレット演出（割る瞬間に色がグルグル変わる） --- */
+.gacha-egg--flickering {
+  animation: gacha-egg-flicker-pulse 0.12s ease-in-out infinite;
 }
 
-.gacha-reel-teaser-lead {
-  font-family: var(--font-display);
-  font-size: 1.1rem;
-  letter-spacing: 0.2em;
-  color: var(--text-muted);
-}
-
-.gacha-reel-row {
-  display: flex;
-  gap: 14px;
-}
-
-.gacha-reel {
-  width: 72px;
-  height: 96px;
-  border-radius: 12px;
-  background: linear-gradient(#2a2648, #14111f);
-  border: 2px solid var(--border-strong);
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.6);
-}
-
-.gacha-reel-strip {
-  width: 100%;
-  height: 300%;
-  background: repeating-linear-gradient(
-    180deg,
-    #e64a3f 0 16px,
-    #d8ae2c 16px 32px,
-    #4f9de0 32px 48px,
-    #6bb26b 48px 64px,
-    #b073e0 64px 80px,
-    #ff6f6f 80px 96px
-  );
-  animation: gacha-reel-spin 0.22s linear infinite;
-}
-
-@keyframes gacha-reel-spin {
-  from {
-    transform: translateY(0);
-  }
-  to {
-    transform: translateY(-33.33%);
-  }
-}
-
-.gacha-reel--stopped {
-  animation: gacha-reel-thunk 0.3s ease-out;
-}
-
-@keyframes gacha-reel-thunk {
-  0% {
-    transform: scale(1.1);
-  }
+@keyframes gacha-egg-flicker-pulse {
+  0%,
   100% {
     transform: scale(1);
+    filter: brightness(1);
   }
-}
-
-.gacha-reel-symbol {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #fff, var(--reel-color));
-  box-shadow: 0 0 16px 3px var(--reel-color);
+  50% {
+    transform: scale(1.05);
+    filter: brightness(1.3);
+  }
 }
 
 /* --- 大当たりバナー --- */

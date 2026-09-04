@@ -71,3 +71,13 @@ export const EGG_THEME: Record<Rarity, EggTheme> = {
     shimmer: true,
   },
 }
+
+/**
+ * 割る前（未タップ）の卵はすべて同じ見た目にする。EGG_THEMEのように色でレアリティを
+ * バラしてしまうと、割る前から結果が分かってワクワクできなくなるため。
+ */
+export const NEUTRAL_EGG_THEME: EggTheme = {
+  gradient: 'radial-gradient(circle at 32% 22%, #fffaf0, #d8d0c0 130%)',
+  glow: 'rgba(255, 255, 255, 0.2)',
+  shimmer: false,
+}

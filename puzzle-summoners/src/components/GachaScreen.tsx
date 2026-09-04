@@ -2,7 +2,6 @@ import { useState } from 'react'
 import type { PullRecord } from '../game/gacha'
 import { PITY_THRESHOLD } from '../game/gacha'
 import { GachaLever } from './GachaLever'
-import { GachaReelTeaser } from './GachaReelTeaser'
 import { GachaRevealOverlay } from './GachaRevealOverlay'
 
 interface GachaScreenProps {
@@ -27,7 +26,6 @@ export const GachaScreen = ({
   onAddStones,
 }: GachaScreenProps) => {
   const [mode, setMode] = useState<1 | 10>(1)
-  const [teaserPulls, setTeaserPulls] = useState<readonly PullRecord[] | null>(null)
   const [reveal, setReveal] = useState<readonly PullRecord[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -39,7 +37,7 @@ export const GachaScreen = ({
       setError('魔法石が足りません！')
       return
     }
-    setTeaserPulls(pulls)
+    setReveal(pulls)
   }
 
   const cost = mode === 1 ? singleCost : multiCost
@@ -51,7 +49,7 @@ export const GachaScreen = ({
       <div className="gacha-banner">
         <span className="gacha-banner-icon">🔮</span>
       </div>
-      <p className="gacha-lead">魔法石を捧げて、新たな仲間モンスターを召喚しよう。レバーを引くと卵が出てくる！</p>
+      <p className="gacha-lead">魔法石を捧げて、新たな仲間モンスターを召喚しよう。卵は割るまで中身が分からない！</p>
       <p className="gacha-pity">次の天井まであと{Math.max(0, PITY_THRESHOLD - pullsSincePity)}回（天井到達で5★以上確定）</p>
 
       <div className="gacha-stone-row">
@@ -76,15 +74,6 @@ export const GachaScreen = ({
 
       {error && <p className="error-text">{error}</p>}
 
-      {teaserPulls && (
-        <GachaReelTeaser
-          pulls={teaserPulls}
-          onDone={() => {
-            setReveal(teaserPulls)
-            setTeaserPulls(null)
-          }}
-        />
-      )}
       {reveal && <GachaRevealOverlay pulls={reveal} onClose={() => setReveal(null)} />}
     </div>
   )
