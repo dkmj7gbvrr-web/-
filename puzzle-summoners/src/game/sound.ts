@@ -117,23 +117,7 @@ export const playEggCrack = (rarity: Rarity): void => {
   }
 }
 
-/**
- * 卵の殻の色がグルグルと入れ替わる「ルーレット」演出の1コマごとに鳴らす軽いティック音。
- * progress(0〜1)が進むほど音程が上がり、isLockでロックイン（確定）の一撃を鳴らす
- */
-export const playFlickerTick = (progress: number, isLock: boolean): void => {
-  const ctx = getContext()
-  if (!ctx) return
-  const now = ctx.currentTime
-  if (isLock) {
-    playTone(ctx, 200 + progress * 500, now, 0.22, 0.22, 'square')
-    playNoiseBurst(ctx, now, 0.04, 0.15, 4000)
-    return
-  }
-  playTone(ctx, 320 + progress * 380, now, 0.055, 0.08, 'square')
-}
-
-/** ルーレット演出の終盤に鳴らす、音程が駆け上がる緊張感の音（大当たり候補が続く時に使う） */
+/** 音程が駆け上がる緊張感の音。卵の格上げ演出などの「溜め」に使う */
 export const playTensionRise = (durationSec: number): void => {
   const ctx = getContext()
   if (!ctx) return
@@ -151,6 +135,19 @@ export const playTensionRise = (durationSec: number): void => {
   gainNode.connect(ctx.destination)
   osc.start(now)
   osc.stop(now + durationSec + 0.15)
+}
+
+/**
+ * ダイヤの卵が虹卵へと格上げされる瞬間の音。駆け上がる音のあとにきらめく高音を重ねる
+ * （本家パズドラで卵の格が土壇場で上がる演出のイメージ）
+ */
+export const playEggUpgrade = (): void => {
+  const ctx = getContext()
+  if (!ctx) return
+  playTensionRise(0.5)
+  const now = ctx.currentTime
+  playTone(ctx, 1568, now + 0.42, 0.4, 0.13, 'sine')
+  playTone(ctx, 2093, now + 0.5, 0.45, 0.11, 'sine')
 }
 
 /** 大当たり演出（レア確定バナー表示時）のファンファーレ。レアリティが高いほど音数が増える */

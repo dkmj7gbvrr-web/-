@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { PullRecord } from '../game/gacha'
 import { PITY_THRESHOLD } from '../game/gacha'
 import { GachaLever } from './GachaLever'
+import { GachaRateModal } from './GachaRateModal'
 import { GachaRevealOverlay } from './GachaRevealOverlay'
 
 interface GachaScreenProps {
@@ -28,6 +29,7 @@ export const GachaScreen = ({
   const [mode, setMode] = useState<1 | 10>(1)
   const [reveal, setReveal] = useState<readonly PullRecord[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [showRates, setShowRates] = useState(false)
 
   const runPull = () => {
     setError(null)
@@ -51,6 +53,9 @@ export const GachaScreen = ({
       </div>
       <p className="gacha-lead">魔法石を捧げて、新たな仲間モンスターを召喚しよう。卵は割るまで中身が分からない！</p>
       <p className="gacha-pity">次の天井まであと{Math.max(0, PITY_THRESHOLD - pullsSincePity)}回（天井到達で5★以上確定）</p>
+      <button type="button" className="gacha-rate-link" onClick={() => setShowRates(true)}>
+        排出確率を見る
+      </button>
 
       <div className="gacha-stone-row">
         <span>
@@ -75,6 +80,7 @@ export const GachaScreen = ({
       {error && <p className="error-text">{error}</p>}
 
       {reveal && <GachaRevealOverlay pulls={reveal} onClose={() => setReveal(null)} />}
+      {showRates && <GachaRateModal onClose={() => setShowRates(false)} />}
     </div>
   )
 }

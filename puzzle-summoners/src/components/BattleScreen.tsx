@@ -6,6 +6,7 @@ import { computeTeamStats, computeTurnResult } from '../game/battle'
 import type { TeamStats } from '../game/battle'
 import { mulberry32, randomSeed } from '../game/rng'
 import type { AttackElement, MonsterDef, Stage } from '../game/types'
+import { PARTY_SIZE } from '../game/types'
 import { ELEMENT_META } from '../game/orbTheme'
 import { OrbBoard } from './OrbBoard'
 import type { OrbAnimState } from './OrbBoard'
@@ -73,6 +74,7 @@ export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: Batt
   const [cellAnim, setCellAnim] = useState<ReadonlyMap<string, OrbAnimState> | undefined>(undefined)
   const [enemyHp, setEnemyHp] = useState(stage.enemy.maxHp)
   const [teamHp, setTeamHp] = useState(team.maxHp)
+  const [attackCountdown, setAttackCountdown] = useState(stage.enemy.turnsPerAttack ?? 1)
   const [status, setStatus] = useState<BattleStatus>('playing')
   const [animating, setAnimating] = useState(false)
   const [log, setLog] = useState<LogEntry[]>([])
@@ -142,6 +144,25 @@ export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: Batt
     setSkillCooldowns((prev) => prev.map((c, i) => (i === index ? skill.maxCooldown : c)))
   }
 
+  /** 敵の行動ターンを解決する。カウントダウンが0になるまでは身構えるだけで攻撃してこない */
+  const resolveEnemyTurn = (currentTeamHp: number): { nextTeamHp: number; defeated: boolean } => {
+    const interval = stage.enemy.turnsPerAttack ?? 1
+    const nextCountdown = attackCountdown - 1
+
+    if (nextCountdown > 0) {
+      setAttackCountdown(nextCountdown)
+      pushLog(`${stage.enemy.name}は身構えている…（攻撃まであと${nextCountdown}ターン）`)
+      return { nextTeamHp: currentTeamHp, defeated: false }
+    }
+
+    setAttackCountdown(interval)
+    const damageTaken = stage.enemy.atk
+    const nextTeamHp = Math.max(0, currentTeamHp - damageTaken)
+    spawnFloatingText('team', `-${damageTaken}`, 'damage')
+    pushLog(`${stage.enemy.name}の攻撃！ ${damageTaken}ダメージを受けた`)
+    return { nextTeamHp, defeated: nextTeamHp <= 0 }
+  }
+
   const playCascadeSteps = async (steps: readonly CascadeStep[], activeTeam: TeamStats) => {
     let currentEnemyHp = enemyHp
     let currentTeamHp = teamHp
@@ -192,13 +213,10 @@ export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: Batt
       setCellAnim(undefined)
     }
 
-    const damageTaken = stage.enemy.atk
-    const nextTeamHp = Math.max(0, currentTeamHp - damageTaken)
+    const { nextTeamHp, defeated } = resolveEnemyTurn(currentTeamHp)
     setTeamHp(nextTeamHp)
-    spawnFloatingText('team', `-${damageTaken}`, 'damage')
-    pushLog(`${stage.enemy.name}の攻撃！ ${damageTaken}ダメージを受けた`)
 
-    if (nextTeamHp <= 0) {
+    if (defeated) {
       setStatus('lost')
       onFinish(false)
     }
@@ -228,6 +246,12 @@ export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: Batt
 
     if (steps.length === 0) {
       pushLog('コンボなし…')
+      const { nextTeamHp, defeated } = resolveEnemyTurn(teamHp)
+      setTeamHp(nextTeamHp)
+      if (defeated) {
+        setStatus('lost')
+        onFinish(false)
+      }
       return
     }
 
@@ -249,6 +273,9 @@ export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: Batt
       <div className="enemy-panel">
         <div className="enemy-portrait" style={{ background: enemyMeta.color }}>
           {enemyMeta.icon}
+          <span className={`enemy-countdown-badge${attackCountdown === 1 ? ' enemy-countdown-badge--imminent' : ''}`}>
+            {attackCountdown}
+          </span>
         </div>
         <div className="enemy-info">
           <div className="enemy-name">{stage.enemy.name}</div>
@@ -311,7 +338,11 @@ export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: Batt
       )}
 
       <div className="skill-bar">
-        {partyMonsterDefs.map((monster, index) => {
+        {Array.from({ length: PARTY_SIZE }, (_, index) => {
+          const monster = partyMonsterDefs[index]
+          if (!monster) {
+            return <div key={index} className="skill-button skill-button--empty" aria-hidden="true" />
+          }
           const cooldown = skillCooldowns[index] ?? 0
           const ready = cooldown === 0 && status === 'playing' && !animating
           return (
@@ -324,6 +355,7 @@ export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: Batt
               onClick={() => handleUseSkill(index)}
               title={`${monster.activeSkill.name}: ${monster.activeSkill.description}`}
             >
+              {index === 0 && <span className="skill-button-crown">👑</span>}
               <span className="skill-button-icon">{ELEMENT_META[monster.element].icon}</span>
               <span className="skill-button-status">{ready ? 'スキル' : cooldown}</span>
             </button>

@@ -50,6 +50,8 @@ export interface Enemy {
   readonly element: AttackElement
   readonly maxHp: number
   readonly atk: number
+  /** 何ターンごとに攻撃してくるか（省略時は毎ターン）。大きいほど大技の予備動作が長い */
+  readonly turnsPerAttack?: number
 }
 
 export interface Stage {

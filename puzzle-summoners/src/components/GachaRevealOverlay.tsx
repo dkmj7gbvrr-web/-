@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { withCssVar } from '../game/cssVar'
-import { buildFlickerPlan } from '../game/gachaFlicker'
 import type { PullRecord } from '../game/gacha'
-import { EGG_THEME, NEUTRAL_EGG_THEME, RARITY_STAR_COLOR } from '../game/orbTheme'
-import { mulberry32, randomSeed } from '../game/rng'
-import { playBigWinFanfare, playEggCrack, playFlickerTick, playGachaChime, playTensionRise } from '../game/sound'
+import { EGG_TIER_THEME, RARITY_STAR_COLOR, initialEggTier } from '../game/orbTheme'
+import type { EggTier } from '../game/orbTheme'
+import { playBigWinFanfare, playEggCrack, playEggUpgrade, playGachaChime } from '../game/sound'
 import type { Rarity } from '../game/types'
 import { MonsterCard } from './MonsterCard'
 
@@ -13,12 +12,15 @@ interface GachaRevealOverlayProps {
   readonly onClose: () => void
 }
 
-const SHAKE_MS = 260
+const SHAKE_MS = 320
+const UPGRADE_MS = 700
 const AUTO_ADVANCE_MS = 320
 const BIG_WIN_LABEL: Partial<Record<Rarity, string>> = {
   5: '激レア確定！！',
   6: 'LEGEND!!!',
 }
+
+type CrackPhase = 'shake' | 'upgrade' | null
 
 interface BigWinBanner {
   readonly id: number
@@ -30,11 +32,9 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) => {
   const [revealedCount, setRevealedCount] = useState(0)
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
-  const [phase, setPhase] = useState<'flicker' | 'shake' | null>(null)
-  const [flickerRarity, setFlickerRarity] = useState<Rarity>(1)
+  const [phase, setPhase] = useState<CrackPhase>(null)
   const [bigWin, setBigWin] = useState<BigWinBanner | null>(null)
 
-  const rngRef = useRef(mulberry32(randomSeed()))
   const advanceTimeoutRef = useRef<number | null>(null)
   const sequenceTokenRef = useRef(0)
 
@@ -46,26 +46,18 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
     const cancelled = () => sequenceTokenRef.current !== myToken
 
     const finalRarity = pulls[index].monster.rarity
-    const plan = buildFlickerPlan(finalRarity, rngRef.current)
 
     setActiveIndex(index)
-    setPhase('flicker')
-
-    for (let i = 0; i < plan.length; i++) {
-      if (cancelled()) return
-      const step = plan[i]
-      setFlickerRarity(step.rarity)
-      playFlickerTick(i / Math.max(1, plan.length - 1), step.isLock)
-      if (finalRarity >= 4 && i === plan.length - 2) {
-        playTensionRise((step.holdMs + plan[plan.length - 1].holdMs) / 1000)
-      }
-      await sleep(step.holdMs)
-      if (cancelled()) return
-    }
-
     setPhase('shake')
     await sleep(SHAKE_MS)
     if (cancelled()) return
+
+    if (finalRarity === 6) {
+      setPhase('upgrade')
+      playEggUpgrade()
+      await sleep(UPGRADE_MS)
+      if (cancelled()) return
+    }
 
     playEggCrack(finalRarity)
     playGachaChime(finalRarity)
@@ -81,9 +73,12 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
 
   useEffect(() => {
     if (isDone || activeIndex !== null) return
-    const id = window.setTimeout(() => {
-      void startCrack(revealedCount)
-    }, revealedCount === 0 ? 450 : AUTO_ADVANCE_MS)
+    const id = window.setTimeout(
+      () => {
+        void startCrack(revealedCount)
+      },
+      revealedCount === 0 ? 450 : AUTO_ADVANCE_MS,
+    )
     advanceTimeoutRef.current = id
     return () => window.clearTimeout(id)
     // startCrackはこのレンダーのrevealedCount/pullsに紐づくクロージャなので依存配列に含める必要はない
@@ -144,12 +139,13 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
             )
           }
 
-          const egg = isActive ? EGG_THEME[flickerRarity] : NEUTRAL_EGG_THEME
+          const displayTier: EggTier = isActive && phase === 'upgrade' ? 'rainbow' : initialEggTier(pull.monster.rarity)
+          const egg = EGG_TIER_THEME[displayTier]
           const eggClass = [
             'gacha-egg',
             egg.shimmer ? 'gacha-egg--shimmer' : '',
-            isActive && phase === 'flicker' ? 'gacha-egg--flickering' : '',
             isActive && phase === 'shake' ? 'gacha-egg--shaking' : '',
+            isActive && phase === 'upgrade' ? 'gacha-egg--upgrading' : '',
           ]
             .filter(Boolean)
             .join(' ')
@@ -160,7 +156,8 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
                 type="button"
                 className={eggClass}
                 onClick={handleTap}
-                aria-label="タップして卵を割る"
+                aria-label={`タップして${egg.label}を割る`}
+                title={egg.label}
                 style={{ ...withCssVar('--egg-gradient', egg.gradient), ...withCssVar('--egg-glow', egg.glow) }}
               />
             </div>
