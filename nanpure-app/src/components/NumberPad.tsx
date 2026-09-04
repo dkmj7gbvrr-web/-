@@ -6,12 +6,23 @@ interface Props {
   onDigit: (digit: Digit) => void
   onErase: () => void
   onToggleMemo: () => void
+  onUndo: () => void
+  canUndo: boolean
   disabled: boolean
 }
 
 const DIGITS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as Digit[]
 
-export const NumberPad = ({ remainingCounts, memoMode, onDigit, onErase, onToggleMemo, disabled }: Props) => {
+export const NumberPad = ({
+  remainingCounts,
+  memoMode,
+  onDigit,
+  onErase,
+  onToggleMemo,
+  onUndo,
+  canUndo,
+  disabled,
+}: Props) => {
   return (
     <div className="number-pad">
       <div className="number-pad__digits">
@@ -36,6 +47,9 @@ export const NumberPad = ({ remainingCounts, memoMode, onDigit, onErase, onToggl
           disabled={disabled}
         >
           メモ{memoMode ? ' ON' : ' OFF'}
+        </button>
+        <button type="button" className="number-pad__tool" onClick={onUndo} disabled={disabled || !canUndo}>
+          戻す
         </button>
         <button type="button" className="number-pad__tool" onClick={onErase} disabled={disabled}>
           消す

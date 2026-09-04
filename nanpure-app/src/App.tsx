@@ -34,6 +34,8 @@ function App() {
     backToMenu,
     inputDigit,
     eraseSelected,
+    undo,
+    canUndo,
     requestHint,
     applyHintFill,
     applyHintElimination,
@@ -51,6 +53,11 @@ function App() {
         eraseSelected()
         return
       }
+      if (e.key === 'z' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault()
+        undo()
+        return
+      }
       if (selected === null) return
       const row = Math.floor(selected / 9)
       const col = selected % 9
@@ -61,7 +68,7 @@ function App() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [puzzle, isSolved, selected, inputDigit, eraseSelected, setSelected])
+  }, [puzzle, isSolved, selected, inputDigit, eraseSelected, undo, setSelected])
 
   if (difficulty === null) {
     return (
@@ -125,6 +132,8 @@ function App() {
             onDigit={inputDigit}
             onErase={eraseSelected}
             onToggleMemo={() => setMemoMode((m) => !m)}
+            onUndo={undo}
+            canUndo={canUndo}
             disabled={isSolved}
           />
           <HintPanel
