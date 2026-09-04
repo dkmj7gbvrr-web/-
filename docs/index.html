@@ -904,6 +904,7 @@
         </div>
       </div>
       <div id="expenses-list"></div>
+      <div id="initial-cost-section"></div>
     </section>
 
     <section class="tab-panel" data-tab="summary" id="tab-summary" hidden>
@@ -1043,6 +1044,10 @@
           <input type="text" inputmode="numeric" id="expense-amount" class="amount-input" placeholder="0">
         </div>
       </div>
+
+      <div class="section-label">この支出の種類</div>
+      <div class="segmented" id="expense-kind-segmented"></div>
+      <div class="field-hint" id="expense-kind-hint" style="padding-top:6px; margin-bottom:16px;"></div>
 
       <div class="section-label">ジャンル</div>
       <div class="category-picker" id="expense-category-picker"></div>
@@ -1185,6 +1190,11 @@
       <div class="manual-section">
         <h3>実際に立て替えた人</h3>
         <p>「A」「B」に加えて「共有」（共有カードでの支払い）を選べます。共有カードの支出は、集計タブで通常の負担額（グロス）と、共有口座への実際の精算額（ネット）の両方が表示されます。</p>
+      </div>
+
+      <div class="manual-section">
+        <h3>初期費用（住宅・家電など）</h3>
+        <p>支出を追加する画面で「この支出の種類」を「初期費用」にすると、月ごとの締めサイクルとは完全に切り離した別枠で管理されます。支出タブの一覧の下に専用のセクションが現れ、負担額・立替額・精算額もそこだけで別集計されます。精算が終わったら「この初期費用を精算済みにする」で記録できます。</p>
       </div>
 
       <div class="manual-section">
@@ -1457,12 +1467,10 @@ import {
     }
   }
 
-  function settlement(expenses, cycle, incomePeriods, closingDay) {
-    const target = expenses.filter(function (e) {
-      const d = parseLocalDate(e.date);
-      return d >= cycle.start && d <= cycle.end;
-    });
-
+  // Shared by settlement() (one billing cycle) and initialCostSummary()
+  // (the whole isInitialCost bucket, no date range) -- everything past
+  // filtering `target` down to the right expenses is identical.
+  function summarizeExpenses(target, incomePeriods, closingDay) {
     let paidByA = 0, paidByB = 0, paidByShared = 0, burdenA = 0, burdenB = 0, total = 0;
     // Burden from 'shared'-card expenses is excluded here: that money was
     // already paid out of the joint pot, not by A or B individually, so it
@@ -1497,10 +1505,30 @@ import {
     else if (net < 0) settle = { payer: 'a', receiver: 'b', amount: -net };
 
     return {
-      cycle: cycle, total: total, paidByA: paidByA, paidByB: paidByB, paidByShared: paidByShared,
+      total: total, paidByA: paidByA, paidByB: paidByB, paidByShared: paidByShared,
       burdenA: burdenA, burdenB: burdenB, sharedBurdenA: sharedBurdenA, sharedBurdenB: sharedBurdenB,
       bySplitType: bySplitType, byCategory: byCategory, settle: settle
     };
+  }
+
+  function settlement(expenses, cycle, incomePeriods, closingDay) {
+    // isInitialCost expenses are managed entirely separately (see
+    // initialCostSummary()) and never count toward a billing cycle's
+    // burden/settlement, regardless of their date.
+    const target = expenses.filter(function (e) {
+      if (e.isInitialCost) return false;
+      const d = parseLocalDate(e.date);
+      return d >= cycle.start && d <= cycle.end;
+    });
+    return Object.assign({ cycle: cycle }, summarizeExpenses(target, incomePeriods, closingDay));
+  }
+
+  // The 初期費用 (housing/appliance up-front costs) bucket: every
+  // isInitialCost expense regardless of date, tracked completely
+  // independently of the monthly billing-cycle settlement above.
+  function initialCostSummary(expenses, incomePeriods, closingDay) {
+    const target = expenses.filter(function (e) { return !!e.isInitialCost; });
+    return summarizeExpenses(target, incomePeriods, closingDay);
   }
 
   // Turns a shared-card expense's burden into a concrete transfer plan for a
@@ -1752,7 +1780,8 @@ import {
       settings: { personAName: 'A', personBName: 'B', cardClosingDay: 6, customCategories: [] },
       expenses: [],
       incomePeriods: [],
-      settledCycles: {}
+      settledCycles: {},
+      settledInitialCosts: false
     };
   }
 
@@ -1784,6 +1813,7 @@ import {
           customCategories: Array.isArray(data.customCategories) ? data.customCategories : []
         };
         state.settledCycles = (data.settledCycles && typeof data.settledCycles === 'object') ? data.settledCycles : {};
+        state.settledInitialCosts = !!data.settledInitialCosts;
       }
       renderAll();
     }, function () { toast('設定の同期に失敗しました。通信環境を確認してください'); }));
@@ -1877,6 +1907,7 @@ import {
     const map = new Map();
     for (let i = 0; i < state.expenses.length; i++) {
       const e = state.expenses[i];
+      if (e.isInitialCost) continue;
       const cyc = cycleContaining(parseLocalDate(e.date), closingDay);
       const key = cycleKey(cyc.ym);
       if (!map.has(key)) map.set(key, { cycle: cyc, items: [] });
@@ -1931,20 +1962,86 @@ import {
     const groups = groupExpensesByCycle();
     if (groups.length === 0) {
       container.innerHTML = emptyState('tray', '支出がありません', '右上の＋から支出を追加してください');
-      return;
+    } else {
+      container.innerHTML = groups.map(function (g) {
+        const key = cycleKey(g.cycle.ym);
+        const settled = !!state.settledCycles[key];
+        return '' +
+          '<div class="cycle-group">' +
+            '<div class="cycle-header">' +
+              '<span class="label">' + escapeHtml(g.cycle.label) + '</span>' +
+              (settled ? '<span class="chip chip-settled">精算済み</span>' : '') +
+            '</div>' +
+            '<div class="ledger">' + g.items.map(expenseRowHtml).join('') + '</div>' +
+          '</div>';
+      }).join('');
     }
-    container.innerHTML = groups.map(function (g) {
-      const key = cycleKey(g.cycle.ym);
-      const settled = !!state.settledCycles[key];
-      return '' +
-        '<div class="cycle-group">' +
-          '<div class="cycle-header">' +
-            '<span class="label">' + escapeHtml(g.cycle.label) + '</span>' +
-            (settled ? '<span class="chip chip-settled">精算済み</span>' : '') +
-          '</div>' +
-          '<div class="ledger">' + g.items.map(expenseRowHtml).join('') + '</div>' +
-        '</div>';
-    }).join('');
+    renderInitialCostSection();
+  }
+
+  // 初期費用（住宅・家電など）: tracked entirely separately from the
+  // monthly billing-cycle groups above -- its own section, own running
+  // total/settlement, own settled flag, no date-based cycle involved.
+  function renderInitialCostSection() {
+    const container = document.getElementById('initial-cost-section');
+    const items = state.expenses
+      .filter(function (e) { return !!e.isInitialCost; })
+      .sort(function (a, b) { return parseLocalDate(b.date) - parseLocalDate(a.date); });
+    if (items.length === 0) { container.innerHTML = ''; return; }
+
+    const s = initialCostSummary(state.expenses, state.incomePeriods, state.settings.cardClosingDay);
+    const names = currentNames();
+    const settled = !!state.settledInitialCosts;
+    const sharedPlan = sharedAccountPlan(s);
+    const sharedPlanLines = [];
+    if (sharedPlan) {
+      if (sharedPlan.debtorToJoint > 0) sharedPlanLines.push({ from: sharedPlan.debtor, toLabel: '共有口座', amount: sharedPlan.debtorToJoint });
+      if (sharedPlan.debtorToCreditor > 0) sharedPlanLines.push({ from: sharedPlan.debtor, to: sharedPlan.creditor, amount: sharedPlan.debtorToCreditor });
+      if (sharedPlan.creditorToJoint > 0) sharedPlanLines.push({ from: sharedPlan.creditor, toLabel: '共有口座', amount: sharedPlan.creditorToJoint });
+    }
+
+    container.innerHTML = '' +
+      '<div class="cycle-group">' +
+        '<div class="cycle-header">' +
+          '<span class="label">初期費用（住宅・家電など）</span>' +
+          (settled ? '<span class="chip chip-settled">精算済み</span>' : '') +
+        '</div>' +
+        '<div class="ledger">' + items.map(expenseRowHtml).join('') + '</div>' +
+      '</div>' +
+      '<div class="ledger-card">' +
+        '<div class="ledger-title">負担額（本来支払うべき金額）</div>' +
+        '<div class="kv-row"><span>' + escapeHtml(names.a) + '</span><span class="num">' + formatYen(s.burdenA) + '</span></div>' +
+        '<div class="kv-row"><span>' + escapeHtml(names.b) + '</span><span class="num">' + formatYen(s.burdenB) + '</span></div>' +
+        '<div class="kv-row total"><span>合計</span><span class="num">' + formatYen(s.total) + '</span></div>' +
+      '</div>' +
+      '<div class="ledger-card">' +
+        '<div class="ledger-title">実際の立替額</div>' +
+        '<div class="kv-row"><span>' + escapeHtml(names.a) + '</span><span class="num">' + formatYen(s.paidByA) + '</span></div>' +
+        '<div class="kv-row"><span>' + escapeHtml(names.b) + '</span><span class="num">' + formatYen(s.paidByB) + '</span></div>' +
+        (s.paidByShared > 0 ? '<div class="kv-row"><span>共有カード</span><span class="num">' + formatYen(s.paidByShared) + '</span></div>' : '') +
+      '</div>' +
+      (sharedPlan ?
+        '<div class="ledger-card">' +
+          '<div class="ledger-title">共有カードの精算プラン</div>' +
+          '<div class="field-hint" style="padding-top:0; margin-bottom:10px;">グロス：共有分も含めた本来の負担額。ネット：共有口座への入金とAB間の精算を1つにまとめた場合の送金額です。</div>' +
+          '<div class="kv-row"><span>' + escapeHtml(names.a) + '（グロス）</span><span class="num">' + formatYen(s.burdenA) + '</span></div>' +
+          '<div class="kv-row"><span>' + escapeHtml(names.b) + '（グロス）</span><span class="num">' + formatYen(s.burdenB) + '</span></div>' +
+          sharedPlanLines.map(function (l) {
+            const toText = l.toLabel ? l.toLabel : escapeHtml(paidByLabel(l.to, names));
+            return '<div class="kv-row"><span>' + escapeHtml(paidByLabel(l.from, names)) + ' → ' + toText + '（ネット）</span><span class="num">' + formatYen(l.amount) + '</span></div>';
+          }).join('') +
+        '</div>'
+        : '') +
+      '<div class="settlement-card">' +
+        (settled ? '<div class="stamp">精算済</div>' : '') +
+        (s.settle ?
+          '<div class="settlement-flow"><span>' + escapeHtml(s.settle.payer === 'a' ? names.a : names.b) + '</span><span class="arrow">→</span><span>' + escapeHtml(s.settle.receiver === 'a' ? names.a : names.b) + '</span></div>' +
+          '<div class="settlement-amount">' + formatYen(s.settle.amount) + '</div>'
+          : '<div class="settlement-none">精算の必要はありません</div>') +
+        '<button class="btn ' + (settled ? 'btn-ghost' : 'btn-primary') + '" data-action="toggle-initial-cost-settled">' +
+          (settled ? 'この初期費用の精算済みを取り消す' : 'この初期費用を精算済みにする') +
+        '</button>' +
+      '</div>';
   }
 
   function renderSummary() {
@@ -2135,6 +2232,7 @@ import {
   let currentCustomPercent = 50;
   let customRatioMode = 'percent';
   let currentPaidBy = 'a';
+  let currentIsInitialCost = false;
   let currentCategory = 'other';
   let categoryManuallySet = false;
   let splitTypeManuallySet = false;
@@ -2266,6 +2364,19 @@ import {
       return '<button type="button" class="segment' + (currentPaidBy === p ? ' selected' : '') + '" data-action="select-paidby" data-person="' + p + '">' +
         escapeHtml(paidByLabel(p, names)) + '</button>';
     }).join('');
+  }
+
+  // 初期費用（住宅・家電など）: kept completely separate from the monthly
+  // billing-cycle groups and settlement -- see initialCostSummary().
+  function renderExpenseKindSegmented() {
+    const container = document.getElementById('expense-kind-segmented');
+    container.innerHTML = [[false, '通常の支出'], [true, '初期費用']].map(function (opt) {
+      return '<button type="button" class="segment' + (currentIsInitialCost === opt[0] ? ' selected' : '') + '" data-action="select-expense-kind" data-value="' + opt[0] + '">' +
+        opt[1] + '</button>';
+    }).join('');
+    document.getElementById('expense-kind-hint').textContent = currentIsInitialCost
+      ? '住宅・家電などの初期費用として、月ごとの精算とは別枠で管理します。'
+      : '';
   }
 
   function renderExpenseCategoryPicker() {
@@ -2504,6 +2615,7 @@ import {
     currentSplitType = e ? e.splitType : defaultSplitTypeForCategory(currentCategory);
     currentCustomPercent = (e && e.customAPercent != null) ? e.customAPercent : 50;
     currentPaidBy = e ? e.paidBy : 'a';
+    currentIsInitialCost = !!(e && e.isInitialCost);
     splitTypeManuallySet = !!e;
     // Amount-input mode is the default everywhere -- a fresh 任意の割合
     // selection, and reopening an expense that's already saved as
@@ -2514,6 +2626,7 @@ import {
 
     renderExpenseSplitOptions();
     renderExpensePaidBySegmented();
+    renderExpenseKindSegmented();
     renderExpenseCategoryPicker();
     updateCustomRatioVisibility();
   }
@@ -2526,7 +2639,7 @@ import {
     const memo = document.getElementById('expense-memo').value.trim();
     const note = document.getElementById('expense-note').value.trim();
     const customAPercent = currentSplitType === 'customRatio' ? currentCustomPercent : null;
-    const payload = { date: date, amount: amount, memo: memo, note: note, splitType: currentSplitType, customAPercent: customAPercent, paidBy: currentPaidBy, category: currentCategory };
+    const payload = { date: date, amount: amount, memo: memo, note: note, splitType: currentSplitType, customAPercent: customAPercent, paidBy: currentPaidBy, category: currentCategory, isInitialCost: currentIsInitialCost };
 
     if (editingPendingImportIndex !== null) {
       Object.assign(pendingImportItems[editingPendingImportIndex], payload);
@@ -2758,6 +2871,10 @@ import {
     const nextSettledCycles = Object.assign({}, state.settledCycles);
     nextSettledCycles[key] = !settled;
     await updateSettings({ settledCycles: nextSettledCycles });
+  }
+
+  async function toggleInitialCostSettled() {
+    await updateSettings({ settledInitialCosts: !state.settledInitialCosts });
   }
 
   async function resetAllData() {
@@ -3326,7 +3443,7 @@ import {
         batch.set(ref, {
           date: item.date, amount: item.amount, memo: item.memo, note: item.note || '',
           splitType: item.splitType, customAPercent: item.customAPercent,
-          paidBy: item.paidBy, category: item.category, updatedAt: Date.now()
+          paidBy: item.paidBy, category: item.category, isInitialCost: item.isInitialCost || false, updatedAt: Date.now()
         });
       });
       await batch.commit();
@@ -3378,6 +3495,10 @@ import {
         currentPaidBy = target.dataset.person;
         renderExpensePaidBySegmented();
         break;
+      case 'select-expense-kind':
+        currentIsInitialCost = target.dataset.value === 'true';
+        renderExpenseKindSegmented();
+        break;
       case 'select-category':
         currentCategory = target.dataset.category;
         categoryManuallySet = true;
@@ -3405,6 +3526,7 @@ import {
         break;
       case 'close-sheet': closeSheet(target.dataset.sheet + '-sheet-backdrop'); break;
       case 'toggle-settled': toggleSettled(target.dataset.key); break;
+      case 'toggle-initial-cost-settled': toggleInitialCostSettled(); break;
       case 'open-manual': showSheet('manual-sheet-backdrop'); break;
       case 'export-data': exportBackup(); break;
       case 'reset-data': resetAllData(); break;
