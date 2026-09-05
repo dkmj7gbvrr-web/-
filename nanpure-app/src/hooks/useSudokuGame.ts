@@ -43,6 +43,13 @@ export type HintDisplay =
   | { kind: 'fallback'; index: number; digit: Digit }
   | { kind: 'none-left' }
 
+export interface Mistake {
+  index: number
+  digit: Digit
+}
+
+const MISTAKE_FLASH_MS = 500
+
 export const useSudokuGame = () => {
   const [difficulty, setDifficulty] = useState<Difficulty | null>(null)
   const [puzzle, setPuzzle] = useState<GeneratedPuzzle | null>(null)
@@ -53,9 +60,18 @@ export const useSudokuGame = () => {
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [hint, setHint] = useState<HintDisplay | null>(null)
   const [history, setHistory] = useState<CellState[][]>([])
+  const [mistake, setMistake] = useState<Mistake | null>(null)
 
   const hintCandidatesRef = useRef<CandidateMap | null>(null)
   const timerRef = useRef<number | null>(null)
+  const mistakeTimeoutRef = useRef<number | null>(null)
+
+  const clearMistakeTimeout = () => {
+    if (mistakeTimeoutRef.current !== null) {
+      window.clearTimeout(mistakeTimeoutRef.current)
+      mistakeTimeoutRef.current = null
+    }
+  }
 
   const isSolved = useMemo(() => {
     if (!puzzle || board.length === 0) return false
@@ -80,11 +96,15 @@ export const useSudokuGame = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [puzzle, isSolved])
 
+  useEffect(() => clearMistakeTimeout, [])
+
   const startNewGame = useCallback((level: Difficulty, seed?: number) => {
     setIsGenerating(true)
     setDifficulty(level)
     setHint(null)
     hintCandidatesRef.current = null
+    clearMistakeTimeout()
+    setMistake(null)
     // 生成中はUIをブロックしすぎないよう次のタスクに回す
     window.setTimeout(() => {
       const generated = generatePuzzle(level, { seed })
@@ -105,6 +125,8 @@ export const useSudokuGame = () => {
     setHint(null)
     setHistory([])
     hintCandidatesRef.current = null
+    clearMistakeTimeout()
+    setMistake(null)
   }, [])
 
   const clearHint = useCallback(() => {
@@ -120,6 +142,18 @@ export const useSudokuGame = () => {
     (index: number, digit: Digit) => {
       const cell = board[index]
       if (!cell || cell.given) return
+
+      if (puzzle && digit !== 0 && puzzle.solution[index] !== digit) {
+        // 本入力が不正解: 盤面には反映せず、一瞬だけ間違いを表示して弾く
+        clearMistakeTimeout()
+        setMistake({ index, digit })
+        mistakeTimeoutRef.current = window.setTimeout(() => {
+          setMistake(null)
+          mistakeTimeoutRef.current = null
+        }, MISTAKE_FLASH_MS)
+        return
+      }
+
       const next = board.slice()
       next[index] = { ...cell, value: digit, notes: 0 }
       if (digit !== 0) {
@@ -134,7 +168,7 @@ export const useSudokuGame = () => {
       setBoard(next)
       onBoardMutated()
     },
-    [board],
+    [board, puzzle],
   )
 
   const toggleNote = useCallback(
@@ -266,6 +300,7 @@ export const useSudokuGame = () => {
     hint,
     isSolved,
     conflicts,
+    mistake,
     remainingCounts,
     setSelected,
     setMemoMode,

@@ -12,6 +12,8 @@ interface Props {
   hintDigits: Set<Digit> | null
   /** 選択中のマスに入っている数字。空マスのメモの中の同じ数字を目立たせるのに使う */
   sameValueDigit: Digit | null
+  /** このマスで直前に弾かれた誤答（本入力が不正解だった場合、一瞬だけ表示する） */
+  mistakeDigit: Digit | null
   onSelect: (index: number) => void
 }
 
@@ -25,6 +27,7 @@ export const Cell = ({
   hintLevel,
   hintDigits,
   sameValueDigit,
+  mistakeDigit,
   onSelect,
 }: Props) => {
   const row = Math.floor(index / 9)
@@ -37,6 +40,7 @@ export const Cell = ({
   if (isSameValue) classes.push('cell--same-value')
   if (isConflict) classes.push('cell--conflict')
   if (hintLevel) classes.push(`cell--hint-${hintLevel}`)
+  if (mistakeDigit !== null) classes.push('cell--mistake')
   if (col % 3 === 0) classes.push('cell--block-left')
   if (row % 3 === 0) classes.push('cell--block-top')
   if (col === 8) classes.push('cell--edge-right')
@@ -49,7 +53,9 @@ export const Cell = ({
       onClick={() => onSelect(index)}
       aria-label={`${row + 1}行${col + 1}列`}
     >
-      {state.value !== 0 ? (
+      {mistakeDigit !== null ? (
+        <span className="cell__value cell__value--mistake">{mistakeDigit}</span>
+      ) : state.value !== 0 ? (
         <span className="cell__value">{state.value}</span>
       ) : (
         <span className="cell__notes">
