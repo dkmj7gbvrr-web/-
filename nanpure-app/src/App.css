@@ -261,10 +261,34 @@
   background: var(--hint-primary-bg);
 }
 
+.cell--mistake {
+  background: var(--error-bg);
+  animation: cell-shake 0.4s ease-in-out;
+}
+
+@keyframes cell-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20%,
+  60% {
+    transform: translateX(-4px);
+  }
+  40%,
+  80% {
+    transform: translateX(4px);
+  }
+}
+
 .cell__value {
   font-size: clamp(16px, 4.4vw, 26px);
   font-weight: 500;
   color: var(--user-text);
+}
+
+.cell__value--mistake {
+  color: var(--error);
 }
 
 .cell--given .cell__value {

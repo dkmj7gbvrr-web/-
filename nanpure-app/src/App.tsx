@@ -45,6 +45,7 @@ function App() {
     hint,
     isSolved,
     conflicts,
+    mistake,
     remainingCounts,
     setSelected,
     setMemoMode,
@@ -135,7 +136,14 @@ function App() {
 
       <main className="game-main">
         <div className="board-area">
-          <Board board={board} selected={selected} conflicts={conflicts} hint={hint} onSelect={setSelected} />
+          <Board
+            board={board}
+            selected={selected}
+            conflicts={conflicts}
+            hint={hint}
+            mistake={mistake}
+            onSelect={setSelected}
+          />
           {isSolved && (
             <div className="solved-overlay">
               <p className="solved-overlay__title">クリア！</p>
