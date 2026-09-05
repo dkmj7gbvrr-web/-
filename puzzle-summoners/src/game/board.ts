@@ -174,6 +174,51 @@ export const refill = (board: Board, rng: Rng): Board => {
   return board.map((row) => row.map((cell) => (cell === null ? randomElement(rng) : cell)))
 }
 
+export interface FallingOrb {
+  readonly id: string
+  readonly element: Element
+  readonly col: number
+  /** 消去直後（落下前）の行。新規補充オーブは盤面の外（負の値）から始まる */
+  readonly fromRow: number
+  /** 落下・補充が終わった後の最終的な行 */
+  readonly toRow: number
+}
+
+/**
+ * 消去直後の盤面と、落下・補充まで終えた盤面を比較し、各オーブが
+ * どこからどこへ落ちるかを算出する（見た目のアニメーション専用。ゲームロジックには使わない）。
+ * 各列内で生き残ったオーブは元の相対順序を保ったまま下に詰まり、新規オーブは
+ * 盤面の上（行数がマイナス）から連なって降ってくる。
+ */
+export const computeFallPlan = (boardAfterClear: Board, boardAfterSettle: Board): readonly FallingOrb[] => {
+  const rows = boardAfterClear.length
+  const cols = boardAfterClear[0]?.length ?? 0
+  const orbs: FallingOrb[] = []
+
+  for (let col = 0; col < cols; col++) {
+    const survivors: { row: number; element: Element }[] = []
+    for (let row = 0; row < rows; row++) {
+      const cell = boardAfterClear[row][col]
+      if (cell !== null) survivors.push({ row, element: cell })
+    }
+    const numNew = rows - survivors.length
+
+    for (let i = 0; i < survivors.length; i++) {
+      const toRow = numNew + i
+      orbs.push({ id: `s-${col}-${i}`, element: survivors[i].element, col, fromRow: survivors[i].row, toRow })
+    }
+
+    for (let i = 0; i < numNew; i++) {
+      const toRow = i
+      const element = boardAfterSettle[toRow][col]
+      if (element === null) continue
+      orbs.push({ id: `n-${col}-${i}`, element, col, fromRow: i - numNew, toRow })
+    }
+  }
+
+  return orbs
+}
+
 export interface CascadeResult {
   readonly finalBoard: Board
   readonly groups: readonly MatchGroup[]

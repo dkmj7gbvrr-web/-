@@ -399,6 +399,41 @@
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
 }
 
+.box-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.box-filter-chip {
+  border: 2px solid var(--border);
+  background: var(--panel-bg);
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.box-filter-chip.is-active {
+  border-color: var(--chip-color, var(--accent));
+  background: color-mix(in srgb, var(--chip-color, var(--accent)) 25%, var(--panel-bg));
+  color: var(--text);
+}
+
+.box-sort-select {
+  margin-left: auto;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 5px 8px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
 .monster-card {
   position: relative;
   display: flex;
@@ -997,12 +1032,11 @@
 }
 
 .orb-board {
-  display: grid;
-  gap: 4px;
+  position: relative;
+  overflow: hidden;
   aspect-ratio: 6 / 5;
   background: var(--bg-alt);
   border-radius: 16px;
-  padding: 6px;
   touch-action: none;
   user-select: none;
 }
@@ -1011,7 +1045,20 @@
   opacity: 0.6;
 }
 
+.orb-slot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transition: transform 0.16s ease;
+}
+
+.orb-slot--falling {
+  transition: transform 0.32s cubic-bezier(0.55, 0.06, 0.68, 0.19);
+}
+
 .orb {
+  position: absolute;
+  inset: 3px;
   border-radius: 50%;
   display: flex;
   align-items: center;

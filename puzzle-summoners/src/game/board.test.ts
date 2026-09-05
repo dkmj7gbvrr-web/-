@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mulberry32 } from './rng'
 import {
   applyGravity,
+  computeFallPlan,
   createRandomBoard,
   findMatchGroups,
   isAdjacent,
@@ -177,5 +178,61 @@ describe('resolveCascadeSteps', () => {
     const combined = resolveCascades(board, mulberry32(10))
     expect(steps.at(-1)?.boardAfterSettle).toEqual(combined.finalBoard)
     expect(steps.reduce((sum, s) => sum + s.groups.length, 0)).toBe(combined.groups.length)
+  })
+})
+
+describe('computeFallPlan', () => {
+  it('各列で、行0〜(rows-1)がちょうど1回ずつtoRowとして使われる', () => {
+    const board: Board = [
+      ['fire', 'fire', 'fire', 'water', 'water', 'water'],
+      ['wood', 'light', 'dark', 'wood', 'light', 'dark'],
+    ]
+    const groups = findMatchGroups(board)
+    const boardAfterClear = removeGroups(board, groups)
+    const boardAfterSettle = refill(applyGravity(boardAfterClear), mulberry32(1))
+    const plan = computeFallPlan(boardAfterClear, boardAfterSettle)
+
+    const cols = board[0].length
+    const rows = board.length
+    for (let col = 0; col < cols; col++) {
+      const toRows = plan.filter((o) => o.col === col).map((o) => o.toRow).sort((a, b) => a - b)
+      expect(toRows).toEqual(Array.from({ length: rows }, (_, i) => i))
+    }
+  })
+
+  it('生き残ったオーブは元の行から、要素の値もそのまま落ちる', () => {
+    const board: Board = [['fire'], ['fire'], ['fire'], ['water'], ['wood']]
+    const groups = findMatchGroups(board) // 上3つがfireで揃う
+    const boardAfterClear = removeGroups(board, groups)
+    const boardAfterSettle = refill(applyGravity(boardAfterClear), mulberry32(2))
+    const plan = computeFallPlan(boardAfterClear, boardAfterSettle)
+
+    const survivor = plan.find((o) => o.element === 'water')
+    expect(survivor?.fromRow).toBe(3)
+    const woodSurvivor = plan.find((o) => o.element === 'wood')
+    expect(woodSurvivor?.fromRow).toBe(4)
+  })
+
+  it('新規オーブは盤面の外（負の行）から、最終行と同じ要素で降ってくる', () => {
+    const board: Board = [['fire'], ['fire'], ['fire'], ['water'], ['wood']]
+    const groups = findMatchGroups(board)
+    const boardAfterClear = removeGroups(board, groups)
+    const boardAfterSettle = refill(applyGravity(boardAfterClear), mulberry32(3))
+    const plan = computeFallPlan(boardAfterClear, boardAfterSettle)
+
+    const newOrbs = plan.filter((o) => o.fromRow < 0)
+    expect(newOrbs).toHaveLength(3)
+    for (const orb of newOrbs) {
+      expect(orb.element).toBe(boardAfterSettle[orb.toRow][orb.col])
+      expect(orb.fromRow).toBeLessThan(0)
+    }
+  })
+
+  it('マッチが無ければ全オーブがfromRow===toRow（動かない）', () => {
+    const board = createRandomBoard(mulberry32(4))
+    const plan = computeFallPlan(board, board)
+    for (const orb of plan) {
+      expect(orb.fromRow).toBe(orb.toRow)
+    }
   })
 })

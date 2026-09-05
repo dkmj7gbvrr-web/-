@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { Board, CascadeStep } from '../game/board'
-import { createRandomBoard, resolveCascadeSteps } from '../game/board'
+import { computeFallPlan, createRandomBoard, resolveCascadeSteps } from '../game/board'
 import { computeTeamStats, computeTurnResult } from '../game/battle'
 import type { TeamStats } from '../game/battle'
 import { mulberry32, randomSeed } from '../game/rng'
+import { playOrbClear } from '../game/sound'
 import type { AttackElement, MonsterDef, Stage } from '../game/types'
 import { PARTY_SIZE } from '../game/types'
 import { ELEMENT_META } from '../game/orbTheme'
 import { OrbBoard } from './OrbBoard'
-import type { OrbAnimState } from './OrbBoard'
+import type { FallLayerOrb, OrbAnimState } from './OrbBoard'
 import { HpBar } from './HpBar'
 import type { StageClearOutcome } from '../hooks/useGameState'
 
@@ -46,9 +47,14 @@ type BattleStatus = 'playing' | 'won' | 'lost'
 
 const HIGHLIGHT_MS = 220
 const CLEAR_MS = 200
-const SETTLE_MS = 420
+const FALL_MS = 320
+const SETTLE_MS = 260
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+/** 1フレーム分の描画を確実に挟んでからCSSトランジションを開始するためのヘルパー */
+const nextFrame = () =>
+  new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
 
 const positionsToAnimMap = (positions: readonly { row: number; col: number }[], state: OrbAnimState) => {
   const map = new Map<string, OrbAnimState>()
@@ -72,6 +78,7 @@ export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: Batt
 
   const [board, setBoard] = useState<Board>(() => createRandomBoard(rng))
   const [cellAnim, setCellAnim] = useState<ReadonlyMap<string, OrbAnimState> | undefined>(undefined)
+  const [fallLayer, setFallLayer] = useState<readonly FallLayerOrb[] | null>(null)
   const [enemyHp, setEnemyHp] = useState(stage.enemy.maxHp)
   const [teamHp, setTeamHp] = useState(team.maxHp)
   const [attackCountdown, setAttackCountdown] = useState(stage.enemy.turnsPerAttack ?? 1)
@@ -174,10 +181,23 @@ export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: Batt
       if (!mountedRef.current) return
 
       setCellAnim(positionsToAnimMap(step.matchedCells, 'clearing'))
+      step.groups.forEach((group, i) => playOrbClear(cumulativeCombo + i + 1, group.cells.length))
       await sleep(CLEAR_MS)
       if (!mountedRef.current) return
 
+      // オーブが実際に重力で落ちてくる演出。まず消去直後の位置（落下前）で1フレーム描画してから、
+      // 最終位置へ更新することでCSSトランジションが滑らかなアニメーションとして再生される
+      const fallPlan = computeFallPlan(step.boardAfterClear, step.boardAfterSettle)
+      setCellAnim(undefined)
+      setFallLayer(fallPlan.map((o) => ({ id: o.id, element: o.element, row: o.fromRow, col: o.col })))
+      await nextFrame()
+      if (!mountedRef.current) return
+      setFallLayer(fallPlan.map((o) => ({ id: o.id, element: o.element, row: o.toRow, col: o.col })))
+      await sleep(FALL_MS)
+      if (!mountedRef.current) return
+
       const refilled = collectRefilledPositions(step.boardAfterClear)
+      setFallLayer(null)
       setBoard(step.boardAfterSettle)
       setCellAnim(positionsToAnimMap(refilled, 'popping'))
 
@@ -363,7 +383,13 @@ export const BattleScreen = ({ stage, partyMonsterDefs, onFinish, onExit }: Batt
         })}
       </div>
 
-      <OrbBoard board={board} disabled={status !== 'playing' || animating} onDragEnd={handleDragEnd} cellAnim={cellAnim} />
+      <OrbBoard
+        board={board}
+        disabled={status !== 'playing' || animating}
+        onDragEnd={handleDragEnd}
+        cellAnim={cellAnim}
+        fallLayer={fallLayer}
+      />
 
       {status !== 'playing' && (
         <div className="battle-result-overlay">

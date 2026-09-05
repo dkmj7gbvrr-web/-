@@ -79,6 +79,25 @@ export const playGachaChime = (rarity: Rarity): void => {
   }
 }
 
+const COMBO_SCALE = [523.25, 587.33, 659.25, 783.99, 880.0, 987.77]
+
+/**
+ * オーブが1グループ消える瞬間の「ポン」という音。comboIndex（そのターンの通算コンボ数）が
+ * 増えるほど音階が上がっていき、連鎖が重なるほど気持ちよく聞こえるようにしている。
+ * groupSizeが大きい（多消し）ほど音に厚みが増す。
+ */
+export const playOrbClear = (comboIndex: number, groupSize: number): void => {
+  const ctx = getContext()
+  if (!ctx) return
+  const now = ctx.currentTime
+  const octave = Math.min(2, Math.floor((comboIndex - 1) / COMBO_SCALE.length))
+  const note = COMBO_SCALE[(comboIndex - 1) % COMBO_SCALE.length] * Math.pow(2, octave)
+
+  playTone(ctx, note, now, 0.22, 0.12, 'sine')
+  if (groupSize >= 4) playTone(ctx, note * 1.5, now + 0.02, 0.22, 0.08, 'sine')
+  if (groupSize >= 5) playTone(ctx, note * 2, now + 0.04, 0.24, 0.07, 'sine')
+}
+
 /** レバーを引いた瞬間の「ガコン」という機械音 */
 export const playLeverClunk = (): void => {
   const ctx = getContext()
