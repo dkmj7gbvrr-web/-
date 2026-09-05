@@ -11,6 +11,7 @@ on:
       - "pokefuta-visit-tracker/**"
       - "nanpure-app/**"
       - "test-tube-liquid-game/**"
+      - "docs/**"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 
@@ -64,6 +65,8 @@ jobs:
           cp -r nanpure-app/dist/. site/nanpure-app/
           mkdir -p site/test-tube-liquid-game
           cp -r test-tube-liquid-game/dist/. site/test-tube-liquid-game/
+          mkdir -p site/warikan-kakeibo
+          cp -r docs/. site/warikan-kakeibo/
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

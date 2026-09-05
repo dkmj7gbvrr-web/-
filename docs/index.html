@@ -1,0 +1,3783 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>わりかん家計簿</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="わりかん家計簿">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#EAE7DC" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14181D" media="(prefers-color-scheme: dark)">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="512x512" href="./icon-512.png">
+
+<style>
+  :root {
+    --bg: #EAE7DC;
+    --surface: #F7F5EE;
+    --surface-2: #FFFFFF;
+    --ink: #232A36;
+    --ink-muted: #5B6472;
+    --line: #D9D4C2;
+    --accent: #2E4A6B;
+    --accent-ink: #FFFFFF;
+    --accent-soft: #DCE3EA;
+    --red: #B23A2E;
+    --red-soft: #F3DEDA;
+    /* Categorical: one color per split pattern, fixed order (never reassigned). */
+    --split-aOnly: #2a78d6;
+    --split-bOnly: #eb6834;
+    --split-equal: #1baf7a;
+    --split-incomeRatio: #eda100;
+    --split-customRatio: #e87ba4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14181D;
+      --surface: #1B2027;
+      --surface-2: #20262E;
+      --ink: #EDEAE0;
+      --ink-muted: #98A0AC;
+      --line: #2C333B;
+      --accent: #86A6CC;
+      --accent-ink: #14181D;
+      --accent-soft: #24323F;
+      --red: #E1685A;
+      --red-soft: #3A2422;
+      --split-aOnly: #3987e5;
+      --split-bOnly: #d95926;
+      --split-equal: #199e70;
+      --split-incomeRatio: #c98500;
+      --split-customRatio: #d55181;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14181D;
+    --surface: #1B2027;
+    --surface-2: #20262E;
+    --ink: #EDEAE0;
+    --ink-muted: #98A0AC;
+    --line: #2C333B;
+    --accent: #86A6CC;
+    --accent-ink: #14181D;
+    --accent-soft: #24323F;
+    --red: #E1685A;
+    --red-soft: #3A2422;
+    --split-aOnly: #3987e5;
+    --split-bOnly: #d95926;
+    --split-equal: #199e70;
+    --split-incomeRatio: #c98500;
+    --split-customRatio: #d55181;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", system-ui, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button, input, select {
+    font-family: inherit;
+    color: inherit;
+  }
+  .num, .amount, .amount-input, .num-input {
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  h1, h2, h3, p { margin: 0; text-wrap: balance; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  #app {
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+  }
+  /* [hidden] must win over this ID selector, otherwise a "hidden" #app
+     still renders (same class of bug as the sheet-backdrop fix below). */
+  #app:not([hidden]) {
+    display: flex;
+  }
+  main#main-scroll {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: calc(92px + env(safe-area-inset-bottom));
+  }
+  .tab-panel[hidden] { display: none; }
+
+  .page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: max(22px, env(safe-area-inset-top)) 20px 14px;
+  }
+  .page-header h1 {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .icon-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: none;
+    background: var(--accent-soft);
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .icon-btn svg { width: 19px; height: 19px; }
+
+  /* --- ledger list --- */
+  .cycle-group { margin: 0 0 26px; }
+  .cycle-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 20px 8px;
+  }
+  .cycle-header .label {
+    font-size: 13px;
+    letter-spacing: .02em;
+    color: var(--ink-muted);
+    font-weight: 600;
+  }
+  .chip {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .chip-settled { background: var(--red-soft); color: var(--red); }
+
+  .category-chip {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    color: var(--ink-muted);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .category-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .category-picker-chip {
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+  .category-picker-chip.selected {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+  }
+  .category-picker-chip-add {
+    border-style: dashed;
+    color: var(--ink-muted);
+    background: none;
+  }
+
+  /* Split-pattern color marker: always paired with a text label next to it,
+     never the sole carrier of meaning (color-blind / low-vision safe). */
+  .split-dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex: none;
+  }
+  .split-dot-aOnly { background: var(--split-aOnly); }
+  .split-dot-bOnly { background: var(--split-bOnly); }
+  .split-dot-equal { background: var(--split-equal); }
+  .split-dot-incomeRatio { background: var(--split-incomeRatio); }
+  .split-dot-customRatio { background: var(--split-customRatio); }
+
+  .ledger {
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 13px 20px;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+  }
+  .ledger .row:last-child { border-bottom: none; }
+  .row .main { flex: 1; min-width: 0; }
+  .row .title {
+    font-size: 15.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .row .meta {
+    font-size: 12px;
+    color: var(--ink-muted);
+    margin-top: 3px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+  .row .amount { font-size: 15.5px; white-space: nowrap; }
+
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 10px;
+    padding: 70px 32px;
+    color: var(--ink-muted);
+  }
+  .empty-state svg { width: 40px; height: 40px; opacity: .6; }
+  .empty-title { font-size: 16px; font-weight: 600; color: var(--ink); }
+  .empty-desc { font-size: 13.5px; line-height: 1.5; }
+  .empty-inline { padding: 14px 20px; font-size: 13.5px; color: var(--ink-muted); }
+
+  /* --- summary --- */
+  .summary-top {
+    padding: 0 20px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  select.cycle-select {
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    color: var(--ink);
+    font-size: 16px;
+    font-weight: 600;
+    appearance: none;
+  }
+  .summary-range { font-size: 12.5px; color: var(--ink-muted); padding-left: 2px; }
+
+  .ledger-card {
+    margin: 0 20px 16px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .ledger-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: .02em;
+    color: var(--ink-muted);
+    padding: 14px 16px 6px;
+  }
+  .kv-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 9px 16px;
+    font-size: 15px;
+    border-top: 1px solid var(--line);
+  }
+  .kv-row.total { font-weight: 700; }
+  .kv-row:last-child { padding-bottom: 15px; }
+
+  .settlement-card {
+    position: relative;
+    margin: 4px 20px 20px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 22px 20px 18px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  .settlement-flow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 15px;
+    color: var(--ink-muted);
+  }
+  .settlement-flow .arrow { color: var(--accent); font-size: 18px; }
+  .settlement-amount {
+    font-size: 34px;
+    font-weight: 700;
+    color: var(--red);
+    letter-spacing: -0.01em;
+  }
+  .settlement-none { font-size: 15px; color: var(--ink-muted); padding: 6px 0; }
+
+  .stamp {
+    position: absolute;
+    top: -14px;
+    right: 18px;
+    width: 62px;
+    height: 62px;
+    border: 3px solid var(--red);
+    color: var(--red);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    transform: rotate(-10deg);
+    background: var(--bg);
+    animation: stamp-in .35s cubic-bezier(.2, 1.4, .4, 1);
+  }
+  @keyframes stamp-in {
+    from { transform: rotate(-10deg) scale(1.8); opacity: 0; }
+    to { transform: rotate(-10deg) scale(1); opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .stamp { animation: none; }
+  }
+
+  /* --- buttons --- */
+  .btn {
+    border: none;
+    border-radius: 12px;
+    padding: 13px 20px;
+    font-size: 15.5px;
+    font-weight: 600;
+    width: 100%;
+  }
+  .btn-primary { background: var(--accent); color: var(--accent-ink); }
+  .btn-ghost { background: none; color: var(--accent); }
+  .btn-danger-ghost { background: none; color: var(--red); margin-top: 8px; }
+
+  /* --- income --- */
+  .income-status-card {
+    margin: 0 20px 20px;
+    padding: 16px;
+    background: var(--accent-soft);
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .income-status-card .label { font-size: 12.5px; color: var(--ink-muted); font-weight: 600; }
+  .income-status-card .value { font-size: 19px; font-weight: 700; color: var(--accent); }
+  .income-status-card .income-status-hint { font-size: 12.5px; color: var(--ink-muted); line-height: 1.5; margin-top: 2px; }
+  .income-status-expired { background: var(--red-soft); }
+  .income-status-expired .label { color: var(--red); font-size: 15px; font-weight: 700; }
+
+  .income-permonth-header {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .income-permonth-header .income-permonth-label { width: 92px; flex: none; }
+  .income-permonth-header .income-permonth-inputs {
+    flex: 1;
+    display: flex;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--ink-muted);
+  }
+  .income-permonth-header .income-permonth-inputs span { flex: 1; text-align: center; }
+  .income-permonth-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-top: 1px solid var(--line);
+  }
+  .income-permonth-row:first-child { border-top: none; }
+  .income-permonth-label { width: 92px; flex: none; font-size: 13.5px; color: var(--ink-muted); }
+  .income-permonth-inputs { flex: 1; display: flex; gap: 8px; }
+  .income-permonth-inputs input {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    border-radius: 10px;
+    padding: 9px 10px;
+    font-size: 14px;
+    color: var(--ink);
+  }
+  #income-permonth-rows input.income-permonth-month,
+  #income-extra-rows input.income-extra-label {
+    width: 92px;
+    flex: none;
+    min-width: 0;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    border-radius: 10px;
+    padding: 7px 6px;
+    font-size: 12.5px;
+    color: var(--ink);
+  }
+  .income-extra-section { margin-top: 18px; }
+
+  /* --- settings --- */
+  .settings-section { margin: 0 20px 24px; }
+  .settings-section .section-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--ink-muted);
+    letter-spacing: .02em;
+    padding: 0 4px 8px;
+  }
+  .field-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .field {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 13px 16px;
+    border-top: 1px solid var(--line);
+  }
+  .field:first-child { border-top: none; }
+  .field label { font-size: 15px; }
+  .field input[type="text"], .field input[type="number"] {
+    border: none;
+    background: none;
+    text-align: right;
+    font-size: 15px;
+    color: var(--ink);
+    width: 55%;
+  }
+  .field-hint {
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--ink-muted);
+    padding: 10px 4px 0;
+  }
+  .settings-actions { display: flex; flex-direction: column; gap: 10px; }
+  .btn-secondary {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    color: var(--ink);
+  }
+
+  /* --- tab bar --- */
+  .tabbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    background: var(--surface);
+    background: color-mix(in srgb, var(--surface) 90%, transparent);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid var(--line);
+    padding: 8px 0 calc(6px + env(safe-area-inset-bottom));
+    z-index: 50;
+  }
+  .tab-btn {
+    position: relative;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    background: none;
+    border: none;
+    color: var(--ink-muted);
+    padding: 4px 0;
+  }
+  .tab-badge {
+    position: absolute;
+    top: 2px;
+    left: 50%;
+    margin-left: 3px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--red);
+    border: 1.5px solid var(--bg);
+  }
+  .tab-btn svg { width: 23px; height: 23px; }
+  .tab-btn span { font-size: 10.5px; font-weight: 600; }
+  .tab-btn.active { color: var(--accent); }
+
+  /* --- sheets --- */
+  .sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: rgba(20, 24, 29, 0);
+    transition: background .28s ease;
+  }
+  /* The expense/income detail sheets can be opened *on top of* the import
+     review sheet (tapping a pending row), so they need to stack above it
+     regardless of DOM order (otherwise the backdrop below intercepts taps
+     meant for the sheet on top). */
+  #expense-sheet-backdrop, #income-sheet-backdrop { z-index: 110; }
+  /* The category sheet can be opened from within the expense sheet (the "+
+     新しいジャンル" chip), so it must stack above it too. */
+  #category-sheet-backdrop { z-index: 120; }
+  /* [hidden] must still win over this class at equal specificity, otherwise a
+     "hidden" backdrop keeps intercepting taps underneath it. */
+  .sheet-backdrop:not([hidden]) {
+    display: flex;
+    align-items: flex-end;
+  }
+  .sheet-backdrop.open { background: rgba(20, 24, 29, 0.4); }
+  .sheet {
+    width: 100%;
+    max-height: 88dvh;
+    background: var(--bg);
+    border-radius: 20px 20px 0 0;
+    display: flex;
+    flex-direction: column;
+    transform: translateY(100%);
+    transition: transform .3s cubic-bezier(.32, .72, 0, 1);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .sheet-backdrop.open .sheet { transform: translateY(0); }
+  .sheet-handle {
+    width: 36px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--line);
+    margin: 10px auto 2px;
+  }
+  .sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .sheet-title { font-size: 16px; font-weight: 700; }
+  .sheet-btn { background: none; border: none; font-size: 15.5px; color: var(--ink-muted); padding: 6px 4px; }
+  .sheet-btn-primary { color: var(--accent); font-weight: 700; }
+  .sheet-body { overflow-y: auto; padding: 18px 20px 28px; }
+
+  .manual-body { line-height: 1.6; }
+  .manual-section { margin-bottom: 22px; }
+  .manual-section:last-child { margin-bottom: 0; }
+  .manual-section h3 { font-size: 15px; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
+  .manual-section p { font-size: 13.5px; color: var(--ink-muted); margin: 0 0 6px; }
+  .manual-section p:last-child { margin-bottom: 0; }
+  .manual-section ul, .manual-section ol { padding-left: 20px; margin: 6px 0 0; }
+  .manual-section li { font-size: 13.5px; color: var(--ink-muted); margin-bottom: 6px; }
+  .manual-section li:last-child { margin-bottom: 0; }
+  .manual-section li strong { color: var(--ink); }
+  .manual-note { font-size: 12px; color: var(--ink-muted); margin-top: 10px; }
+
+  .import-sheet { max-height: 94dvh; }
+  .import-sheet-body { flex: 1; }
+  .import-sheet-footer {
+    padding: 12px 20px 14px;
+    border-top: 1px solid var(--line);
+    background: var(--bg);
+  }
+  .import-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 8px 0 16px;
+  }
+  .import-checkbox {
+    width: 20px;
+    height: 20px;
+    accent-color: var(--accent);
+    flex: none;
+  }
+  .import-row-image-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    margin: 6px 0;
+    background: #fff;
+  }
+  .import-row-image {
+    display: block;
+    height: 46px;
+    width: auto;
+    max-width: none;
+  }
+  .import-row-image-loading {
+    font-size: 12px;
+    color: var(--ink-muted);
+    margin: 4px 0;
+  }
+  .garbled-hint { color: var(--red); }
+  .import-row-body {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+    padding: 13px 12px 13px 4px;
+    background: none;
+    border: none;
+    text-align: left;
+    color: inherit;
+  }
+
+  .field-group { margin-bottom: 16px; }
+  .field-label {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--ink-muted);
+    margin-bottom: 6px;
+  }
+  .field-group input[type="text"],
+  .field-group input[type="date"],
+  .field-group input[type="month"],
+  .field-group select {
+    width: 100%;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 16px;
+    color: var(--ink);
+  }
+  .amount-field {
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    border-radius: 12px;
+    padding: 0 14px;
+  }
+  .amount-field .yen-mark { font-size: 16px; color: var(--ink-muted); margin-right: 4px; }
+  .amount-field input {
+    border: none;
+    background: none;
+    padding: 12px 0;
+    font-size: 18px;
+    width: 100%;
+    color: var(--ink);
+  }
+
+  .section-label {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--ink-muted);
+    letter-spacing: .02em;
+    margin: 20px 2px 8px;
+  }
+  .option-list {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .option-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 13px 16px;
+    background: none;
+    border: none;
+    border-top: 1px solid var(--line);
+    font-size: 15px;
+    text-align: left;
+    color: var(--ink);
+  }
+  .option-row:first-child { border-top: none; }
+  .option-row.selected { color: var(--accent); font-weight: 600; }
+  .option-row .check { width: 18px; height: 18px; color: var(--accent); }
+
+  .custom-ratio {
+    margin-top: 12px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px 16px;
+  }
+  .custom-ratio-label { font-size: 14.5px; margin-bottom: 10px; font-variant-numeric: tabular-nums; }
+  .custom-ratio input[type="range"] { width: 100%; accent-color: var(--accent); }
+  .custom-amount-grid { display: flex; gap: 10px; }
+  .custom-amount-grid > div { flex: 1; min-width: 0; }
+
+  .segmented {
+    display: flex;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 3px;
+    gap: 3px;
+  }
+  .segment {
+    flex: 1;
+    border: none;
+    background: none;
+    padding: 10px 0;
+    border-radius: 9px;
+    font-size: 14.5px;
+    color: var(--ink-muted);
+    font-weight: 600;
+  }
+  .segment.selected { background: var(--accent); color: var(--accent-ink); }
+
+  /* --- toast --- */
+  #toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(96px + env(safe-area-inset-bottom));
+    transform: translate(-50%, 10px);
+    background: var(--ink);
+    color: var(--bg);
+    padding: 10px 18px;
+    border-radius: 999px;
+    font-size: 13.5px;
+    font-weight: 600;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s ease, transform .2s ease;
+    z-index: 200;
+    white-space: nowrap;
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* --- onboarding (household code) --- */
+  .onboarding {
+    min-height: 100dvh;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  /* Same [hidden]-vs-class-selector fix as #app above. */
+  .onboarding:not([hidden]) {
+    display: flex;
+  }
+  .onboarding-card {
+    width: 100%;
+    max-width: 360px;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .onboarding-card:not([hidden]) {
+    display: flex;
+  }
+  .onboarding-card h1 {
+    font-size: 26px;
+    text-align: center;
+    margin-bottom: 2px;
+  }
+  .onboarding-lead {
+    font-size: 14.5px;
+    color: var(--ink-muted);
+    text-align: center;
+    line-height: 1.6;
+    margin-bottom: 6px;
+  }
+  .onboarding-divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--ink-muted);
+    font-size: 12.5px;
+    margin: 6px 0;
+  }
+  .onboarding-divider::before, .onboarding-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+  .onboarding input[type="text"] {
+    width: 100%;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    border-radius: 12px;
+    padding: 13px 14px;
+    font-size: 17px;
+    letter-spacing: .04em;
+    color: var(--ink);
+    text-align: center;
+  }
+  .onboarding-error {
+    color: var(--red);
+    font-size: 13px;
+    text-align: center;
+  }
+  .code-display {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 22px 16px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+  }
+  .code-display .code-value {
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    color: var(--accent);
+  }
+  .code-display .code-hint {
+    font-size: 12.5px;
+    color: var(--ink-muted);
+    text-align: center;
+    line-height: 1.5;
+  }
+  .spinner {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2.5px solid var(--line);
+    border-top-color: var(--accent);
+    animation: spin .7s linear infinite;
+    margin: 40px auto;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation: spin 1.4s linear infinite; } }
+</style>
+</head>
+<body>
+
+<div id="loading-screen" class="onboarding">
+  <div class="spinner"></div>
+</div>
+
+<div id="onboarding" class="onboarding" hidden>
+  <div class="onboarding-card" id="onboarding-start">
+    <h1>わりかん家計簿</h1>
+    <p class="onboarding-lead">2人でデータを共有するには「世帯コード」を使います。<br>どちらか1人が新しく作り、そのコードをもう1人に伝えてください。</p>
+    <button class="btn btn-primary" data-action="create-household">新しく世帯を作る</button>
+    <div class="onboarding-divider">または</div>
+    <input type="text" id="join-code-input" placeholder="招待されたコードを入力" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <button class="btn btn-secondary" data-action="join-household">このコードで参加する</button>
+    <div class="onboarding-error" id="onboarding-error" hidden></div>
+  </div>
+
+  <div class="onboarding-card" id="onboarding-created" hidden>
+    <h1>世帯を作成しました</h1>
+    <div class="code-display">
+      <div class="code-value" id="created-code-value"></div>
+      <div class="code-hint">このコードをもう1人に伝えてください。<br>相手が「招待されたコードを入力」で参加すると、データが共有されます。</div>
+    </div>
+    <button class="btn btn-secondary" data-action="copy-created-code">コードをコピー</button>
+    <button class="btn btn-primary" data-action="enter-app">はじめる</button>
+  </div>
+</div>
+
+<div id="app" hidden>
+  <main id="main-scroll">
+    <section class="tab-panel" data-tab="expenses" id="tab-expenses">
+      <div class="page-header">
+        <h1>支出</h1>
+        <div style="display:flex; gap:8px;">
+          <button class="icon-btn" data-action="import-pdf-trigger" aria-label="明細PDFを読み込む">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9.5 17v-4.5h1.3a1.3 1.3 0 0 1 0 2.6H9.5M13.5 17v-4.5h1.6a1 1 0 0 1 0 4.5h-1.6z"/></svg>
+          </button>
+          <button class="icon-btn" data-action="add-expense" aria-label="支出を追加">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+        </div>
+      </div>
+      <div id="expenses-list"></div>
+      <div id="initial-cost-section"></div>
+    </section>
+
+    <section class="tab-panel" data-tab="summary" id="tab-summary" hidden>
+      <div class="page-header"><h1>集計</h1></div>
+      <div class="summary-top">
+        <select class="cycle-select" id="summary-cycle-select"></select>
+        <div class="summary-range" id="summary-range"></div>
+      </div>
+      <div id="summary-body"></div>
+    </section>
+
+    <section class="tab-panel" data-tab="income" id="tab-income" hidden>
+      <div class="page-header">
+        <h1>収入</h1>
+        <button class="icon-btn" data-action="add-income" aria-label="収入を追加">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+      <div class="income-status-card" id="income-status-card">
+        <div class="label">収入データがありません</div>
+        <div class="income-status-hint">「収入割合で負担する費用」を使うには、収入の期間を登録してください</div>
+      </div>
+      <div id="income-list"></div>
+    </section>
+
+    <section class="tab-panel" data-tab="settings" id="tab-settings" hidden>
+      <div class="page-header"><h1>設定</h1></div>
+
+      <div class="settings-section">
+        <div class="section-title">ヘルプ</div>
+        <div class="settings-actions">
+          <button class="btn btn-secondary" data-action="open-manual">使い方ガイドを見る</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="section-title">世帯コード</div>
+        <div class="field-card">
+          <div class="field"><label>現在のコード</label><span class="num" id="settings-code-value"></span></div>
+        </div>
+        <div class="field-hint">このコードを知っている人だけが、このデータを見たり入力したりできます。他の人に教えないでください。</div>
+        <div class="settings-actions" style="margin-top:10px;">
+          <button class="btn btn-secondary" data-action="copy-settings-code">コードをコピー</button>
+          <button class="btn btn-ghost" data-action="leave-household" style="width:auto; padding:8px 4px;">別の世帯コードに切り替える</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="section-title">表示名</div>
+        <div class="field-card">
+          <div class="field"><label for="setting-name-a">Aさんの名前</label><input type="text" id="setting-name-a" maxlength="10"></div>
+          <div class="field"><label for="setting-name-b">Bさんの名前</label><input type="text" id="setting-name-b" maxlength="10"></div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="section-title">クレジットカード</div>
+        <div class="field-card">
+          <div class="field"><label for="setting-closing-day">締め日（毎月）</label><input type="number" id="setting-closing-day" min="1" max="28"></div>
+        </div>
+        <div class="field-hint">締め日の翌日から翌月の締め日までを1ヶ月分（1つの請求サイクル）として「集計」タブで集計します。</div>
+      </div>
+
+      <div class="settings-section">
+        <div class="section-title">ジャンル（カテゴリ）</div>
+        <div class="field-hint" style="padding-top:0; margin-bottom:12px;">支出につけるジャンルを自由に追加できます。ジャンルごとに既定の負担方法を設定できます。</div>
+        <div id="custom-category-list"></div>
+        <div class="settings-actions" style="margin-top:10px;">
+          <button class="btn btn-secondary" data-action="add-category">＋ ジャンルを追加</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="section-title">バックアップ</div>
+        <div class="field-hint" style="padding-top:0; margin-bottom:12px;">
+          入力したデータは自動的に2人の間で共有されます。念のための保存用に、いつでもファイルとして書き出せます。
+        </div>
+        <div class="settings-actions">
+          <button class="btn btn-secondary" data-action="export-data">バックアップを書き出す</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="section-title">データの削除</div>
+        <div class="field-hint" style="padding-top:0; margin-bottom:12px;">これはこの世帯コードを使っている2人共有のデータです。削除すると相手の画面からも消えます。</div>
+        <button class="btn btn-danger-ghost" data-action="reset-data" style="margin-top:0;">この世帯のデータをすべて削除する</button>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabbar">
+    <button class="tab-btn active" data-action="switch-tab" data-tab="expenses">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>
+      <span>支出</span>
+    </button>
+    <button class="tab-btn" data-action="switch-tab" data-tab="summary">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M12 20V4M20 20v-7"/></svg>
+      <span>集計</span>
+    </button>
+    <button class="tab-btn" data-action="switch-tab" data-tab="income">
+      <span class="tab-badge" id="income-tab-badge" hidden></span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 7.5l3 5 3-5M12 12.5V18M9.3 14h5.4M9.3 16h5.4"/></svg>
+      <span>収入</span>
+    </button>
+    <button class="tab-btn" data-action="switch-tab" data-tab="settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a8 8 0 0 0 0-2l2-1.5-2-3.4-2.4 1a8 8 0 0 0-1.7-1L15 3h-4l-.3 2.6a8 8 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a8 8 0 0 0 0 2l-2 1.5 2 3.4 2.4-1a8 8 0 0 0 1.7 1L11 21h4l.3-2.6a8 8 0 0 0 1.7-1l2.4 1 2-3.4-2-1.5z"/></svg>
+      <span>設定</span>
+    </button>
+  </nav>
+</div>
+
+<div class="sheet-backdrop" id="expense-sheet-backdrop" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="expense-sheet-title">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <button class="sheet-btn" data-action="close-sheet" data-sheet="expense">キャンセル</button>
+      <div class="sheet-title" id="expense-sheet-title">支出を追加</div>
+      <button class="sheet-btn sheet-btn-primary" data-action="save-expense">保存</button>
+    </div>
+    <div class="sheet-body">
+      <div class="field-group">
+        <label class="field-label" for="expense-memo">メモ</label>
+        <input type="text" id="expense-memo" placeholder="例: スーパーで食材" maxlength="60">
+      </div>
+      <div class="field-group">
+        <label class="field-label" for="expense-note">備考</label>
+        <input type="text" id="expense-note" placeholder="例: 東京都渋谷区" maxlength="120">
+      </div>
+      <div class="field-group">
+        <label class="field-label" for="expense-date">日付</label>
+        <input type="date" id="expense-date">
+      </div>
+      <div class="field-group">
+        <label class="field-label" for="expense-amount">金額</label>
+        <div class="amount-field">
+          <span class="yen-mark">¥</span>
+          <input type="text" inputmode="numeric" id="expense-amount" class="amount-input" placeholder="0">
+        </div>
+      </div>
+
+      <div class="section-label">この支出の種類</div>
+      <div class="segmented" id="expense-kind-segmented"></div>
+      <div class="field-hint" id="expense-kind-hint" style="padding-top:6px; margin-bottom:16px;"></div>
+
+      <div class="section-label">ジャンル</div>
+      <div class="category-picker" id="expense-category-picker"></div>
+
+      <div class="section-label">負担の分け方</div>
+      <div class="option-list" id="expense-split-options"></div>
+
+      <div class="custom-ratio" id="expense-custom-ratio" hidden>
+        <div class="segmented" id="custom-ratio-mode-segmented" style="margin-bottom:12px;"></div>
+
+        <div id="custom-ratio-percent-fields">
+          <div class="custom-ratio-label" id="expense-custom-ratio-label"></div>
+          <input type="range" id="expense-custom-slider" min="0" max="100" step="1" value="50">
+        </div>
+
+        <div id="custom-ratio-amount-fields" hidden>
+          <div class="custom-amount-grid">
+            <div>
+              <label class="field-label" id="custom-amount-a-label">A</label>
+              <div class="amount-field">
+                <span class="yen-mark">¥</span>
+                <input type="text" inputmode="numeric" id="custom-amount-a" class="amount-input" placeholder="0">
+              </div>
+            </div>
+            <div>
+              <label class="field-label" id="custom-amount-b-label">B</label>
+              <div class="amount-field">
+                <span class="yen-mark">¥</span>
+                <input type="text" inputmode="numeric" id="custom-amount-b" class="amount-input" placeholder="0">
+              </div>
+            </div>
+          </div>
+          <div class="field-hint" id="custom-amount-hint" style="padding-top:8px; margin-bottom:0;"></div>
+        </div>
+      </div>
+
+      <div class="section-label">実際に立て替えた人</div>
+      <div class="segmented" id="expense-paidby-segmented"></div>
+
+      <button class="btn btn-danger-ghost" id="expense-delete-btn" data-action="delete-expense" hidden>この支出を削除</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet-backdrop" id="income-sheet-backdrop" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="income-sheet-title">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <button class="sheet-btn" data-action="close-sheet" data-sheet="income">キャンセル</button>
+      <div class="sheet-title" id="income-sheet-title">収入を追加</div>
+      <button class="sheet-btn sheet-btn-primary" data-action="save-income">保存</button>
+    </div>
+    <div class="sheet-body">
+      <div class="field-group">
+        <label class="field-label" for="income-period-start">開始年月</label>
+        <input type="month" id="income-period-start">
+      </div>
+      <div class="field-group">
+        <label class="field-label" for="income-period-months">期間の長さ（1〜12か月）</label>
+        <input type="number" id="income-period-months" min="1" max="12" value="1">
+      </div>
+      <div class="field-hint" id="income-period-hint" style="padding-top:0; margin-bottom:4px;"></div>
+
+      <div class="section-label">入力方法</div>
+      <div class="segmented" id="income-entry-mode-segmented"></div>
+
+      <div class="field-group" id="income-lump-fields" style="margin-top:16px;">
+        <label class="field-label" id="income-lump-a-label">Aさんの期間合計</label>
+        <div class="amount-field">
+          <span class="yen-mark">¥</span>
+          <input type="text" inputmode="numeric" id="income-lump-a" class="amount-input" placeholder="0">
+        </div>
+        <label class="field-label" id="income-lump-b-label" style="margin-top:12px;">Bさんの期間合計</label>
+        <div class="amount-field">
+          <span class="yen-mark">¥</span>
+          <input type="text" inputmode="numeric" id="income-lump-b" class="amount-input" placeholder="0">
+        </div>
+      </div>
+
+      <div class="field-group" id="income-permonth-fields" style="margin-top:16px;" hidden>
+        <label class="field-label">月ごとの手取り額</label>
+        <div class="field-hint" style="padding-top:0; margin-bottom:4px;">各月の年月は必要に応じて変更できます。</div>
+        <div class="income-permonth-header" id="income-permonth-header"></div>
+        <div id="income-permonth-rows"></div>
+
+        <div class="income-extra-section">
+          <label class="field-label">賞与など（任意・最大3件）</label>
+          <div class="income-permonth-header" id="income-extra-header"></div>
+          <div id="income-extra-rows"></div>
+        </div>
+      </div>
+
+      <div class="section-label" style="margin-top:16px;">収入割合</div>
+      <div class="field-hint" id="income-ratio-calc-hint" style="padding-top:0; margin-bottom:8px;"></div>
+      <div class="field-group">
+        <label class="field-label" id="income-ratio-select-label" for="income-ratio-select">Aさんの負担割合（1%刻みで調整できます）</label>
+        <select id="income-ratio-select"></select>
+      </div>
+
+      <button class="btn btn-danger-ghost" id="income-delete-btn" data-action="delete-income" hidden>この期間を削除</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet-backdrop" id="manual-sheet-backdrop" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="manual-sheet-title">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <button class="sheet-btn" data-action="close-sheet" data-sheet="manual">閉じる</button>
+      <div class="sheet-title" id="manual-sheet-title">使い方ガイド</div>
+      <button class="sheet-btn" style="visibility:hidden;">閉じる</button>
+    </div>
+    <div class="sheet-body manual-body">
+      <div class="manual-section">
+        <p>ふたりの生活費を「世帯コード」だけで共有するアプリです。ログインは不要で、同じ世帯コードを入力した端末同士でデータがリアルタイムに同期されます。世帯コードは他の人に教えないでください。</p>
+      </div>
+
+      <div class="manual-section">
+        <h3>支出を記録する</h3>
+        <p>支出タブ右上の「＋」から支出を追加します。</p>
+        <ul>
+          <li><strong>メモ</strong>：何に使ったかの短い説明</li>
+          <li><strong>備考</strong>：メモとは別に、住所や補足情報などを自由に書ける欄です</li>
+          <li><strong>日付・金額</strong></li>
+          <li><strong>ジャンル</strong>：食料品・外食などから選択。メモの内容から自動で推測されます。設定タブから新しいジャンルも追加できます</li>
+        </ul>
+      </div>
+
+      <div class="manual-section">
+        <h3>負担の分け方</h3>
+        <p>支出ごとに、ふたりでどう分けるか選べます。</p>
+        <ul>
+          <li>半々で負担</li>
+          <li>Aのみ／Bのみ負担</li>
+          <li>収入割合で負担：収入タブで設定した割合に応じて自動計算</li>
+          <li>任意の割合で負担：%か金額を指定して自由に分けられます（例：Aが2,000円、Bが600円など）</li>
+        </ul>
+      </div>
+
+      <div class="manual-section">
+        <h3>実際に立て替えた人</h3>
+        <p>「A」「B」に加えて「共有」（共有カードでの支払い）を選べます。共有カードの支出は、集計タブで通常の負担額（グロス）と、共有口座への実際の精算額（ネット）の両方が表示されます。</p>
+      </div>
+
+      <div class="manual-section">
+        <h3>初期費用（住宅・家電など）</h3>
+        <p>支出を追加する画面で「この支出の種類」を「初期費用」にすると、月ごとの締めサイクルとは完全に切り離した別枠で管理されます。支出タブの一覧の下に専用のセクションが現れ、負担額・立替額・精算額もそこだけで別集計されます。精算が終わったら「この初期費用を精算済みにする」で記録できます。</p>
+      </div>
+
+      <div class="manual-section">
+        <h3>カード明細を取り込む</h3>
+        <p>支出タブの取り込みボタンから、クレジットカード会社が発行するPDF明細をアップロードすると、日付・金額・店名を自動で読み取って一覧に追加できます。</p>
+        <ul>
+          <li>複数のカード会社の明細フォーマットに対応しています</li>
+          <li>店名からジャンルを自動推測し、一度手動で直すと次回から記憶されます</li>
+          <li>文字化けしてしまった店名は「画像から読み取る」ボタンでOCR（文字認識）による再取得が可能です</li>
+          <li>入力済みの支出と日付（前後1日まで）・金額が一致する行は「登録済みかも」として表示され、二重登録を防止します</li>
+        </ul>
+      </div>
+
+      <div class="manual-section">
+        <h3>収入の設定</h3>
+        <p>「収入割合で負担」を使う場合は、収入タブで期間ごとの手取り額を入力します。</p>
+        <ul>
+          <li>まとめて入力：期間全体の合計額だけを入力します</li>
+          <li>月ごとに入力：月ごとの金額を入力します。各行の年月は自由に変更でき、賞与などの臨時収入欄（最大3件）も追加できます</li>
+        </ul>
+      </div>
+
+      <div class="manual-section">
+        <h3>集計・精算</h3>
+        <p>集計タブで、締め日ごとの請求サイクルの負担額・精算額を確認できます。精算が終わったサイクルは「精算済み」にできます。</p>
+      </div>
+
+      <div class="manual-section">
+        <h3>バックアップ・データ削除</h3>
+        <p>設定タブからいつでもデータをファイルに書き出せます。世帯データを削除すると、同じ世帯コードを使っているふたり両方の画面から消えるのでご注意ください。</p>
+      </div>
+
+      <div class="manual-section">
+        <h3>iPhoneでホーム画面に追加する</h3>
+        <p>Safariでこのページを開いている状態で:</p>
+        <ol>
+          <li>画面下部（機種によっては上部）にある「共有」ボタン（四角から上に矢印が出ているアイコン）をタップします</li>
+          <li>一覧を下にスクロールし、「ホーム画面に追加」をタップします</li>
+          <li>表示名を確認し、右上の「追加」をタップします</li>
+          <li>ホーム画面にアイコンが追加されます。そこから開くとアドレスバーのない全画面表示になり、アプリのように使えます</li>
+        </ol>
+        <p class="manual-note">※Androidの場合は、Chromeのメニューから「アプリをインストール」または「ホーム画面に追加」を選ぶと同様に追加できます。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sheet-backdrop" id="category-sheet-backdrop" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="category-sheet-title">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <button class="sheet-btn" data-action="close-sheet" data-sheet="category">キャンセル</button>
+      <div class="sheet-title" id="category-sheet-title">ジャンルを追加</div>
+      <button class="sheet-btn sheet-btn-primary" data-action="save-category">保存</button>
+    </div>
+    <div class="sheet-body">
+      <div class="field-group">
+        <label class="field-label" for="category-name">ジャンル名</label>
+        <input type="text" id="category-name" placeholder="例: ペット" maxlength="12">
+      </div>
+      <div class="section-label">既定の負担方法</div>
+      <div class="option-list" id="category-split-options"></div>
+      <button class="btn btn-danger-ghost" id="category-delete-btn" data-action="delete-category" hidden>このジャンルを削除</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet-backdrop" id="import-sheet-backdrop" hidden>
+  <div class="sheet import-sheet" role="dialog" aria-modal="true" aria-labelledby="import-sheet-title">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <button class="sheet-btn" data-action="close-sheet" data-sheet="import">キャンセル</button>
+      <div class="sheet-title" id="import-sheet-title">明細を読み込み</div>
+      <span style="width:52px;"></span>
+    </div>
+    <div class="sheet-body import-sheet-body">
+      <div class="field-group">
+        <label class="field-label">このカードの名義（立替えた人）</label>
+        <div class="segmented" id="import-paidby-segmented"></div>
+      </div>
+      <div class="section-label" id="import-summary-label"></div>
+      <div class="field-hint garbled-hint" id="import-garbled-hint" style="padding-top:0; margin-bottom:10px;" hidden>
+        <div>一部の店名がこのPDFから正しく読み取れませんでした。画像から自動で読み取るか、行をタップして直接入力し直してください。</div>
+        <button type="button" class="btn btn-secondary" id="import-ocr-all-btn" data-action="ocr-all-garbled" style="margin-top:8px;">画像から店名をまとめて読み取る</button>
+      </div>
+      <div class="ledger" id="import-review-list"></div>
+      <div class="field-hint">行をタップすると、日付・金額・負担の分け方を1件ずつ編集できます。チェックを外した行は追加されません。</div>
+    </div>
+    <div class="import-sheet-footer">
+      <button class="btn btn-primary" data-action="commit-import" id="import-commit-btn">追加する</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="import-pdf-input" accept="application/pdf" hidden>
+
+<div id="toast"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
+import {
+  getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collection, onSnapshot, deleteField, writeBatch, getDocs
+} from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
+
+(function (firebaseDeps) {
+  'use strict';
+  const { initializeApp, getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collection, onSnapshot, deleteField, writeBatch, getDocs } = firebaseDeps;
+
+  // On-screen debug console, opt-in via ?debug in the URL -- lets errors be
+  // read directly off a phone (no Mac/Web Inspector or cable needed) when
+  // diagnosing a report that only reproduces on a real device.
+  if (/[?&]debug\b/.test(location.search)) {
+    const box = document.createElement('div');
+    box.style.cssText = 'position:fixed;left:0;right:0;bottom:0;max-height:45vh;overflow:auto;' +
+      'background:rgba(10,10,10,0.92);color:#7CFC7C;font:11px/1.4 monospace;padding:8px;' +
+      'white-space:pre-wrap;word-break:break-all;z-index:99999;';
+    document.addEventListener('DOMContentLoaded', function () { document.body.appendChild(box); });
+    function debugLog(text) {
+      const line = document.createElement('div');
+      line.textContent = new Date().toLocaleTimeString() + '  ' + text;
+      box.appendChild(line);
+      box.scrollTop = box.scrollHeight;
+    }
+    window.addEventListener('error', function (e) {
+      debugLog('ERROR: ' + e.message + (e.error && e.error.stack ? '\n' + e.error.stack : ''));
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+      const r = e.reason;
+      debugLog('REJECTION: ' + (r && r.message ? r.message + (r.stack ? '\n' + r.stack : '') : String(r)));
+    });
+    const origConsoleError = console.error.bind(console);
+    console.error = function () {
+      origConsoleError.apply(console, arguments);
+      const text = Array.prototype.map.call(arguments, function (a) {
+        return (a instanceof Error) ? (a.stack || (a.name + ': ' + a.message)) : String(a);
+      }).join(' ');
+      debugLog('console.error: ' + text);
+    };
+    debugLog('debug console ready (' + navigator.userAgent + ')');
+    debugLog('JS features: Promise.withResolvers=' + (typeof Promise.withResolvers) +
+      ' AbortSignal.any=' + (typeof AbortSignal.any) +
+      ' structuredClone=' + (typeof structuredClone) +
+      ' Iterator=' + (typeof Iterator));
+  }
+
+  // ============================================================
+  // Engine — billing cycle / income ratio / split / settlement
+  // (verified against a battery of test cases in a Node sandbox
+  // before being embedded here)
+  // ============================================================
+
+  function addMonths(year, month, delta) {
+    const total = year * 12 + (month - 1) + delta;
+    const ny = Math.floor(total / 12);
+    const nm = ((total % 12) + 12) % 12 + 1;
+    return { year: ny, month: nm };
+  }
+
+  function daysInMonth(year, month) {
+    return new Date(year, month, 0).getDate();
+  }
+
+  function clampedDay(day, year, month) {
+    return Math.min(day, daysInMonth(year, month));
+  }
+
+  function parseLocalDate(str) {
+    const parts = String(str).split('-').map(Number);
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+  }
+
+  function toDateInputValue(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + d;
+  }
+
+  function ymKey(ym) { return ym.year * 12 + (ym.month - 1); }
+  function cycleKey(ym) { return ym.year + '-' + ym.month; }
+
+  function cycleForStatement(ym, closingDay) {
+    const endDay = clampedDay(closingDay, ym.year, ym.month);
+    const end = new Date(ym.year, ym.month - 1, endDay, 23, 59, 59, 999);
+
+    const prev = addMonths(ym.year, ym.month, -1);
+    const startDay = clampedDay(closingDay, prev.year, prev.month);
+    const startBase = new Date(prev.year, prev.month - 1, startDay);
+    const start = new Date(startBase.getFullYear(), startBase.getMonth(), startBase.getDate() + 1, 0, 0, 0, 0);
+
+    // The cycle is labeled by whichever calendar month it covers MORE days
+    // of, not simply the month the closing day falls in -- e.g. 8/7-9/6
+    // covers 25 days of August vs. 6 of September, so it reads as "August"
+    // even though it technically closes in September. `ym` itself (used
+    // for income-period lookups and the cycle's identity/key) is untouched;
+    // only this display label changes.
+    let labelYear = ym.year, labelMonth = ym.month;
+    if (start.getFullYear() !== end.getFullYear() || start.getMonth() !== end.getMonth()) {
+      const daysInStartMonth = daysInMonth(start.getFullYear(), start.getMonth() + 1) - start.getDate() + 1;
+      const daysInEndMonth = end.getDate();
+      if (daysInStartMonth > daysInEndMonth) {
+        labelYear = start.getFullYear();
+        labelMonth = start.getMonth() + 1;
+      }
+    }
+
+    return { start: start, end: end, ym: ym, label: labelYear + '年' + labelMonth + '月締め分' };
+  }
+
+  function cycleContaining(date, closingDay) {
+    const day = date.getDate();
+    let ym;
+    if (day > closingDay) {
+      const next = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+      ym = { year: next.getFullYear(), month: next.getMonth() + 1 };
+    } else {
+      ym = { year: date.getFullYear(), month: date.getMonth() + 1 };
+    }
+    return cycleForStatement(ym, closingDay);
+  }
+
+  // An income period covers `months` consecutive months starting at
+  // (startYear, startMonth); its aPercent was computed once, at save time,
+  // from whatever income was entered for that period, and applies unchanged
+  // to every month in the period.
+  function incomePeriodEndKey(period) {
+    return ymKey({ year: period.startYear, month: period.startMonth }) + period.months - 1;
+  }
+  function findIncomePeriod(ym, periods) {
+    const key = ymKey(ym);
+    return periods.find(function (p) {
+      const startKey = ymKey({ year: p.startYear, month: p.startMonth });
+      return key >= startKey && key <= incomePeriodEndKey(p);
+    }) || null;
+  }
+  function incomeAPercent(ym, periods) {
+    const period = findIncomePeriod(ym, periods);
+    return period ? period.aPercent : 50;
+  }
+  // Unrounded: the exact computed ratio, shown to the user (to 2 decimal
+  // places) alongside a 1%-step dropdown so they can fine-tune the value
+  // that actually gets saved, rather than silently rounding it themselves.
+  function computeAPercentFromAmounts(aTotal, bTotal) {
+    const total = aTotal + bTotal;
+    if (total <= 0) return 50;
+    const raw = (aTotal / total) * 100;
+    return Math.min(100, Math.max(0, raw));
+  }
+
+  function splitByPercent(amount, aPercent) {
+    const clamped = Math.min(100, Math.max(0, aPercent));
+    const a = Math.round(amount * clamped / 100);
+    const b = amount - a;
+    return { a: a, b: b };
+  }
+
+  function burden(expense, incomePeriods, closingDay) {
+    const amount = expense.amount;
+    switch (expense.splitType) {
+      case 'aOnly': return { a: amount, b: 0 };
+      case 'bOnly': return { a: 0, b: amount };
+      case 'equal': return splitByPercent(amount, 50);
+      case 'incomeRatio': {
+        const cycle = cycleContaining(parseLocalDate(expense.date), closingDay);
+        const p = incomeAPercent(cycle.ym, incomePeriods);
+        return splitByPercent(amount, p);
+      }
+      case 'customRatio': return splitByPercent(amount, expense.customAPercent == null ? 50 : expense.customAPercent);
+      default: return { a: 0, b: 0 };
+    }
+  }
+
+  // Shared by settlement() (one billing cycle) and initialCostSummary()
+  // (the whole isInitialCost bucket, no date range) -- everything past
+  // filtering `target` down to the right expenses is identical.
+  function summarizeExpenses(target, incomePeriods, closingDay) {
+    let paidByA = 0, paidByB = 0, paidByShared = 0, burdenA = 0, burdenB = 0, total = 0;
+    // Burden from 'shared'-card expenses is excluded here: that money was
+    // already paid out of the joint pot, not by A or B individually, so it
+    // carries no balance to settle between them (see the shared-card note
+    // above settlement()). It still counts in burdenA/burdenB below, which
+    // reflect each person's fair share of TOTAL household spending.
+    let nonSharedBurdenA = 0;
+    // Each person's own fair share of JUST the shared-card spending -- what
+    // they'd need to contribute to a joint account to cover it (see
+    // sharedAccountPlan(), which turns this into an actual transfer plan).
+    let sharedBurdenA = 0, sharedBurdenB = 0;
+    const bySplitType = {};
+    const byCategory = {};
+
+    for (let i = 0; i < target.length; i++) {
+      const e = target[i];
+      total += e.amount;
+      const b = burden(e, incomePeriods, closingDay);
+      burdenA += b.a;
+      burdenB += b.b;
+      if (e.paidBy === 'a') { paidByA += e.amount; nonSharedBurdenA += b.a; }
+      else if (e.paidBy === 'b') { paidByB += e.amount; nonSharedBurdenA += b.a; }
+      else { paidByShared += e.amount; sharedBurdenA += b.a; sharedBurdenB += b.b; }
+      bySplitType[e.splitType] = (bySplitType[e.splitType] || 0) + e.amount;
+      const cat = isKnownCategory(e.category) ? e.category : 'other';
+      byCategory[cat] = (byCategory[cat] || 0) + e.amount;
+    }
+
+    const net = paidByA - nonSharedBurdenA;
+    let settle = null;
+    if (net > 0) settle = { payer: 'b', receiver: 'a', amount: net };
+    else if (net < 0) settle = { payer: 'a', receiver: 'b', amount: -net };
+
+    return {
+      total: total, paidByA: paidByA, paidByB: paidByB, paidByShared: paidByShared,
+      burdenA: burdenA, burdenB: burdenB, sharedBurdenA: sharedBurdenA, sharedBurdenB: sharedBurdenB,
+      bySplitType: bySplitType, byCategory: byCategory, settle: settle
+    };
+  }
+
+  function settlement(expenses, cycle, incomePeriods, closingDay) {
+    // isInitialCost expenses are managed entirely separately (see
+    // initialCostSummary()) and never count toward a billing cycle's
+    // burden/settlement, regardless of their date.
+    const target = expenses.filter(function (e) {
+      if (e.isInitialCost) return false;
+      const d = parseLocalDate(e.date);
+      return d >= cycle.start && d <= cycle.end;
+    });
+    return Object.assign({ cycle: cycle }, summarizeExpenses(target, incomePeriods, closingDay));
+  }
+
+  // The 初期費用 (housing/appliance up-front costs) bucket: every
+  // isInitialCost expense regardless of date, tracked completely
+  // independently of the monthly billing-cycle settlement above.
+  function initialCostSummary(expenses, incomePeriods, closingDay) {
+    const target = expenses.filter(function (e) { return !!e.isInitialCost; });
+    return summarizeExpenses(target, incomePeriods, closingDay);
+  }
+
+  // Turns a shared-card expense's burden into a concrete transfer plan for a
+  // joint account that pays that card's bill: the person owed money in the
+  // ordinary (non-shared) settlement above (the "creditor") gets their own
+  // joint-account contribution folded into what the other person ("debtor")
+  // sends them -- so the debtor pays their own share plus whatever of the
+  // creditor's share the settlement amount can absorb, directly into the
+  // joint account, and only the leftover (if any) goes to the creditor
+  // directly. This minimizes how many transfers either person has to make.
+  // Returns null when there's no shared-card spending in the cycle.
+  function sharedAccountPlan(s) {
+    if (s.paidByShared <= 0) return null;
+    const netAmt = s.settle ? s.settle.amount : 0;
+    const debtor = s.settle ? s.settle.payer : 'a';
+    const creditor = s.settle ? s.settle.receiver : 'b';
+    const sharedBurden = { a: s.sharedBurdenA, b: s.sharedBurdenB };
+    const debtorOwnShare = sharedBurden[debtor];
+    const creditorOwnShare = sharedBurden[creditor];
+    const redirected = Math.min(creditorOwnShare, netAmt);
+    return {
+      debtor: debtor,
+      creditor: creditor,
+      debtorToJoint: debtorOwnShare + redirected,
+      debtorToCreditor: netAmt - redirected,
+      creditorToJoint: creditorOwnShare - redirected
+    };
+  }
+
+  const SPLIT_TYPES = ['incomeRatio', 'equal', 'aOnly', 'bOnly', 'customRatio'];
+
+  function splitLabel(type, names) {
+    switch (type) {
+      case 'aOnly': return names.a + 'が100%負担';
+      case 'bOnly': return names.b + 'が100%負担';
+      case 'equal': return '半々で負担';
+      case 'incomeRatio': return '収入割合で負担';
+      case 'customRatio': return '任意の割合で負担';
+      default: return '';
+    }
+  }
+  function splitShort(type) {
+    return { aOnly: 'A100%', bOnly: 'B100%', equal: '半々', incomeRatio: '収入割合', customRatio: '任意割合' }[type] || '';
+  }
+  function splitDotHtml(type) {
+    return '<span class="split-dot split-dot-' + type + '"></span>';
+  }
+
+  // 'shared' means the expense was paid from a joint/shared card -- nobody
+  // personally fronted it, so it's excluded from the A/B settlement balance
+  // (see settlement()) but still counts toward totals and breakdowns.
+  const PAID_BY_OPTIONS = ['a', 'b', 'shared'];
+  function paidByLabel(paidBy, names) {
+    if (paidBy === 'a') return names.a;
+    if (paidBy === 'b') return names.b;
+    return '共有';
+  }
+
+  // ============================================================
+  // Expense categories -- keyword-based guess, refined by memory of
+  // this household's own past corrections (see rememberMerchantChoice).
+  // Not a real AI classifier: a fixed keyword dictionary plus per-merchant
+  // memory, entirely client-side (no network calls, no API keys to protect).
+  // ============================================================
+
+  const CATEGORY_ORDER = ['food', 'dining', 'daily', 'transport', 'housing', 'utilities', 'communication', 'medical', 'beauty', 'entertainment', 'travel', 'education', 'insurance', 'other'];
+
+  const CATEGORY_NAMES = {
+    food: '食料品',
+    dining: '外食',
+    daily: '日用品',
+    transport: '交通費',
+    housing: '住居費',
+    utilities: '水道光熱費',
+    communication: '通信費',
+    medical: '医療費',
+    beauty: '美容・衣服',
+    entertainment: '娯楽・趣味',
+    travel: '旅行',
+    education: '教育',
+    insurance: '保険',
+    other: 'その他'
+  };
+
+  const CATEGORY_KEYWORDS = {
+    food: [
+      'スーパー', 'マーケット', '八百屋', '肉屋', '魚屋', 'イオン', '西友', '業務スーパー', '業スー', '生協', 'コープ',
+      'まいばすけっと', 'ライフ', 'サミット', '成城石井', 'カルディ', '青果', '精肉', '鮮魚', 'オーケー', 'ヤオコー',
+      'いなげや', '東急ストア', '阪急オアシス', 'マルエツ', '平和堂', 'イトーヨーカドー', 'コストコ', 'harupan', 'ハーパン',
+      '食材', '食料品', '食料', '買い出し', '買い物', '野菜', '果物', 'くだもの', '肉', '魚', '米', 'お米', '卵', '牛乳',
+      'パン屋', 'ベーカリー', '豆腐', '調味料', '生鮮'
+    ],
+    dining: [
+      'レストラン', 'カフェ', '喫茶', '居酒屋', 'スタバ', 'スターバックス', 'マクドナルド', 'マック', '吉野家', 'すき家',
+      '松屋', 'ラーメン', '焼肉', '寿司', '回転寿司', 'ファミレス', 'サイゼリヤ', 'ガスト', 'ジョナサン', 'ドトール',
+      'タリーズ', 'コメダ', 'フード', 'ダイニング', 'ビストロ', '食堂', '定食', '弁当', '惣菜', '外食', 'ランチ', '昼食',
+      '夕食', '朝食', '飲み会', '飲み放題', '中華', 'イタリアン', 'フレンチ', 'パスタ', 'ピザ', '牛丼', '天丼', 'カレー',
+      'そば', 'うどん', '餃子', '中華料理', '韓国料理', 'バー', 'バル', 'デリバリー', 'ウーバーイーツ', 'Uber Eats',
+      '出前館', '出前', '宅配ピザ', 'ケンタッキー', 'モスバーガー', 'フードコート'
+    ],
+    daily: [
+      'ドラッグストア', 'マツキヨ', 'マツモトキヨシ', 'ウエルシア', 'ツルハ', 'サンドラッグ', 'ダイソー', 'セリア',
+      'キャンドゥ', '100均', '無印', '無印良品', 'ニトリ', 'ホームセンター', 'カインズ', 'コーナン', 'ロフト', '東急ハンズ',
+      'ハンズ', 'ドンキ', 'ドン・キホーテ', '洗剤', 'ティッシュ', 'トイレットペーパー', '日用品', '雑貨', 'シャンプー',
+      '文房具', '電池'
+    ],
+    transport: [
+      '交通', '電車', '地下鉄', 'バス', 'タクシー', 'ガソリン', 'ガソリン代', 'ETC', '駐車場', 'パーキング', 'コインパーキング',
+      'JR', 'Suica', 'PASMO', 'ICOCA', '高速道路', '新幹線', '航空', 'ANA', 'JAL', 'ピーチ', 'ジェットスター',
+      'レンタカー', '定期券', '定期', '回数券', 'モノレール', 'フェリー', '船', 'カーシェア', 'タイムズカー', 'Times',
+      '有料道路', '運賃', '乗車券'
+    ],
+    housing: ['家賃', '賃貸', '管理費', '修繕', '不動産', '住宅ローン', '更新料', '敷金', '礼金', '町内会費', '自治会費'],
+    utilities: [
+      '電気', '電気代', 'ガス代', '水道', '水道代', '光熱', '東京電力', '東京ガス', '関西電力', '関電', '中部電力',
+      '九州電力', '東邦ガス', '大阪ガス', 'プロパンガス', '上下水道'
+    ],
+    communication: [
+      '携帯', 'スマホ', 'ドコモ', 'au', 'ソフトバンク', '楽天モバイル', 'ワイモバイル', 'UQモバイル', 'mineo', 'IIJmio',
+      'LINEMO', 'povo', 'インターネット', 'wifi', 'Wi-Fi', '光回線', 'フレッツ', 'プロバイダ', 'NTT', '通信費', '固定電話'
+    ],
+    medical: [
+      '病院', 'クリニック', '薬局', '調剤薬局', '歯科', '眼科', '皮膚科', '整形', '医院', '内科', '外科', '産婦人科',
+      '耳鼻科', '心療内科', '処方箋', 'マッサージ', '整骨院', '接骨院', '鍼灸', '通院', '診察', '医療費'
+    ],
+    beauty: [
+      '美容室', '美容院', 'サロン', 'ヘア', 'ネイル', 'エステ', 'ユニクロ', 'GU', 'ZARA', 'しまむら', 'H&M', 'GAP',
+      '衣料', 'コスメ', '化粧品', '理容室', '床屋', 'まつげ', '脱毛', '靴', 'シューズ', '眼鏡', 'メガネ', '洋服', '服'
+    ],
+    entertainment: [
+      '映画', 'シネマ', 'カラオケ', 'ゲーム', 'Amazon', 'Netflix', 'Spotify', 'サブスク', '書店', '本屋', '漫画',
+      'ジム', 'スポーツクラブ', 'ライブ', 'コンサート', '動物園', '水族館', '遊園地', 'ボウリング', 'ビリヤード',
+      'プール', '美術館', '博物館', 'フェス', 'ディズニー', 'USJ', 'Hulu', 'U-NEXT', 'YouTube', 'App Store',
+      'Google Play', '課金', 'ガチャ', 'パチンコ', 'スロット', '趣味', '娯楽', 'ホビー', 'プラモデル', 'フィギュア'
+    ],
+    travel: [
+      'ホテル', '旅館', '航空券', 'JTB', '楽天トラベル', 'じゃらん', 'Airbnb', '旅行', '温泉', '民宿', 'ペンション',
+      'LCC', 'エクスペディア', 'Expedia', '一休', 'Booking', '観光'
+    ],
+    education: [
+      '学費', '塾', 'スクール', '授業料', '教材', '参考書', 'セミナー', '予備校', '通信教育', '進研ゼミ', 'ベネッセ',
+      '資格', '検定', 'オンライン講座', 'Udemy', '習い事'
+    ],
+    insurance: [
+      '生命保険', '損保', '共済', '保険料', '医療保険', '自動車保険', '火災保険', '学資保険', '県民共済', 'ソニー損保',
+      'アフラック', '第一生命', '日本生命', '明治安田'
+    ],
+    other: []
+  };
+
+  // User-defined categories (name + default split type) live in
+  // state.settings.customCategories, alongside the built-in dictionary --
+  // these helpers are the single place that merges the two sets.
+  function customCategoryList() {
+    return (state.settings && Array.isArray(state.settings.customCategories)) ? state.settings.customCategories : [];
+  }
+  function findCustomCategory(id) {
+    return customCategoryList().find(function (c) { return c.id === id; }) || null;
+  }
+  // Built-ins first (その他 held back to the end), then custom categories in
+  // the order they were created, then その他 -- so その他 always reads as
+  // the final catch-all rather than sitting in the middle of the list.
+  function allCategoryOrder() {
+    const builtinsExceptOther = CATEGORY_ORDER.slice(0, -1);
+    const customIds = customCategoryList().map(function (c) { return c.id; });
+    return builtinsExceptOther.concat(customIds, ['other']);
+  }
+  function isKnownCategory(id) {
+    return !!(id && (CATEGORY_NAMES[id] || findCustomCategory(id)));
+  }
+  function categoryDisplayName(id) {
+    if (CATEGORY_NAMES[id]) return CATEGORY_NAMES[id];
+    const custom = findCustomCategory(id);
+    return custom ? custom.name : CATEGORY_NAMES.other;
+  }
+
+  function categoryChipHtml(category) {
+    const key = isKnownCategory(category) ? category : 'other';
+    return '<span class="category-chip">' + escapeHtml(categoryDisplayName(key)) + '</span>';
+  }
+
+  function guessCategory(memo, merchantMemory) {
+    const trimmed = (memo || '').trim();
+    if (!trimmed) return 'other';
+    const remembered = merchantMemory[trimmed];
+    if (remembered && isKnownCategory(remembered.category)) return remembered.category;
+
+    // Longest matching keyword wins (ties broken by CATEGORY_ORDER), not just
+    // "first category with any match" -- otherwise a generic word in an
+    // earlier category (food's bare "肉") can shadow a more specific compound
+    // in a later one ("焼肉" should mean dining out, not buying meat). Custom
+    // categories have no keywords of their own (not requested), so only the
+    // built-in dictionary is searched here.
+    let bestCategory = null;
+    let bestLength = 0;
+    let bestOrderIndex = Infinity;
+    for (let i = 0; i < CATEGORY_ORDER.length; i++) {
+      const cat = CATEGORY_ORDER[i];
+      const keywords = CATEGORY_KEYWORDS[cat];
+      for (let j = 0; j < keywords.length; j++) {
+        const kw = keywords[j];
+        if (trimmed.indexOf(kw) === -1) continue;
+        if (kw.length > bestLength || (kw.length === bestLength && i < bestOrderIndex)) {
+          bestCategory = cat;
+          bestLength = kw.length;
+          bestOrderIndex = i;
+        }
+      }
+    }
+    return bestCategory || 'other';
+  }
+
+  // Default 負担方法 per category: income-ratio for everything except
+  // travel and entertainment (which default to an even split), or whatever
+  // a custom category was configured with.
+  const CATEGORY_DEFAULT_SPLIT_TYPE = {
+    travel: 'equal',
+    entertainment: 'equal'
+  };
+  function defaultSplitTypeForCategory(category) {
+    if (CATEGORY_DEFAULT_SPLIT_TYPE[category]) return CATEGORY_DEFAULT_SPLIT_TYPE[category];
+    const custom = findCustomCategory(category);
+    return (custom && custom.defaultSplitType) || 'incomeRatio';
+  }
+
+  // ============================================================
+  // State — synced live from Firestore, keyed by a shared "household code"
+  // ============================================================
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAmYJ8BCP9ppzc9H7I0sUN6Yz1NKNmZP5Q",
+    authDomain: "lifev2-6bf0b.firebaseapp.com",
+    projectId: "lifev2-6bf0b",
+    storageBucket: "lifev2-6bf0b.firebasestorage.app",
+    messagingSenderId: "805090296615",
+    appId: "1:805090296615:web:13d124f1d3e2b554fb1f02"
+  };
+
+  const CODE_STORAGE_KEY = 'warikan-kakeibo-household-code';
+  const firebaseApp = initializeApp(firebaseConfig);
+  const db = getFirestore(firebaseApp);
+
+  function configRef(code) { return doc(db, 'households', code, 'meta', 'config'); }
+  function expensesCol(code) { return collection(db, 'households', code, 'expenses'); }
+  function incomePeriodsCol(code) { return collection(db, 'households', code, 'incomePeriods'); }
+
+  function defaultState() {
+    return {
+      settings: { personAName: 'A', personBName: 'B', cardClosingDay: 6, customCategories: [] },
+      expenses: [],
+      incomePeriods: [],
+      settledCycles: {},
+      settledInitialCosts: false
+    };
+  }
+
+  let state = defaultState();
+  let currentCode = null;
+  let unsubscribers = [];
+
+  function uid() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'id-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
+
+  function generateHouseholdCode() {
+    return Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 6);
+  }
+
+  function subscribeToHousehold(code) {
+    unsubscribers.forEach(function (u) { u(); });
+    unsubscribers = [];
+
+    unsubscribers.push(onSnapshot(configRef(code), function (snap) {
+      const d = defaultState();
+      if (snap.exists()) {
+        const data = snap.data();
+        state.settings = {
+          personAName: data.personAName || d.settings.personAName,
+          personBName: data.personBName || d.settings.personBName,
+          cardClosingDay: data.cardClosingDay || d.settings.cardClosingDay,
+          customCategories: Array.isArray(data.customCategories) ? data.customCategories : []
+        };
+        state.settledCycles = (data.settledCycles && typeof data.settledCycles === 'object') ? data.settledCycles : {};
+        state.settledInitialCosts = !!data.settledInitialCosts;
+      }
+      renderAll();
+    }, function () { toast('設定の同期に失敗しました。通信環境を確認してください'); }));
+
+    unsubscribers.push(onSnapshot(expensesCol(code), function (snap) {
+      state.expenses = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+      renderExpenses();
+      renderSummary();
+    }, function () { toast('支出データの同期に失敗しました'); }));
+
+    unsubscribers.push(onSnapshot(incomePeriodsCol(code), function (snap) {
+      state.incomePeriods = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+      renderIncome();
+      renderSummary();
+    }, function () { toast('収入データの同期に失敗しました'); }));
+  }
+
+  async function updateSettings(partial) {
+    try {
+      await setDoc(configRef(currentCode), partial, { merge: true });
+    } catch (e) { toast('保存に失敗しました。通信環境を確認してください'); }
+  }
+
+  // ============================================================
+  // Formatting helpers
+  // ============================================================
+
+  function escapeHtml(str) {
+    return String(str == null ? '' : str).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  const yenFormatter = new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 });
+  function formatYen(n) { return yenFormatter.format(n || 0); }
+
+  // Inserts thousands-separating commas into a digit string, e.g.
+  // "1234567" -> "1,234,567". Used to keep the free-text amount inputs
+  // (which can't use formatYen's ¥/currency styling) readable at a glance.
+  function formatDigitsWithCommas(digits) {
+    return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  // Reformats an <input>'s value with thousands commas in place, keeping the
+  // caret positioned after the same DIGIT it was after before reformatting
+  // (not the same character index, since commas shift as digits are added
+  // or removed) so typing in the middle of a number doesn't jump the cursor
+  // to the end.
+  function reformatAmountInput(el) {
+    const digitsBeforeCursor = el.value.slice(0, el.selectionStart).replace(/[^\d]/g, '').length;
+    const formatted = formatDigitsWithCommas(el.value.replace(/[^\d]/g, ''));
+    el.value = formatted;
+    let pos = 0, seen = 0;
+    while (pos < formatted.length && seen < digitsBeforeCursor) {
+      if (formatted[pos] !== ',') seen++;
+      pos++;
+    }
+    el.setSelectionRange(pos, pos);
+  }
+
+  function formatMonthDay(date) { return (date.getMonth() + 1) + '/' + date.getDate(); }
+  function formatFullDate(date) { return date.getFullYear() + '年' + (date.getMonth() + 1) + '月' + date.getDate() + '日'; }
+
+  function checkIconSvg() {
+    return '<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>';
+  }
+  function trayIconSvg() {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8l2-4h14l2 4M3 8v10a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8M3 8h18M9 13h6"/></svg>';
+  }
+  function yenIconSvg() {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 7.5l3 5 3-5M12 12.5V18M9.3 14h5.4M9.3 16h5.4"/></svg>';
+  }
+  function emptyState(icon, title, desc) {
+    const svg = icon === 'yen' ? yenIconSvg() : trayIconSvg();
+    return '<div class="empty-state">' + svg + '<div class="empty-title">' + escapeHtml(title) + '</div><div class="empty-desc">' + escapeHtml(desc) + '</div></div>';
+  }
+
+  function currentNames() {
+    return { a: state.settings.personAName, b: state.settings.personBName };
+  }
+
+  // ============================================================
+  // Rendering
+  // ============================================================
+
+  let currentTab = 'expenses';
+  let summarySelectedKey = null;
+
+  function groupExpensesByCycle() {
+    const closingDay = state.settings.cardClosingDay;
+    const map = new Map();
+    for (let i = 0; i < state.expenses.length; i++) {
+      const e = state.expenses[i];
+      if (e.isInitialCost) continue;
+      const cyc = cycleContaining(parseLocalDate(e.date), closingDay);
+      const key = cycleKey(cyc.ym);
+      if (!map.has(key)) map.set(key, { cycle: cyc, items: [] });
+      map.get(key).items.push(e);
+    }
+    const groups = Array.from(map.values());
+    groups.sort(function (a, b) { return b.cycle.start - a.cycle.start; });
+    groups.forEach(function (g) {
+      g.items.sort(function (a, b) { return parseLocalDate(b.date) - parseLocalDate(a.date); });
+    });
+    return groups;
+  }
+
+  function sortedIncomePeriods() {
+    return state.incomePeriods.slice().sort(function (a, b) {
+      return ymKey({ year: b.startYear, month: b.startMonth }) - ymKey({ year: a.startYear, month: a.startMonth });
+    });
+  }
+  function formatMonthRangeLabel(startYear, startMonth, months) {
+    const end = addMonths(startYear, startMonth, months - 1);
+    if (months === 1) return startYear + '年' + startMonth + '月';
+    if (startYear === end.year) return startYear + '年' + startMonth + '月〜' + end.month + '月';
+    return startYear + '年' + startMonth + '月〜' + end.year + '年' + end.month + '月';
+  }
+  function incomePeriodRangeLabel(period) {
+    return formatMonthRangeLabel(period.startYear, period.startMonth, period.months);
+  }
+
+  function expenseRowHtml(e) {
+    const names = currentNames();
+    const title = e.memo ? e.memo : splitShort(e.splitType);
+    const dateLabel = formatMonthDay(parseLocalDate(e.date));
+    return '' +
+      '<button class="row" data-action="edit-expense" data-id="' + e.id + '">' +
+        '<div class="main">' +
+          '<div class="title">' + escapeHtml(title) + '</div>' +
+          '<div class="meta">' +
+            '<span>' + dateLabel + '</span><span>・</span>' +
+            splitDotHtml(e.splitType) +
+            '<span>' + escapeHtml(splitLabel(e.splitType, names)) + '</span><span>・</span>' +
+            '<span>立替: ' + escapeHtml(paidByLabel(e.paidBy, names)) + '</span><span>・</span>' +
+            categoryChipHtml(e.category) +
+            (e.note ? '<span>・</span><span>' + escapeHtml(e.note) + '</span>' : '') +
+          '</div>' +
+        '</div>' +
+        '<div class="amount">' + formatYen(e.amount) + '</div>' +
+      '</button>';
+  }
+
+  function renderExpenses() {
+    const container = document.getElementById('expenses-list');
+    const groups = groupExpensesByCycle();
+    if (groups.length === 0) {
+      container.innerHTML = emptyState('tray', '支出がありません', '右上の＋から支出を追加してください');
+    } else {
+      container.innerHTML = groups.map(function (g) {
+        const key = cycleKey(g.cycle.ym);
+        const settled = !!state.settledCycles[key];
+        return '' +
+          '<div class="cycle-group">' +
+            '<div class="cycle-header">' +
+              '<span class="label">' + escapeHtml(g.cycle.label) + '</span>' +
+              (settled ? '<span class="chip chip-settled">精算済み</span>' : '') +
+            '</div>' +
+            '<div class="ledger">' + g.items.map(expenseRowHtml).join('') + '</div>' +
+          '</div>';
+      }).join('');
+    }
+    renderInitialCostSection();
+  }
+
+  // 初期費用（住宅・家電など）: tracked entirely separately from the
+  // monthly billing-cycle groups above -- its own section, own running
+  // total/settlement, own settled flag, no date-based cycle involved.
+  function renderInitialCostSection() {
+    const container = document.getElementById('initial-cost-section');
+    const items = state.expenses
+      .filter(function (e) { return !!e.isInitialCost; })
+      .sort(function (a, b) { return parseLocalDate(b.date) - parseLocalDate(a.date); });
+    if (items.length === 0) { container.innerHTML = ''; return; }
+
+    const s = initialCostSummary(state.expenses, state.incomePeriods, state.settings.cardClosingDay);
+    const names = currentNames();
+    const settled = !!state.settledInitialCosts;
+    const sharedPlan = sharedAccountPlan(s);
+    const sharedPlanLines = [];
+    if (sharedPlan) {
+      if (sharedPlan.debtorToJoint > 0) sharedPlanLines.push({ from: sharedPlan.debtor, toLabel: '共有口座', amount: sharedPlan.debtorToJoint });
+      if (sharedPlan.debtorToCreditor > 0) sharedPlanLines.push({ from: sharedPlan.debtor, to: sharedPlan.creditor, amount: sharedPlan.debtorToCreditor });
+      if (sharedPlan.creditorToJoint > 0) sharedPlanLines.push({ from: sharedPlan.creditor, toLabel: '共有口座', amount: sharedPlan.creditorToJoint });
+    }
+
+    container.innerHTML = '' +
+      '<div class="cycle-group">' +
+        '<div class="cycle-header">' +
+          '<span class="label">初期費用（住宅・家電など）</span>' +
+          (settled ? '<span class="chip chip-settled">精算済み</span>' : '') +
+        '</div>' +
+        '<div class="ledger">' + items.map(expenseRowHtml).join('') + '</div>' +
+      '</div>' +
+      '<div class="ledger-card">' +
+        '<div class="ledger-title">負担額（本来支払うべき金額）</div>' +
+        '<div class="kv-row"><span>' + escapeHtml(names.a) + '</span><span class="num">' + formatYen(s.burdenA) + '</span></div>' +
+        '<div class="kv-row"><span>' + escapeHtml(names.b) + '</span><span class="num">' + formatYen(s.burdenB) + '</span></div>' +
+        '<div class="kv-row total"><span>合計</span><span class="num">' + formatYen(s.total) + '</span></div>' +
+      '</div>' +
+      '<div class="ledger-card">' +
+        '<div class="ledger-title">実際の立替額</div>' +
+        '<div class="kv-row"><span>' + escapeHtml(names.a) + '</span><span class="num">' + formatYen(s.paidByA) + '</span></div>' +
+        '<div class="kv-row"><span>' + escapeHtml(names.b) + '</span><span class="num">' + formatYen(s.paidByB) + '</span></div>' +
+        (s.paidByShared > 0 ? '<div class="kv-row"><span>共有カード</span><span class="num">' + formatYen(s.paidByShared) + '</span></div>' : '') +
+      '</div>' +
+      (sharedPlan ?
+        '<div class="ledger-card">' +
+          '<div class="ledger-title">共有カードの精算プラン</div>' +
+          '<div class="field-hint" style="padding-top:0; margin-bottom:10px;">グロス：共有分も含めた本来の負担額。ネット：共有口座への入金とAB間の精算を1つにまとめた場合の送金額です。</div>' +
+          '<div class="kv-row"><span>' + escapeHtml(names.a) + '（グロス）</span><span class="num">' + formatYen(s.burdenA) + '</span></div>' +
+          '<div class="kv-row"><span>' + escapeHtml(names.b) + '（グロス）</span><span class="num">' + formatYen(s.burdenB) + '</span></div>' +
+          sharedPlanLines.map(function (l) {
+            const toText = l.toLabel ? l.toLabel : escapeHtml(paidByLabel(l.to, names));
+            return '<div class="kv-row"><span>' + escapeHtml(paidByLabel(l.from, names)) + ' → ' + toText + '（ネット）</span><span class="num">' + formatYen(l.amount) + '</span></div>';
+          }).join('') +
+        '</div>'
+        : '') +
+      '<div class="settlement-card">' +
+        (settled ? '<div class="stamp">精算済</div>' : '') +
+        (s.settle ?
+          '<div class="settlement-flow"><span>' + escapeHtml(s.settle.payer === 'a' ? names.a : names.b) + '</span><span class="arrow">→</span><span>' + escapeHtml(s.settle.receiver === 'a' ? names.a : names.b) + '</span></div>' +
+          '<div class="settlement-amount">' + formatYen(s.settle.amount) + '</div>'
+          : '<div class="settlement-none">精算の必要はありません</div>') +
+        '<button class="btn ' + (settled ? 'btn-ghost' : 'btn-primary') + '" data-action="toggle-initial-cost-settled">' +
+          (settled ? 'この初期費用の精算済みを取り消す' : 'この初期費用を精算済みにする') +
+        '</button>' +
+      '</div>';
+  }
+
+  function renderSummary() {
+    const groups = groupExpensesByCycle();
+    let cycles = groups.map(function (g) { return g.cycle; });
+    if (cycles.length === 0) {
+      cycles = [cycleContaining(new Date(), state.settings.cardClosingDay)];
+    }
+    if (summarySelectedKey === null || !cycles.some(function (c) { return cycleKey(c.ym) === summarySelectedKey; })) {
+      summarySelectedKey = cycleKey(cycles[0].ym);
+    }
+    const cycle = cycles.find(function (c) { return cycleKey(c.ym) === summarySelectedKey; }) || cycles[0];
+    const s = settlement(state.expenses, cycle, state.incomePeriods, state.settings.cardClosingDay);
+    const names = currentNames();
+    const key = cycleKey(cycle.ym);
+    const settled = !!state.settledCycles[key];
+
+    const select = document.getElementById('summary-cycle-select');
+    select.innerHTML = cycles.map(function (c) {
+      const k = cycleKey(c.ym);
+      return '<option value="' + k + '"' + (k === key ? ' selected' : '') + '>' + escapeHtml(c.label) + '</option>';
+    }).join('');
+
+    document.getElementById('summary-range').textContent = formatFullDate(cycle.start) + ' 〜 ' + formatFullDate(cycle.end);
+
+    const breakdown = SPLIT_TYPES.filter(function (t) { return s.bySplitType[t] > 0; })
+      .map(function (t) {
+        return '<div class="kv-row"><span style="display:flex; align-items:center; gap:8px;">' + splitDotHtml(t) + '<span>' + escapeHtml(splitLabel(t, names)) + '</span></span><span class="num">' + formatYen(s.bySplitType[t]) + '</span></div>';
+      }).join('');
+
+    const categoryBreakdown = allCategoryOrder()
+      .filter(function (cat) { return s.byCategory[cat] > 0; })
+      .sort(function (a, b) { return s.byCategory[b] - s.byCategory[a]; })
+      .map(function (cat) {
+        return '<div class="kv-row"><span>' + escapeHtml(categoryDisplayName(cat)) + '</span><span class="num">' + formatYen(s.byCategory[cat]) + '</span></div>';
+      }).join('');
+
+    const sharedPlan = sharedAccountPlan(s);
+    const sharedPlanLines = [];
+    if (sharedPlan) {
+      if (sharedPlan.debtorToJoint > 0) sharedPlanLines.push({ from: sharedPlan.debtor, toLabel: '共有口座', amount: sharedPlan.debtorToJoint });
+      if (sharedPlan.debtorToCreditor > 0) sharedPlanLines.push({ from: sharedPlan.debtor, to: sharedPlan.creditor, amount: sharedPlan.debtorToCreditor });
+      if (sharedPlan.creditorToJoint > 0) sharedPlanLines.push({ from: sharedPlan.creditor, toLabel: '共有口座', amount: sharedPlan.creditorToJoint });
+    }
+
+    const body = document.getElementById('summary-body');
+    body.innerHTML = '' +
+      '<div class="ledger-card">' +
+        '<div class="ledger-title">負担額（本来支払うべき金額）</div>' +
+        '<div class="kv-row"><span>' + escapeHtml(names.a) + '</span><span class="num">' + formatYen(s.burdenA) + '</span></div>' +
+        '<div class="kv-row"><span>' + escapeHtml(names.b) + '</span><span class="num">' + formatYen(s.burdenB) + '</span></div>' +
+        '<div class="kv-row total"><span>合計</span><span class="num">' + formatYen(s.total) + '</span></div>' +
+      '</div>' +
+      '<div class="ledger-card">' +
+        '<div class="ledger-title">実際の立替額</div>' +
+        '<div class="kv-row"><span>' + escapeHtml(names.a) + '</span><span class="num">' + formatYen(s.paidByA) + '</span></div>' +
+        '<div class="kv-row"><span>' + escapeHtml(names.b) + '</span><span class="num">' + formatYen(s.paidByB) + '</span></div>' +
+        (s.paidByShared > 0 ? '<div class="kv-row"><span>共有カード</span><span class="num">' + formatYen(s.paidByShared) + '</span></div>' : '') +
+      '</div>' +
+      (sharedPlan ?
+        '<div class="ledger-card">' +
+          '<div class="ledger-title">共有カードの精算プラン</div>' +
+          '<div class="field-hint" style="padding-top:0; margin-bottom:10px;">グロス：共有分も含めた本来の負担額。ネット：共有口座への入金とAB間の精算を1つにまとめた場合の送金額です。</div>' +
+          '<div class="kv-row"><span>' + escapeHtml(names.a) + '（グロス）</span><span class="num">' + formatYen(s.burdenA) + '</span></div>' +
+          '<div class="kv-row"><span>' + escapeHtml(names.b) + '（グロス）</span><span class="num">' + formatYen(s.burdenB) + '</span></div>' +
+          sharedPlanLines.map(function (l) {
+            const toText = l.toLabel ? l.toLabel : escapeHtml(paidByLabel(l.to, names));
+            return '<div class="kv-row"><span>' + escapeHtml(paidByLabel(l.from, names)) + ' → ' + toText + '（ネット）</span><span class="num">' + formatYen(l.amount) + '</span></div>';
+          }).join('') +
+        '</div>'
+        : '') +
+      '<div class="settlement-card">' +
+        (settled ? '<div class="stamp">精算済</div>' : '') +
+        (s.settle ?
+          '<div class="settlement-flow"><span>' + escapeHtml(s.settle.payer === 'a' ? names.a : names.b) + '</span><span class="arrow">→</span><span>' + escapeHtml(s.settle.receiver === 'a' ? names.a : names.b) + '</span></div>' +
+          '<div class="settlement-amount">' + formatYen(s.settle.amount) + '</div>'
+          : '<div class="settlement-none">精算の必要はありません</div>') +
+        '<button class="btn ' + (settled ? 'btn-ghost' : 'btn-primary') + '" data-action="toggle-settled" data-key="' + key + '">' +
+          (settled ? 'この月の精算済みを取り消す' : 'この月を精算済みにする') +
+        '</button>' +
+      '</div>' +
+      '<div class="ledger-card">' +
+        '<div class="ledger-title">内訳（ジャンル別）</div>' +
+        (categoryBreakdown || '<div class="empty-inline">この月の支出はありません</div>') +
+      '</div>' +
+      '<div class="ledger-card">' +
+        '<div class="ledger-title">内訳（負担パターン別）</div>' +
+        (breakdown || '<div class="empty-inline">この月の支出はありません</div>') +
+      '</div>';
+  }
+
+  function renderIncome() {
+    const now = new Date();
+    const currentYM = { year: now.getFullYear(), month: now.getMonth() + 1 };
+    const names = currentNames();
+    const currentPeriod = findIncomePeriod(currentYM, state.incomePeriods);
+    document.getElementById('income-tab-badge').hidden = !!currentPeriod;
+
+    const statusEl = document.getElementById('income-status-card');
+    if (currentPeriod) {
+      const endYM = addMonths(currentPeriod.startYear, currentPeriod.startMonth, currentPeriod.months - 1);
+      statusEl.className = 'income-status-card';
+      statusEl.innerHTML =
+        '<div class="label">現在の収入割合（' + escapeHtml(incomePeriodRangeLabel(currentPeriod)) + '）</div>' +
+        '<div class="value">' + escapeHtml(names.a) + ' ' + currentPeriod.aPercent + '% : ' + escapeHtml(names.b) + ' ' + (100 - currentPeriod.aPercent) + '%</div>' +
+        '<div class="income-status-hint">' + endYM.year + '年' + endYM.month + '月分まで有効です</div>';
+    } else {
+      statusEl.className = 'income-status-card income-status-expired';
+      statusEl.innerHTML =
+        '<div class="label">収入データの期限が切れています</div>' +
+        '<div class="income-status-hint">「収入割合で負担する費用」は、新しい期間を入力するまで50%ずつで計算されます。</div>' +
+        '<button type="button" class="btn btn-primary" data-action="add-income" style="margin-top:10px;">収入を入力する</button>';
+    }
+
+    const container = document.getElementById('income-list');
+    const periods = sortedIncomePeriods();
+    if (periods.length === 0) {
+      container.innerHTML = emptyState('yen', '収入の期間がありません', '右上の＋から、直近の収入をまとめて（または月ごとに）登録してください');
+      return;
+    }
+    const currentKey = ymKey(currentYM);
+    container.innerHTML = '<div class="ledger">' + periods.map(function (p) {
+      const expired = incomePeriodEndKey(p) < currentKey;
+      return '' +
+        '<button class="row" data-action="edit-income" data-id="' + p.id + '">' +
+          '<div class="main">' +
+            '<div class="title">' + escapeHtml(incomePeriodRangeLabel(p)) +
+              (expired ? '<span class="chip chip-settled" style="margin-left:6px;">期限切れ</span>' : '') +
+            '</div>' +
+            '<div class="meta">' +
+              '<span>' + escapeHtml(names.a) + ' ' + p.aPercent + '% : ' + escapeHtml(names.b) + ' ' + (100 - p.aPercent) + '%</span><span>・</span>' +
+              '<span>' + (p.entryMode === 'lump' ? 'まとめて入力' : '月ごとに入力') + '</span>' +
+            '</div>' +
+          '</div>' +
+        '</button>';
+    }).join('') + '</div>';
+  }
+
+  function renderSettings() {
+    document.getElementById('setting-name-a').value = state.settings.personAName;
+    document.getElementById('setting-name-b').value = state.settings.personBName;
+    document.getElementById('setting-closing-day').value = state.settings.cardClosingDay;
+    document.getElementById('settings-code-value').textContent = currentCode || '';
+    renderCustomCategoryList();
+  }
+
+  function renderCustomCategoryList() {
+    const names = currentNames();
+    const container = document.getElementById('custom-category-list');
+    const list = customCategoryList();
+    if (list.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+    container.innerHTML = '<div class="ledger">' + list.map(function (c) {
+      return '' +
+        '<button class="row" data-action="edit-category" data-id="' + c.id + '">' +
+          '<div class="main">' +
+            '<div class="title">' + escapeHtml(c.name) + '</div>' +
+            '<div class="meta"><span>既定: ' + escapeHtml(splitLabel(c.defaultSplitType, names)) + '</span></div>' +
+          '</div>' +
+        '</button>';
+    }).join('') + '</div>';
+  }
+
+  function renderAll() {
+    renderExpenses();
+    renderSummary();
+    renderIncome();
+    renderSettings();
+  }
+
+  function switchTab(tab) {
+    currentTab = tab;
+    document.querySelectorAll('.tab-panel').forEach(function (p) { p.hidden = p.dataset.tab !== tab; });
+    document.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.toggle('active', b.dataset.tab === tab); });
+    document.getElementById('main-scroll').scrollTop = 0;
+  }
+
+  // ============================================================
+  // Sheets: add/edit expense & income
+  // ============================================================
+
+  let editingExpenseId = null;
+  let editingIncomeId = null;
+  let editingPendingImportIndex = null;
+  let currentSplitType = 'equal';
+  let currentCustomPercent = 50;
+  let customRatioMode = 'percent';
+  let currentPaidBy = 'a';
+  let currentIsInitialCost = false;
+  let currentCategory = 'other';
+  let categoryManuallySet = false;
+  let splitTypeManuallySet = false;
+  let currentIncomeEntryMode = 'lump';
+  let currentIncomePerMonthValues = [];
+  let currentIncomeExtraValues = [];
+  let editingCategoryId = null;
+  let currentCategorySplitType = 'incomeRatio';
+  let categorySheetReturnToExpense = false;
+
+  function showSheet(id) {
+    const el = document.getElementById(id);
+    el.hidden = false;
+    requestAnimationFrame(function () { el.classList.add('open'); });
+  }
+  function closeSheet(id) {
+    const el = document.getElementById(id);
+    el.classList.remove('open');
+    setTimeout(function () { el.hidden = true; }, 280);
+  }
+
+  function renderExpenseSplitOptions() {
+    const names = currentNames();
+    const container = document.getElementById('expense-split-options');
+    container.innerHTML = SPLIT_TYPES.map(function (t) {
+      const selected = currentSplitType === t;
+      return '' +
+        '<button type="button" class="option-row' + (selected ? ' selected' : '') + '" data-action="select-split-type" data-type="' + t + '">' +
+          '<span style="display:flex; align-items:center; gap:9px;">' + splitDotHtml(t) + '<span>' + escapeHtml(splitLabel(t, names)) + '</span></span>' +
+          (selected ? checkIconSvg() : '') +
+        '</button>';
+    }).join('');
+  }
+
+  function currentExpenseAmountValue() {
+    const raw = document.getElementById('expense-amount').value.replace(/[^\d]/g, '');
+    return Number(raw) || 0;
+  }
+
+  // 60% / 40% only tells you the ratio; showing the actual yen split (the
+  // "calculator" the user asked for) is what makes it usable at a glance.
+  function updateCustomRatioLabel() {
+    const names = currentNames();
+    const total = currentExpenseAmountValue();
+    const yen = splitByPercent(total, currentCustomPercent);
+    const aPercentText = Math.round(currentCustomPercent);
+    const bPercentText = 100 - aPercentText;
+    document.getElementById('expense-custom-ratio-label').textContent =
+      names.a + ' ' + aPercentText + '%（' + formatYen(yen.a) + '）　' +
+      names.b + ' ' + bPercentText + '%（' + formatYen(yen.b) + '）';
+  }
+
+  function renderCustomRatioModeSegmented() {
+    const container = document.getElementById('custom-ratio-mode-segmented');
+    container.innerHTML = [['percent', '%で指定'], ['amount', '金額で指定']].map(function (m) {
+      return '<button type="button" class="segment' + (customRatioMode === m[0] ? ' selected' : '') + '" data-action="select-custom-ratio-mode" data-mode="' + m[0] + '">' + m[1] + '</button>';
+    }).join('');
+  }
+
+  // Fills the two amount fields (and their hint) from whatever percentage is
+  // currently stored -- used both on first entering amount mode and whenever
+  // the total changes while amount mode is active, so the pair stays in sync.
+  function syncCustomAmountFieldsFromPercent() {
+    const names = currentNames();
+    document.getElementById('custom-amount-a-label').textContent = escapeHtml(names.a);
+    document.getElementById('custom-amount-b-label').textContent = escapeHtml(names.b);
+    const total = currentExpenseAmountValue();
+    const hint = document.getElementById('custom-amount-hint');
+    if (total <= 0) {
+      document.getElementById('custom-amount-a').value = '';
+      document.getElementById('custom-amount-b').value = '';
+      hint.textContent = '先に金額を入力してください。';
+      return;
+    }
+    hint.textContent = '片方を入力すると、もう片方は自動で残りの金額になります。';
+    const yen = splitByPercent(total, currentCustomPercent);
+    document.getElementById('custom-amount-a').value = formatDigitsWithCommas(String(yen.a));
+    document.getElementById('custom-amount-b').value = formatDigitsWithCommas(String(yen.b));
+  }
+
+  function updateCustomRatioVisibility() {
+    const wrap = document.getElementById('expense-custom-ratio');
+    wrap.hidden = currentSplitType !== 'customRatio';
+    if (currentSplitType !== 'customRatio') return;
+
+    renderCustomRatioModeSegmented();
+    document.getElementById('custom-ratio-percent-fields').hidden = customRatioMode !== 'percent';
+    document.getElementById('custom-ratio-amount-fields').hidden = customRatioMode !== 'amount';
+
+    if (customRatioMode === 'percent') {
+      // Match the slider's granularity to the label's own rounding (whole
+      // percent) -- a stored ratio like 76.92% previously snapped the
+      // slider thumb to the nearest 5% mark (75%) while the label still
+      // read "77%", making an untouched, already-saved custom split look
+      // like it had been reset to a coarser value on reopen.
+      document.getElementById('expense-custom-slider').value = Math.round(currentCustomPercent);
+      updateCustomRatioLabel();
+    } else {
+      syncCustomAmountFieldsFromPercent();
+    }
+  }
+
+  // Editing one amount field recomputes the other as the remainder, and
+  // derives the underlying percentage from that -- never fights whichever
+  // field the user is actively typing in.
+  function handleCustomAmountInput(person) {
+    const total = currentExpenseAmountValue();
+    if (total <= 0) return;
+    const aField = document.getElementById('custom-amount-a');
+    const bField = document.getElementById('custom-amount-b');
+    if (person === 'a') {
+      reformatAmountInput(aField);
+      const aVal = Math.min(Number(aField.value.replace(/[^\d]/g, '')) || 0, total);
+      bField.value = formatDigitsWithCommas(String(Math.max(0, total - aVal)));
+      currentCustomPercent = (aVal / total) * 100;
+    } else {
+      reformatAmountInput(bField);
+      const bVal = Math.min(Number(bField.value.replace(/[^\d]/g, '')) || 0, total);
+      const aVal = Math.max(0, total - bVal);
+      aField.value = formatDigitsWithCommas(String(aVal));
+      currentCustomPercent = (aVal / total) * 100;
+    }
+  }
+
+  function renderExpensePaidBySegmented() {
+    const names = currentNames();
+    const container = document.getElementById('expense-paidby-segmented');
+    container.innerHTML = PAID_BY_OPTIONS.map(function (p) {
+      return '<button type="button" class="segment' + (currentPaidBy === p ? ' selected' : '') + '" data-action="select-paidby" data-person="' + p + '">' +
+        escapeHtml(paidByLabel(p, names)) + '</button>';
+    }).join('');
+  }
+
+  // 初期費用（住宅・家電など）: kept completely separate from the monthly
+  // billing-cycle groups and settlement -- see initialCostSummary().
+  function renderExpenseKindSegmented() {
+    const container = document.getElementById('expense-kind-segmented');
+    container.innerHTML = [[false, '通常の支出'], [true, '初期費用']].map(function (opt) {
+      return '<button type="button" class="segment' + (currentIsInitialCost === opt[0] ? ' selected' : '') + '" data-action="select-expense-kind" data-value="' + opt[0] + '">' +
+        opt[1] + '</button>';
+    }).join('');
+    document.getElementById('expense-kind-hint').textContent = currentIsInitialCost
+      ? '住宅・家電などの初期費用として、月ごとの精算とは別枠で管理します。'
+      : '';
+  }
+
+  function renderExpenseCategoryPicker() {
+    const container = document.getElementById('expense-category-picker');
+    container.innerHTML = allCategoryOrder().map(function (cat) {
+      return '<button type="button" class="category-picker-chip' + (currentCategory === cat ? ' selected' : '') + '" data-action="select-category" data-category="' + cat + '">' +
+        escapeHtml(categoryDisplayName(cat)) + '</button>';
+    }).join('') +
+      '<button type="button" class="category-picker-chip category-picker-chip-add" data-action="add-category-from-expense">＋ 新しいジャンル</button>';
+  }
+
+  // Auto-guesses the category from the memo, but only while the user hasn't
+  // picked one themselves in this session -- typing/editing the memo should
+  // keep refining the guess, but never silently override a manual choice.
+  function maybeAutoGuessCategory() {
+    if (categoryManuallySet) return;
+    const memo = document.getElementById('expense-memo').value;
+    currentCategory = guessCategory(memo, loadMerchantMemory());
+    renderExpenseCategoryPicker();
+    applyCategoryDefaultSplitType();
+  }
+
+  // Keeps 負担方法 in sync with the category's default, but only while the
+  // user hasn't picked a split type themselves -- an explicit choice always
+  // wins over the category-driven suggestion.
+  function applyCategoryDefaultSplitType() {
+    if (splitTypeManuallySet) return;
+    currentSplitType = defaultSplitTypeForCategory(currentCategory);
+    renderExpenseSplitOptions();
+    updateCustomRatioVisibility();
+  }
+
+  function renderIncomeEntryModeSegmented() {
+    const container = document.getElementById('income-entry-mode-segmented');
+    const modes = [['lump', 'まとめて入力'], ['perMonth', '月ごとに入力']];
+    container.innerHTML = modes.map(function (m) {
+      return '<button type="button" class="segment' + (currentIncomeEntryMode === m[0] ? ' selected' : '') + '" data-action="select-income-entry-mode" data-mode="' + m[0] + '">' +
+        m[1] + '</button>';
+    }).join('');
+  }
+
+  function updateIncomeEntryModeVisibility() {
+    const names = currentNames();
+    document.getElementById('income-lump-fields').hidden = currentIncomeEntryMode !== 'lump';
+    document.getElementById('income-permonth-fields').hidden = currentIncomeEntryMode !== 'perMonth';
+    document.getElementById('income-lump-a-label').textContent = escapeHtml(names.a) + 'さんの期間合計';
+    document.getElementById('income-lump-b-label').textContent = escapeHtml(names.b) + 'さんの期間合計';
+    if (currentIncomeEntryMode === 'perMonth') renderIncomePerMonthRows();
+    updateIncomeRatioPreview();
+  }
+
+  function currentIncomePeriodMonthsValue() {
+    const v = Number(document.getElementById('income-period-months').value);
+    return Math.min(12, Math.max(1, Number.isFinite(v) ? Math.round(v) : 1));
+  }
+
+  // The amounts entered always describe the `months` months immediately
+  // BEFORE the period starts (already-finalized income by the time the
+  // period begins), not the period's own months -- the resulting ratio is
+  // then applied forward to the period itself.
+  function incomeLookbackStart(startYear, startMonth, months) {
+    return addMonths(startYear, startMonth, -months);
+  }
+
+  function updateIncomePeriodHint() {
+    const el = document.getElementById('income-period-hint');
+    const startVal = document.getElementById('income-period-start').value;
+    if (!startVal) {
+      el.textContent = '確定済みの手取り額をもとに算出した収入割合が、指定した期間ずっと使われます。';
+      return;
+    }
+    const parts = startVal.split('-');
+    const startYear = Number(parts[0]), startMonth = Number(parts[1]);
+    const months = currentIncomePeriodMonthsValue();
+    const appliedLabel = formatMonthRangeLabel(startYear, startMonth, months);
+    // Lump-sum entry is just one total for "some N months" -- it isn't tied
+    // to any specific calendar range, so the hint must not name one (the
+    // per-month entry hint below still can, since those rows each name an
+    // actual, editable year-month).
+    if (currentIncomeEntryMode === 'lump') {
+      el.textContent =
+        '任意の' + months + 'か月分の確定した手取り額をもとに、' +
+        appliedLabel + 'の収入割合を決めます。' +
+        '期間が終わると「収入」タブで新しい期間の入力を求められます。';
+      return;
+    }
+    const lookback = incomeLookbackStart(startYear, startMonth, months);
+    el.textContent =
+      formatMonthRangeLabel(lookback.year, lookback.month, months) + 'の確定した手取り額をもとに、' +
+      appliedLabel + 'の収入割合を決めます。' +
+      '期間が終わると「収入」タブで新しい期間の入力を求められます。';
+  }
+
+  function renderIncomePerMonthRows() {
+    const names = currentNames();
+    const startVal = document.getElementById('income-period-start').value;
+    const length = currentIncomePeriodMonthsValue();
+    const header = document.getElementById('income-permonth-header');
+    header.innerHTML = '<span class="income-permonth-label"></span><div class="income-permonth-inputs"><span>' + escapeHtml(names.a) + '</span><span>' + escapeHtml(names.b) + '</span></div>';
+
+    const rowsContainer = document.getElementById('income-permonth-rows');
+    if (!startVal) { rowsContainer.innerHTML = ''; renderIncomeExtraRows(); updateIncomeRatioPreview(); return; }
+    const parts = startVal.split('-');
+    const startYear = Number(parts[0]), startMonth = Number(parts[1]);
+    const lookback = incomeLookbackStart(startYear, startMonth, length);
+
+    while (currentIncomePerMonthValues.length < length) currentIncomePerMonthValues.push({ aAmount: '', bAmount: '' });
+    currentIncomePerMonthValues.length = length;
+
+    let html = '';
+    for (let i = 0; i < length; i++) {
+      const v = currentIncomePerMonthValues[i];
+      // The year/month a row represents defaults to the auto-computed
+      // lookback month, but the user can freely override it per row (see
+      // the .income-permonth-month <input type=month> below); once
+      // overridden (ymCustom), later changes to the start date / period
+      // length no longer silently reset that row's label.
+      if (!v.ymCustom || v.year == null || v.month == null) {
+        const ym = addMonths(lookback.year, lookback.month, i);
+        v.year = ym.year; v.month = ym.month;
+      }
+      const monthVal = v.year + '-' + String(v.month).padStart(2, '0');
+      html += '' +
+        '<div class="income-permonth-row">' +
+          '<input type="month" class="income-permonth-month" data-index="' + i + '" value="' + monthVal + '">' +
+          '<div class="income-permonth-inputs">' +
+            '<input type="text" inputmode="numeric" class="income-permonth-input" data-index="' + i + '" data-person="a" value="' + escapeHtml(v.aAmount) + '">' +
+            '<input type="text" inputmode="numeric" class="income-permonth-input" data-index="' + i + '" data-person="b" value="' + escapeHtml(v.bAmount) + '">' +
+          '</div>' +
+        '</div>';
+    }
+    rowsContainer.innerHTML = html;
+    renderIncomeExtraRows();
+    updateIncomeRatioPreview();
+  }
+
+  // Up to 3 free-use slots (bonuses etc.) alongside the per-month rows --
+  // no month of their own, just a free-text label plus A/B amounts, folded
+  // into the same period-total used for computing the income ratio.
+  function renderIncomeExtraRows() {
+    const names = currentNames();
+    while (currentIncomeExtraValues.length < 3) currentIncomeExtraValues.push({ label: '', aAmount: '', bAmount: '' });
+    const header = document.getElementById('income-extra-header');
+    header.innerHTML = '<span class="income-permonth-label"></span><div class="income-permonth-inputs"><span>' + escapeHtml(names.a) + '</span><span>' + escapeHtml(names.b) + '</span></div>';
+    const container = document.getElementById('income-extra-rows');
+    let html = '';
+    for (let i = 0; i < currentIncomeExtraValues.length; i++) {
+      const v = currentIncomeExtraValues[i];
+      html += '' +
+        '<div class="income-permonth-row">' +
+          '<input type="text" class="income-extra-label" data-index="' + i + '" placeholder="任意（賞与など）" value="' + escapeHtml(v.label) + '">' +
+          '<div class="income-permonth-inputs">' +
+            '<input type="text" inputmode="numeric" class="income-extra-input" data-index="' + i + '" data-person="a" value="' + escapeHtml(v.aAmount) + '">' +
+            '<input type="text" inputmode="numeric" class="income-extra-input" data-index="' + i + '" data-person="b" value="' + escapeHtml(v.bAmount) + '">' +
+          '</div>' +
+        '</div>';
+    }
+    container.innerHTML = html;
+  }
+
+  function sumIncomePerMonthValues() {
+    let aTotal = 0, bTotal = 0;
+    currentIncomePerMonthValues.forEach(function (v) {
+      aTotal += Number(String(v.aAmount).replace(/[^\d]/g, '')) || 0;
+      bTotal += Number(String(v.bAmount).replace(/[^\d]/g, '')) || 0;
+    });
+    currentIncomeExtraValues.forEach(function (v) {
+      aTotal += Number(String(v.aAmount).replace(/[^\d]/g, '')) || 0;
+      bTotal += Number(String(v.bAmount).replace(/[^\d]/g, '')) || 0;
+    });
+    return { aTotal: aTotal, bTotal: bTotal };
+  }
+
+  function currentIncomeTotals() {
+    if (currentIncomeEntryMode === 'lump') {
+      const aTotal = Number(document.getElementById('income-lump-a').value.replace(/[^\d]/g, '')) || 0;
+      const bTotal = Number(document.getElementById('income-lump-b').value.replace(/[^\d]/g, '')) || 0;
+      return { aTotal: aTotal, bTotal: bTotal };
+    }
+    return sumIncomePerMonthValues();
+  }
+
+  function populateIncomeRatioSelectOptions() {
+    const select = document.getElementById('income-ratio-select');
+    if (select.options.length) return;
+    let html = '';
+    for (let p = 0; p <= 100; p++) {
+      html += '<option value="' + p + '">' + p + '% ／ ' + (100 - p) + '%</option>';
+    }
+    select.innerHTML = html;
+  }
+
+  // Live preview: shows the exact computed ratio to 2 decimal places, and
+  // resets the 1%-step dropdown to the nearest whole percent every time the
+  // underlying amounts change. The dropdown itself is the source of truth
+  // for the percentage that actually gets saved -- editing it afterward
+  // (without touching the amounts again) sticks.
+  function updateIncomeRatioPreview() {
+    const names = currentNames();
+    const totals = currentIncomeTotals();
+    const raw = computeAPercentFromAmounts(totals.aTotal, totals.bTotal);
+    document.getElementById('income-ratio-calc-hint').textContent =
+      '計算結果：' + names.a + ' ' + raw.toFixed(2) + '% ／ ' + names.b + ' ' + (100 - raw).toFixed(2) + '%';
+    document.getElementById('income-ratio-select-label').textContent = names.a + 'さんの負担割合（1%刻みで調整できます）';
+    document.getElementById('income-ratio-select').value = String(Math.round(raw));
+  }
+
+  function openExpenseSheet(id) {
+    editingExpenseId = id || null;
+    editingPendingImportIndex = null;
+    const e = id ? state.expenses.find(function (x) { return x.id === id; }) : null;
+    populateExpenseSheetFields(e, !!e);
+    showSheet('expense-sheet-backdrop');
+  }
+
+  function openExpenseSheetForPendingImport(index) {
+    editingExpenseId = null;
+    editingPendingImportIndex = index;
+    populateExpenseSheetFields(pendingImportItems[index], true);
+    showSheet('expense-sheet-backdrop');
+  }
+
+  function populateExpenseSheetFields(e, showDeleteButton) {
+    document.getElementById('expense-sheet-title').textContent = showDeleteButton ? '支出を編集' : '支出を追加';
+    document.getElementById('expense-memo').value = e ? e.memo : '';
+    document.getElementById('expense-note').value = e && e.note ? e.note : '';
+    document.getElementById('expense-date').value = e ? e.date : toDateInputValue(new Date());
+    document.getElementById('expense-amount').value = e ? formatDigitsWithCommas(String(e.amount)) : '';
+    document.getElementById('expense-delete-btn').hidden = !showDeleteButton;
+
+    // Existing expenses (or pending import items, which already carry a
+    // guessed category) keep whatever category they have; only a brand-new
+    // blank entry auto-refines its category guess as the memo is typed.
+    currentCategory = (e && isKnownCategory(e.category)) ? e.category : 'other';
+    categoryManuallySet = !!e;
+    currentSplitType = e ? e.splitType : defaultSplitTypeForCategory(currentCategory);
+    currentCustomPercent = (e && e.customAPercent != null) ? e.customAPercent : 50;
+    currentPaidBy = e ? e.paidBy : 'a';
+    currentIsInitialCost = !!(e && e.isInitialCost);
+    splitTypeManuallySet = !!e;
+    // Amount-input mode is the default everywhere -- a fresh 任意の割合
+    // selection, and reopening an expense that's already saved as
+    // customRatio too, since that's how amounts are actually entered day
+    // to day; showing the %-mode tab first on reopen made the yen amounts
+    // the user actually typed look like they'd vanished.
+    customRatioMode = 'amount';
+
+    renderExpenseSplitOptions();
+    renderExpensePaidBySegmented();
+    renderExpenseKindSegmented();
+    renderExpenseCategoryPicker();
+    updateCustomRatioVisibility();
+  }
+
+  async function saveExpense() {
+    const amountRaw = document.getElementById('expense-amount').value.replace(/[^\d]/g, '');
+    const amount = Number(amountRaw);
+    if (!amountRaw || !Number.isFinite(amount) || amount <= 0) { toast('金額を入力してください'); return; }
+    const date = document.getElementById('expense-date').value || toDateInputValue(new Date());
+    const memo = document.getElementById('expense-memo').value.trim();
+    const note = document.getElementById('expense-note').value.trim();
+    const customAPercent = currentSplitType === 'customRatio' ? currentCustomPercent : null;
+    const payload = { date: date, amount: amount, memo: memo, note: note, splitType: currentSplitType, customAPercent: customAPercent, paidBy: currentPaidBy, category: currentCategory, isInitialCost: currentIsInitialCost };
+
+    if (editingPendingImportIndex !== null) {
+      Object.assign(pendingImportItems[editingPendingImportIndex], payload);
+      closeSheet('expense-sheet-backdrop');
+      renderImportReviewList();
+      return;
+    }
+
+    if (memo) {
+      rememberMerchantChoice(memo, { splitType: currentSplitType, customAPercent: customAPercent, paidBy: currentPaidBy, category: currentCategory });
+    }
+
+    closeSheet('expense-sheet-backdrop');
+    try {
+      const withTimestamp = Object.assign({}, payload, { updatedAt: Date.now() });
+      if (editingExpenseId) {
+        await updateDoc(doc(expensesCol(currentCode), editingExpenseId), withTimestamp);
+      } else {
+        await addDoc(expensesCol(currentCode), withTimestamp);
+      }
+    } catch (e) { toast('保存に失敗しました。通信環境を確認してください'); }
+  }
+
+  async function deleteExpense() {
+    if (editingPendingImportIndex !== null) {
+      pendingImportItems.splice(editingPendingImportIndex, 1);
+      closeSheet('expense-sheet-backdrop');
+      renderImportReviewList();
+      return;
+    }
+    if (!editingExpenseId) return;
+    if (!confirm('この支出を削除しますか？')) return;
+    closeSheet('expense-sheet-backdrop');
+    try {
+      await deleteDoc(doc(expensesCol(currentCode), editingExpenseId));
+    } catch (e) { toast('削除に失敗しました。通信環境を確認してください'); }
+  }
+
+  // Defaults a new period to start right after the latest existing period
+  // ends, so consecutive periods have no gap unless the user changes it.
+  function defaultIncomePeriodStart() {
+    const periods = state.incomePeriods;
+    if (periods.length === 0) {
+      const now = new Date();
+      return { year: now.getFullYear(), month: now.getMonth() + 1 };
+    }
+    let latestEndKey = -Infinity;
+    let latestPeriod = null;
+    periods.forEach(function (p) {
+      const endKey = incomePeriodEndKey(p);
+      if (endKey > latestEndKey) { latestEndKey = endKey; latestPeriod = p; }
+    });
+    return addMonths(latestPeriod.startYear, latestPeriod.startMonth, latestPeriod.months);
+  }
+
+  function openIncomeSheet(id) {
+    editingIncomeId = id || null;
+    const p = id ? state.incomePeriods.find(function (x) { return x.id === id; }) : null;
+    document.getElementById('income-sheet-title').textContent = p ? '収入の期間を編集' : '収入を追加';
+    document.getElementById('income-delete-btn').hidden = !p;
+
+    const start = p ? { year: p.startYear, month: p.startMonth } : defaultIncomePeriodStart();
+    document.getElementById('income-period-start').value = start.year + '-' + String(start.month).padStart(2, '0');
+    document.getElementById('income-period-months').value = p ? p.months : 1;
+
+    currentIncomeEntryMode = p ? p.entryMode : 'lump';
+    currentIncomePerMonthValues = (p && p.entryMode === 'perMonth' && Array.isArray(p.perMonthAmounts))
+      ? p.perMonthAmounts.map(function (m) {
+          return { year: m.year, month: m.month, ymCustom: true, aAmount: formatDigitsWithCommas(String(m.aAmount)), bAmount: formatDigitsWithCommas(String(m.bAmount)) };
+        })
+      : [];
+    currentIncomeExtraValues = (p && p.entryMode === 'perMonth' && Array.isArray(p.extraIncomes))
+      ? p.extraIncomes.map(function (m) {
+          return { label: m.label || '', aAmount: formatDigitsWithCommas(String(m.aAmount || '')), bAmount: formatDigitsWithCommas(String(m.bAmount || '')) };
+        })
+      : [];
+    document.getElementById('income-lump-a').value = (p && p.entryMode === 'lump') ? formatDigitsWithCommas(String(p.aAmount)) : '';
+    document.getElementById('income-lump-b').value = (p && p.entryMode === 'lump') ? formatDigitsWithCommas(String(p.bAmount)) : '';
+
+    renderIncomeEntryModeSegmented();
+    populateIncomeRatioSelectOptions();
+    updateIncomeEntryModeVisibility();
+    // updateIncomeEntryModeVisibility() just reset the ratio dropdown to the
+    // nearest whole percent of the raw calculation; when reopening an
+    // existing period, restore whatever percentage was actually saved
+    // (which may have been manually fine-tuned away from that nearest
+    // whole-percent default).
+    if (p) document.getElementById('income-ratio-select').value = String(p.aPercent);
+    updateIncomePeriodHint();
+    showSheet('income-sheet-backdrop');
+  }
+
+  async function saveIncome() {
+    const startVal = document.getElementById('income-period-start').value;
+    if (!startVal) { toast('開始年月を選択してください'); return; }
+    const parts = startVal.split('-');
+    const startYear = Number(parts[0]), startMonth = Number(parts[1]);
+    const months = currentIncomePeriodMonthsValue();
+
+    let aAmount, bAmount, perMonthAmounts = null, extraIncomes = null;
+    if (currentIncomeEntryMode === 'lump') {
+      aAmount = Number(document.getElementById('income-lump-a').value.replace(/[^\d]/g, ''));
+      bAmount = Number(document.getElementById('income-lump-b').value.replace(/[^\d]/g, ''));
+    } else {
+      const sums = sumIncomePerMonthValues();
+      aAmount = sums.aTotal;
+      bAmount = sums.bTotal;
+      perMonthAmounts = [];
+      const lookback = incomeLookbackStart(startYear, startMonth, months);
+      for (let i = 0; i < months; i++) {
+        const v = currentIncomePerMonthValues[i] || {};
+        const fallback = addMonths(lookback.year, lookback.month, i);
+        perMonthAmounts.push({
+          year: v.year != null ? v.year : fallback.year,
+          month: v.month != null ? v.month : fallback.month,
+          aAmount: Number(String(v.aAmount).replace(/[^\d]/g, '')) || 0,
+          bAmount: Number(String(v.bAmount).replace(/[^\d]/g, '')) || 0
+        });
+      }
+      extraIncomes = currentIncomeExtraValues
+        .map(function (v) {
+          return {
+            label: (v.label || '').trim(),
+            aAmount: Number(String(v.aAmount).replace(/[^\d]/g, '')) || 0,
+            bAmount: Number(String(v.bAmount).replace(/[^\d]/g, '')) || 0
+          };
+        })
+        .filter(function (v) { return v.label || v.aAmount || v.bAmount; });
+    }
+
+    if (!Number.isFinite(aAmount) || !Number.isFinite(bAmount) || (aAmount <= 0 && bAmount <= 0)) {
+      toast('金額を入力してください');
+      return;
+    }
+
+    const payload = {
+      startYear: startYear, startMonth: startMonth, months: months,
+      entryMode: currentIncomeEntryMode,
+      aAmount: aAmount, bAmount: bAmount,
+      perMonthAmounts: perMonthAmounts,
+      extraIncomes: extraIncomes,
+      aPercent: Number(document.getElementById('income-ratio-select').value),
+      updatedAt: Date.now()
+    };
+
+    closeSheet('income-sheet-backdrop');
+    try {
+      if (editingIncomeId) {
+        await updateDoc(doc(incomePeriodsCol(currentCode), editingIncomeId), payload);
+      } else {
+        await addDoc(incomePeriodsCol(currentCode), payload);
+      }
+    } catch (e) { toast('保存に失敗しました。通信環境を確認してください'); }
+  }
+
+  async function deleteIncome() {
+    if (!editingIncomeId) return;
+    if (!confirm('この収入の期間を削除しますか？')) return;
+    closeSheet('income-sheet-backdrop');
+    try {
+      await deleteDoc(doc(incomePeriodsCol(currentCode), editingIncomeId));
+    } catch (e) { toast('削除に失敗しました。通信環境を確認してください'); }
+  }
+
+  function renderCategorySplitOptions() {
+    const names = currentNames();
+    const container = document.getElementById('category-split-options');
+    container.innerHTML = SPLIT_TYPES.filter(function (t) { return t !== 'customRatio'; }).map(function (t) {
+      const selected = currentCategorySplitType === t;
+      return '' +
+        '<button type="button" class="option-row' + (selected ? ' selected' : '') + '" data-action="select-category-split-type" data-type="' + t + '">' +
+          '<span style="display:flex; align-items:center; gap:9px;">' + splitDotHtml(t) + '<span>' + escapeHtml(splitLabel(t, names)) + '</span></span>' +
+          (selected ? checkIconSvg() : '') +
+        '</button>';
+    }).join('');
+  }
+
+  function openCategorySheet(id, opts) {
+    editingCategoryId = id || null;
+    categorySheetReturnToExpense = !!(opts && opts.returnToExpense);
+    const c = id ? findCustomCategory(id) : null;
+    document.getElementById('category-sheet-title').textContent = c ? 'ジャンルを編集' : 'ジャンルを追加';
+    document.getElementById('category-delete-btn').hidden = !c;
+    document.getElementById('category-name').value = c ? c.name : '';
+    currentCategorySplitType = c ? c.defaultSplitType : 'incomeRatio';
+    renderCategorySplitOptions();
+    showSheet('category-sheet-backdrop');
+  }
+
+  async function saveCategory() {
+    const name = document.getElementById('category-name').value.trim();
+    if (!name) { toast('ジャンル名を入力してください'); return; }
+    const list = customCategoryList().slice();
+    let savedId = editingCategoryId;
+    if (editingCategoryId) {
+      const idx = list.findIndex(function (c) { return c.id === editingCategoryId; });
+      if (idx !== -1) list[idx] = Object.assign({}, list[idx], { name: name, defaultSplitType: currentCategorySplitType });
+    } else {
+      savedId = 'custom_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      list.push({ id: savedId, name: name, defaultSplitType: currentCategorySplitType });
+    }
+    // Optimistic local update: the settings doc write + onSnapshot round-trip
+    // is too slow for the "create a category, jump right back to picking it"
+    // flow to feel instant, so reflect it locally before the write resolves.
+    state.settings.customCategories = list;
+    closeSheet('category-sheet-backdrop');
+    if (categorySheetReturnToExpense) {
+      categorySheetReturnToExpense = false;
+      currentCategory = savedId;
+      categoryManuallySet = true;
+      renderExpenseCategoryPicker();
+      applyCategoryDefaultSplitType();
+    } else {
+      renderCustomCategoryList();
+    }
+    await updateSettings({ customCategories: list });
+  }
+
+  async function deleteCategory() {
+    if (!editingCategoryId) return;
+    if (!confirm('このジャンルを削除しますか？ このジャンルが付いている支出は「その他」として扱われます。')) return;
+    const list = customCategoryList().filter(function (c) { return c.id !== editingCategoryId; });
+    closeSheet('category-sheet-backdrop');
+    await updateSettings({ customCategories: list });
+  }
+
+  async function toggleSettled(key) {
+    const settled = !!state.settledCycles[key];
+    const nextSettledCycles = Object.assign({}, state.settledCycles);
+    nextSettledCycles[key] = !settled;
+    await updateSettings({ settledCycles: nextSettledCycles });
+  }
+
+  async function toggleInitialCostSettled() {
+    await updateSettings({ settledInitialCosts: !state.settledInitialCosts });
+  }
+
+  async function resetAllData() {
+    if (!confirm('この世帯のデータ（支出・収入・設定）をすべて削除します。もう1人の画面からも消え、この操作は取り消せません。よろしいですか？')) return;
+    try {
+      const batch1 = writeBatch(db);
+      (await getDocs(expensesCol(currentCode))).forEach(function (d) { batch1.delete(d.ref); });
+      await batch1.commit();
+      const batch2 = writeBatch(db);
+      (await getDocs(incomePeriodsCol(currentCode))).forEach(function (d) { batch2.delete(d.ref); });
+      await batch2.commit();
+      await setDoc(configRef(currentCode), defaultState().settings, { merge: false });
+      toast('この世帯のデータをすべて削除しました');
+    } catch (e) { toast('削除に失敗しました。通信環境を確認してください'); }
+  }
+
+  // ============================================================
+  // Backup: export current synced state as a JSON file
+  // ============================================================
+
+  function exportBackup() {
+    const now = new Date();
+    const stamp = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'warikan-kakeibo-' + stamp + '.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    toast('バックアップを書き出しました');
+  }
+
+  // ============================================================
+  // PDF import: read a card statement PDF, parse purchase lines,
+  // and stage them for review before writing anything to Firestore.
+  // ============================================================
+
+  // Self-hosted under docs/vendor/pdfjs/ (same origin as this app) rather
+  // than loaded from a CDN: a cross-origin Worker is subject to stricter
+  // restrictions on some mobile browsers (notably iOS Safari), where it can
+  // fail silently or throw instead of falling back gracefully -- serving
+  // pdf.js and its worker from the same origin sidesteps that entirely.
+  // Bumping this forces a fresh fetch of the vendored files below instead of
+  // a stale cached copy -- the exact same filename staying in place across a
+  // version change is what let a browser serve an old cached pdf.min.mjs
+  // after it had already been swapped out on the server (confirmed by a
+  // stack trace pointing at a line number that only exists in the old file).
+  const PDFJS_VENDOR_VERSION = '4.10.38';
+  let pdfjsLibPromise = null;
+  function loadPdfJs() {
+    if (!pdfjsLibPromise) {
+      pdfjsLibPromise = import('./vendor/pdfjs/pdf.min.mjs?v=' + PDFJS_VENDOR_VERSION).then(function (mod) {
+        mod.GlobalWorkerOptions.workerSrc = './vendor/pdfjs/pdf.worker.min.mjs?v=' + PDFJS_VENDOR_VERSION;
+        return mod;
+      });
+    }
+    return pdfjsLibPromise;
+  }
+
+  // Self-hosted under docs/vendor/tesseract/ for the same reason as pdf.js
+  // above. Uses the LSTM-only engine (Tesseract's modern, most accurate
+  // mode) with a non-SIMD core build specifically -- pointing corePath at
+  // one exact file (rather than a directory) skips tesseract.js's own
+  // SIMD-capability probing and always loads this one file, trading a bit
+  // of raw speed for not needing to vendor multiple core variants and not
+  // depending on a browser feature-detection path we can't test everywhere.
+  // Loaded lazily (only once the user actually asks to OCR a row) since the
+  // engine + Japanese language data together are several MB.
+  let ocrWorkerPromise = null;
+  function getOcrWorker() {
+    if (!ocrWorkerPromise) {
+      ocrWorkerPromise = import('./vendor/tesseract/tesseract.esm.min.js').then(function (mod) {
+        const Tesseract = mod.default;
+        return Tesseract.createWorker('jpn', 1, {
+          workerPath: './vendor/tesseract/worker.min.js',
+          corePath: './vendor/tesseract/tesseract-core-lstm.wasm.js',
+          langPath: './vendor/tesseract/lang/'
+        });
+      });
+    }
+    return ocrWorkerPromise;
+  }
+
+  // The row image OCR runs against is a full-width crop (see
+  // renderRowImageDataUrl), so the recognized text usually still carries the
+  // date prefix and the amount at the tail end -- strip both, leaving just
+  // the merchant name, the same shape a normally-extracted memo would have.
+  // Some issuers' item rows carry a 都道府県+市区町村 address after the
+  // merchant name (an Amex statement is the confirmed case), which the
+  // row-image crop -- and therefore OCR -- picks up along with it. Matched
+  // against the exact list of all 47 prefecture names (not a generic
+  // "N kanji before 都/道/府/県" pattern, which turned out to eat into
+  // merchant names too eagerly during testing) so only a genuine prefecture
+  // name triggers stripping; each character tolerates a following space
+  // since OCR often inserts one between every token. Everything from the
+  // LAST such match onward (the prefecture name plus whatever city/ward
+  // name follows it) is dropped.
+  const PREFECTURE_NAMES = [
+    '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県', '茨城県', '栃木県', '群馬県',
+    '埼玉県', '千葉県', '東京都', '神奈川県', '新潟県', '富山県', '石川県', '福井県', '山梨県', '長野県',
+    '岐阜県', '静岡県', '愛知県', '三重県', '滋賀県', '京都府', '大阪府', '兵庫県', '奈良県', '和歌山県',
+    '鳥取県', '島根県', '岡山県', '広島県', '山口県', '徳島県', '香川県', '愛媛県', '高知県', '福岡県',
+    '佐賀県', '長崎県', '熊本県', '大分県', '宮崎県', '鹿児島県', '沖縄県'
+  ];
+  const PREFECTURE_RE = new RegExp(
+    PREFECTURE_NAMES.slice().sort(function (a, b) { return b.length - a.length; })
+      .map(function (p) { return p.split('').join('\\s*'); }).join('|'),
+    'g'
+  );
+
+  function stripTrailingAddress(text) {
+    let lastIndex = -1;
+    let m;
+    PREFECTURE_RE.lastIndex = 0;
+    while ((m = PREFECTURE_RE.exec(text))) {
+      lastIndex = m.index;
+      if (m[0].length === 0) PREFECTURE_RE.lastIndex++;
+    }
+    return lastIndex === -1 ? text : text.slice(0, lastIndex);
+  }
+
+  function cleanOcrText(text) {
+    let s = String(text || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+    // A trailing amount (optionally followed by OCR noise from a cut-off
+    // digit or stray character at the crop's right edge).
+    s = s.replace(/[¥￥]?[\d,.]{2,}\s*円?\s*\S{0,3}\s*$/, '').trim();
+    // A leading date, month/day only (no year, matching what the crop
+    // actually contains) -- OCR often inserts spaces between every token
+    // ("7 月 2 日"), so each separator tolerates surrounding whitespace.
+    s = s.replace(/^(?:\d{1,4}\s*[年\/]\s*)?\d{1,2}\s*[月\/]\s*\d{1,2}\s*日?\s*/, '').trim();
+    s = stripTrailingAddress(s).trim();
+    return s.length > 40 ? s.slice(0, 40) : s;
+  }
+
+  // Card statement PDFs sometimes use full-width digits/commas; normalize to
+  // half-width before matching so the parser doesn't need two regexes.
+  function toHalfWidthDigitsAndComma(str) {
+    return str
+      .replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); })
+      .replace(/，/g, ',');
+  }
+
+  // pdf.js gives positioned text fragments, not lines -- reconstruct rows by
+  // bucketing items with the same (rounded) baseline Y, then reading left to
+  // right. Keeps each line's Y (PDF user-space coordinate) alongside its
+  // text, not just the text, so a line that turns out to need its row image
+  // rendered later (see renderRowImageDataUrl) knows where to crop.
+  function linesFromTextContent(content) {
+    const rows = new Map();
+    content.items.forEach(function (item) {
+      const y = Math.round(item.transform[5] / 2) * 2;
+      if (!rows.has(y)) rows.set(y, []);
+      rows.get(y).push(item);
+    });
+    const keys = Array.from(rows.keys()).sort(function (a, b) { return b - a; }); // top to bottom
+    return keys.map(function (key) {
+      const items = rows.get(key).slice().sort(function (a, b) { return a.transform[4] - b.transform[4]; });
+      let text = '';
+      let lastEndX = null;
+      items.forEach(function (item) {
+        const startX = item.transform[4];
+        if (lastEndX !== null && startX - lastEndX > 2) text += ' ';
+        text += item.str;
+        lastEndX = startX + (item.width || 0);
+      });
+      return { y: key, text: text.trim() };
+    }).filter(function (line) { return line.text.length > 0; });
+  }
+
+  // Returns { lines, pdf }: pdf.js's own PDFDocumentProxy is kept around (not
+  // just the extracted text) so a garbled-looking row can later be re-
+  // rendered as an image straight from the source page -- see handlePdfFile.
+  async function extractPdfLines(pdfjsLib, arrayBuffer) {
+    // cMapUrl lets pdf.js decode CID-keyed CJK fonts that reference the
+    // standard Adobe character maps instead of embedding their own
+    // ToUnicode table -- without it, Japanese text extraction can silently
+    // come back empty even though the PDF renders fine visually.
+    const pdf = await pdfjsLib.getDocument({
+      data: arrayBuffer,
+      cMapUrl: './vendor/pdfjs/cmaps/',
+      cMapPacked: true
+    }).promise;
+    let lines = [];
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const content = await page.getTextContent();
+      lines = lines.concat(linesFromTextContent(content).map(function (line) {
+        return { page: pageNum, y: line.y, text: line.text };
+      }));
+    }
+    return { lines: lines, pdf: pdf };
+  }
+
+  // A garbled memo (the broken-CID-font case described above itemRe) tends
+  // to contain Latin-1 Supplement characters (À-ÿ and friends) that
+  // essentially never appear in a real merchant name -- used to decide
+  // which rows are worth rendering an actual page-image snippet for.
+  function looksGarbled(text) {
+    return /[\u0080-\u00FF]/.test(text);
+  }
+
+  // Rendered PDF pages are cached per pageNum (a page can hold several
+  // garbled rows) and cleared at the start of each new import.
+  const renderedPdfPages = new Map();
+  const ROW_IMAGE_SCALE = 2.5;
+
+  async function getRenderedPdfPage(pdf, pageNum) {
+    if (renderedPdfPages.has(pageNum)) return renderedPdfPages.get(pageNum);
+    const page = await pdf.getPage(pageNum);
+    const viewport = page.getViewport({ scale: ROW_IMAGE_SCALE });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
+    const result = { canvas: canvas, viewport: viewport };
+    renderedPdfPages.set(pageNum, result);
+    return result;
+  }
+
+  // A row whose merchant name extracted as garbage still RENDERS correctly
+  // in the PDF (the glyphs draw fine; only their reported Unicode values are
+  // wrong), so cropping a band around that line out of the actual rendered
+  // page lets the row be read by eye and retyped, instead of hunting for it
+  // in a separate PDF viewer. y is the line's PDF user-space baseline,
+  // recorded back in linesFromTextContent/extractPdfLines.
+  async function renderRowImageDataUrl(pdf, pageNum, y) {
+    const rendered = await getRenderedPdfPage(pdf, pageNum);
+    const topPt = rendered.viewport.convertToViewportPoint(0, y + 14);
+    const bottomPt = rendered.viewport.convertToViewportPoint(0, y - 7);
+    const top = Math.max(0, Math.min(topPt[1], bottomPt[1]));
+    const bottom = Math.min(rendered.canvas.height, Math.max(topPt[1], bottomPt[1]));
+    const height = Math.max(1, Math.round(bottom - top));
+    const crop = document.createElement('canvas');
+    crop.width = rendered.canvas.width;
+    crop.height = height;
+    crop.getContext('2d').drawImage(rendered.canvas, 0, Math.round(top), rendered.canvas.width, height, 0, 0, rendered.canvas.width, height);
+    return crop.toDataURL('image/png');
+  }
+
+  // The statement's own reference date (明細書作成日/締め日/決済日) carries the
+  // year that individual purchase lines omit (they're just "8月20日" or "08/20").
+  // Different card issuers write this with kanji (2023年9月20日) or slashes
+  // (2023/09/20), so both are accepted.
+  function findStatementReferenceDate(lines) {
+    const dateRe = /(\d{4})[年\/]\s*(\d{1,2})[月\/]\s*(\d{1,2})日?/;
+    let fallback = null;
+    for (let i = 0; i < lines.length; i++) {
+      const text = lines[i].text;
+      const m = toHalfWidthDigitsAndComma(text).match(dateRe);
+      if (!m) continue;
+      const parsed = { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) };
+      if (/作成日|締め|決済日/.test(text)) return parsed;
+      if (!fallback) fallback = parsed;
+    }
+    return fallback;
+  }
+
+  function resolvePurchaseYear(month, referenceYM) {
+    const ref = referenceYM || (function () {
+      const now = new Date();
+      return { year: now.getFullYear(), month: now.getMonth() + 1 };
+    })();
+    // A purchase month later than the statement's own month means it rolled
+    // over from the previous year (e.g. a Jan statement listing a Dec charge).
+    return month > ref.month ? ref.year - 1 : ref.year;
+  }
+
+  // Matches one item row, e.g. "8月20日　家電量販店　500,000" (kanji date,
+  // used by some issuers' PDF/paper statements) or "08/20　家電量販店　1回
+  // ￥12,340円" (slash date + an optional 支払方法 column + an optional ¥/円
+  // wrapper around the amount, closer to what Vpass/MyJCB/e-NAVI/Netアンサー
+  // style WEB明細 PDFs tend to use). Also handles the "その他のご請求分"
+  // section (annual fee, tax, etc.), while skipping subtotal/total rows,
+  // which always contain "合計" across every issuer's statement format.
+  //
+  // Some issuers' PDFs (an Amex statement is the confirmed case) embed a
+  // font whose CID-to-Unicode map is broken specifically for 月/日 --
+  // pdf.js extracts them as arbitrary garbage characters (e.g. "C"/"Ï"
+  // instead of 月/日) while digits, katakana and amounts still extract
+  // correctly. The 4th alternative below tolerates that: it accepts ANY
+  // single non-digit/non-slash character as the month marker, then a day
+  // written either "<marker><digits>" or "<digits><marker>" -- both
+  // orderings show up in the same real Amex PDF (single-digit days glue
+  // the month+day markers into one run that sorts before the day digit by
+  // pdf.js's own left-to-right positioning; double-digit days don't).
+  // A leading "-" right before the amount marks a credit/payment line (e.g.
+  // "前回のお支払い金額 -183,656" listed among the itemized rows on some
+  // statements) rather than an actual purchase -- captured so it can be
+  // rejected below instead of getting imported as a positive expense.
+  //
+  // A 三井住友カード (Vpass) statement is the confirmed case for two more
+  // shapes handled here: each row can start with a short marker like "B#"
+  // or "#" before the date (skipped by the leading optional group below),
+  // and the year can be written as 2 digits ("26/06/06" for 2026-06-06,
+  // resolved by adding 2000 -- unambiguous vs. the 4-digit-year branch,
+  // which requires exactly 4 leading digits). The same statement also
+  // trails each amount with extra columns (支払区分/回数, often a second
+  // copy of the amount, then a remark mark like "◎") rather than ending
+  // the line right after it -- the amount capture is deliberately the
+  // FIRST sufficiently-long (3+ digit) number found after the memo, with
+  // everything past it accepted and discarded, rather than requiring the
+  // line to end there. This still resolves correctly for the
+  // 支払方法-before-amount shape above (a bare "1回" is only 1 digit, too
+  // short to satisfy the 3-digit minimum, so the lazy memo match keeps
+  // extending past it to the real amount) and for a plain trailing "(*)"
+  // invoice marker (now just absorbed as trailing content instead of
+  // needing its own special case).
+  const itemRe = /^\s*(?:[A-Za-z#＃]{1,3}\s+)?(?:(?<y1>\d{4})\/(?<m1>\d{1,2})\/(?<d1>\d{1,2})|(?<y2>\d{2})\/(?<m5>\d{1,2})\/(?<d5>\d{1,2})|(?<m2>\d{1,2})\/(?<d2>\d{1,2})|(?<m3>\d{1,2})月\s*(?<d3>\d{1,2})日|(?<m4>\d{1,2})\s*[^\d\s/]\s+(?:[^\d\s/](?<d4a>\d{1,2})|(?<d4b>\d{1,2})[^\d\s/]))\s+(?<memo>.+?)\s+(?<sign>-\s*)?[¥￥]?(?<amount>[\d,]{3,})円?\s*.*$/;
+
+  // Card statements commonly insert a 支払方法/回数 column ("1回", "リボ",
+  // "分割3回", "ボーナス一括") between the merchant name and the amount --
+  // strip a trailing one of these off the memo so it doesn't pollute the
+  // merchant name shown/remembered in the app.
+  const PAYMENT_METHOD_SUFFIX_RE = /\s*(?:ボーナス(?:一括払?い?|[0-9]+回払?い?)|[0-9]+回払?い?|一括払?い?|リボ(?:払い)?|分割[0-9]*回?)\s*$/;
+
+  function parseStatementLines(rawLines) {
+    const referenceYM = findStatementReferenceDate(rawLines);
+    const items = [];
+    rawLines.forEach(function (rawLine) {
+      const line = toHalfWidthDigitsAndComma(rawLine.text);
+      if (line.indexOf('合計') !== -1) return;
+      const m = line.match(itemRe);
+      if (!m) return;
+      const g = m.groups;
+      if (g.sign) return; // a credit/payment line, not a purchase
+      let year = null, month, day;
+      if (g.y1 !== undefined) { year = Number(g.y1); month = Number(g.m1); day = Number(g.d1); }
+      else if (g.y2 !== undefined) { year = 2000 + Number(g.y2); month = Number(g.m5); day = Number(g.d5); }
+      else if (g.m2 !== undefined) { month = Number(g.m2); day = Number(g.d2); }
+      else if (g.m3 !== undefined) { month = Number(g.m3); day = Number(g.d3); }
+      else { month = Number(g.m4); day = Number(g.d4a !== undefined ? g.d4a : g.d4b); }
+      const memo = g.memo.trim().replace(PAYMENT_METHOD_SUFFIX_RE, '').trim();
+      const amount = Number(g.amount.replace(/,/g, ''));
+      if (month < 1 || month > 12 || day < 1 || day > 31) return;
+      if (!memo || memo.length > 40 || !Number.isFinite(amount) || amount <= 0) return;
+      if (year === null) year = resolvePurchaseYear(month, referenceYM);
+      items.push({
+        date: year + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0'),
+        memo: memo,
+        amount: amount,
+        page: rawLine.page,
+        sourceY: rawLine.y
+      });
+    });
+    return items;
+  }
+
+  // Remembers the last-chosen split pattern per merchant name (by exact memo
+  // text) so recurring charges default to what was picked before, instead of
+  // always landing on "equal split".
+  const MERCHANT_MEMORY_KEY = 'warikan-kakeibo-merchant-memory';
+  function loadMerchantMemory() {
+    try {
+      const raw = localStorage.getItem(MERCHANT_MEMORY_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
+  }
+  function rememberMerchantChoice(memo, choice) {
+    try {
+      const memory = loadMerchantMemory();
+      memory[memo] = choice;
+      localStorage.setItem(MERCHANT_MEMORY_KEY, JSON.stringify(memory));
+    } catch (e) { /* storage unavailable; not fatal */ }
+  }
+
+  // Matches on date + amount only, not memo: a manually-entered expense
+  // (typed in ahead of time, e.g. right after a custom-ratio purchase,
+  // before the card statement is even available to import) won't carry the
+  // exact memo text the PDF extracts for the same charge, so requiring an
+  // exact memo match let genuine duplicates slip through uncaught.
+  //
+  // The date is allowed to be off by up to a day in either direction: some
+  // issuers (Amex confirmed) print the purchase date in a non-JST timezone,
+  // so a purchase made late in the JST day can land on the PREVIOUS
+  // calendar day in the statement versus what the user typed in locally.
+  function isLikelyDuplicateExpense(item) {
+    const itemTime = parseLocalDate(item.date).getTime();
+    return state.expenses.some(function (e) {
+      if (e.amount !== item.amount) return false;
+      const dayDiff = Math.round((parseLocalDate(e.date).getTime() - itemTime) / 86400000);
+      return Math.abs(dayDiff) <= 1;
+    });
+  }
+
+  let pendingImportItems = [];
+  let importDefaultPaidBy = 'a';
+  // Bumped on every new import; row-image renders check this before applying
+  // so a slow render from an import the user has since replaced (or closed)
+  // can't clobber a newer pendingImportItems array.
+  let pendingImportGeneration = 0;
+
+  async function handlePdfFile(file) {
+    toast('PDFを解析しています…');
+    let pdfjsLib;
+    try {
+      pdfjsLib = await loadPdfJs();
+    } catch (e) {
+      console.error('loadPdfJs failed:', e);
+      toast('PDF読み込み機能を準備できませんでした。通信環境を確認してください');
+      return;
+    }
+    try {
+      const buf = await file.arrayBuffer();
+      const { lines, pdf } = await extractPdfLines(pdfjsLib, buf);
+      const parsed = parseStatementLines(lines);
+      if (parsed.length === 0) {
+        toast('明細を読み取れませんでした。対応していないPDF形式の可能性があります');
+        return;
+      }
+      renderedPdfPages.clear();
+      pendingImportGeneration++;
+      const myGeneration = pendingImportGeneration;
+      const memory = loadMerchantMemory();
+      pendingImportItems = parsed.map(function (p) {
+        const remembered = memory[p.memo];
+        const duplicate = isLikelyDuplicateExpense(p);
+        const category = guessCategory(p.memo, memory);
+        return {
+          date: p.date,
+          memo: p.memo,
+          amount: p.amount,
+          splitType: remembered ? remembered.splitType : defaultSplitTypeForCategory(category),
+          customAPercent: remembered ? remembered.customAPercent : null,
+          paidBy: remembered ? remembered.paidBy : importDefaultPaidBy,
+          category: category,
+          included: !duplicate,
+          isDuplicate: duplicate,
+          isGarbled: looksGarbled(p.memo),
+          rowImageUrl: null,
+          page: p.page,
+          sourceY: p.sourceY
+        };
+      });
+      openImportSheet();
+      // Row images are a best-effort visual aid for garbled memos -- render
+      // them in the background so the review sheet opens immediately rather
+      // than waiting on however many pages need rasterizing.
+      pendingImportItems.forEach(function (item) {
+        if (!item.isGarbled || item.page == null) return;
+        renderRowImageDataUrl(pdf, item.page, item.sourceY).then(function (dataUrl) {
+          if (pendingImportGeneration !== myGeneration) return;
+          item.rowImageUrl = dataUrl;
+          renderImportReviewList();
+        }).catch(function (err) { console.error('row image render failed:', err); });
+      });
+    } catch (e) {
+      console.error('PDF import failed:', e);
+      toast('PDFの読み込みに失敗しました');
+    }
+  }
+
+  // Runs OCR over every currently-garbled row's already-rendered image and
+  // replaces its memo with the (cleaned) recognized text -- a picture of a
+  // legible line isn't itself text, so this is the step that actually
+  // closes the loop for the user instead of just being a reading aid.
+  async function ocrAllGarbledRows() {
+    const targets = pendingImportItems.filter(function (item) { return item.isGarbled && item.rowImageUrl; });
+    if (targets.length === 0) return;
+    const myGeneration = pendingImportGeneration;
+    const btn = document.getElementById('import-ocr-all-btn');
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    try {
+      toast('文字を読み取る準備をしています…（初回は少し時間がかかります）');
+      const worker = await getOcrWorker();
+      const memory = loadMerchantMemory();
+      for (let i = 0; i < targets.length; i++) {
+        if (pendingImportGeneration !== myGeneration) return;
+        btn.textContent = '読み取り中…（' + (i + 1) + '/' + targets.length + '件）';
+        const item = targets[i];
+        try {
+          const result = await worker.recognize(item.rowImageUrl);
+          const cleaned = cleanOcrText(result.data.text);
+          if (cleaned) {
+            item.memo = cleaned;
+            item.isGarbled = false;
+            item.category = guessCategory(item.memo, memory);
+          }
+        } catch (e) {
+          console.error('OCR failed for a row:', e);
+        }
+        if (pendingImportGeneration === myGeneration) renderImportReviewList();
+      }
+      toast('店名の読み取りが終わりました。内容を確認してください');
+    } catch (e) {
+      console.error('OCR setup failed:', e);
+      toast('文字認識の準備に失敗しました。通信環境を確認してください');
+    } finally {
+      if (pendingImportGeneration === myGeneration) {
+        const btnAfter = document.getElementById('import-ocr-all-btn');
+        if (btnAfter) { btnAfter.disabled = false; btnAfter.textContent = originalLabel; }
+      }
+    }
+  }
+
+  function openImportSheet() {
+    renderImportPaidBySegmented();
+    renderImportReviewList();
+    showSheet('import-sheet-backdrop');
+  }
+
+  function renderImportPaidBySegmented() {
+    const names = currentNames();
+    const container = document.getElementById('import-paidby-segmented');
+    container.innerHTML = PAID_BY_OPTIONS.map(function (p) {
+      return '<button type="button" class="segment' + (importDefaultPaidBy === p ? ' selected' : '') + '" data-action="select-import-paidby" data-person="' + p + '">' +
+        escapeHtml(paidByLabel(p, names)) + '</button>';
+    }).join('');
+  }
+
+  function renderImportReviewList() {
+    const names = currentNames();
+    const includedCount = pendingImportItems.filter(function (item) { return item.included; }).length;
+    document.getElementById('import-summary-label').textContent =
+      pendingImportItems.length + '件見つかりました（' + includedCount + '件を追加します）';
+    document.getElementById('import-garbled-hint').hidden = !pendingImportItems.some(function (item) { return item.isGarbled; });
+
+    const list = document.getElementById('import-review-list');
+    list.innerHTML = pendingImportItems.map(function (item, index) {
+      const dateLabel = formatMonthDay(parseLocalDate(item.date));
+      return '' +
+        '<div class="row import-row">' +
+          '<input type="checkbox" class="import-checkbox" data-action="toggle-import-item" data-index="' + index + '"' + (item.included ? ' checked' : '') + '>' +
+          '<button type="button" class="import-row-body" data-action="edit-import-item" data-index="' + index + '">' +
+            '<div class="main">' +
+              '<div class="title">' + escapeHtml(item.memo) +
+                (item.isDuplicate ? '<span class="chip chip-settled" style="margin-left:6px;">登録済みかも</span>' : '') +
+              '</div>' +
+              (item.isGarbled ?
+                (item.rowImageUrl
+                  ? '<div class="import-row-image-wrap"><img class="import-row-image" src="' + item.rowImageUrl + '" alt="PDFのこの行の画像"></div>'
+                  : '<div class="import-row-image-loading">店名の画像を準備中…</div>')
+                : '') +
+              '<div class="meta">' +
+                '<span>' + dateLabel + '</span><span>・</span>' +
+                splitDotHtml(item.splitType) +
+                '<span>' + escapeHtml(splitLabel(item.splitType, names)) + '</span><span>・</span>' +
+                '<span>立替: ' + escapeHtml(paidByLabel(item.paidBy, names)) + '</span><span>・</span>' +
+                categoryChipHtml(item.category) +
+                (item.note ? '<span>・</span><span>' + escapeHtml(item.note) + '</span>' : '') +
+              '</div>' +
+            '</div>' +
+            '<div class="amount">' + formatYen(item.amount) + '</div>' +
+          '</button>' +
+        '</div>';
+    }).join('');
+
+    document.getElementById('import-commit-btn').textContent = includedCount + '件を追加する';
+  }
+
+  function toggleImportItem(index) {
+    pendingImportItems[index].included = !pendingImportItems[index].included;
+    renderImportReviewList();
+  }
+
+  async function commitImport() {
+    const toCommit = pendingImportItems.filter(function (item) { return item.included; });
+    if (toCommit.length === 0) { toast('追加する項目を選んでください'); return; }
+    try {
+      const batch = writeBatch(db);
+      toCommit.forEach(function (item) {
+        const ref = doc(expensesCol(currentCode));
+        batch.set(ref, {
+          date: item.date, amount: item.amount, memo: item.memo, note: item.note || '',
+          splitType: item.splitType, customAPercent: item.customAPercent,
+          paidBy: item.paidBy, category: item.category, isInitialCost: item.isInitialCost || false, updatedAt: Date.now()
+        });
+      });
+      await batch.commit();
+      toCommit.forEach(function (item) {
+        rememberMerchantChoice(item.memo, { splitType: item.splitType, customAPercent: item.customAPercent, paidBy: item.paidBy, category: item.category });
+      });
+      toast(toCommit.length + '件の支出を追加しました');
+      pendingImportItems = [];
+      closeSheet('import-sheet-backdrop');
+    } catch (e) {
+      toast('追加に失敗しました。通信環境を確認してください');
+    }
+  }
+
+  // ============================================================
+  // Wiring
+  // ============================================================
+
+  let toastTimer = null;
+  function toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove('show'); }, 2200);
+  }
+
+  document.addEventListener('click', function (e) {
+    const target = e.target.closest('[data-action]');
+    if (!target) return;
+    const action = target.dataset.action;
+    switch (action) {
+      case 'switch-tab': switchTab(target.dataset.tab); break;
+      case 'add-expense': openExpenseSheet(null); break;
+      case 'edit-expense': openExpenseSheet(target.dataset.id); break;
+      case 'delete-expense': deleteExpense(); break;
+      case 'save-expense': saveExpense(); break;
+      case 'select-split-type':
+        currentSplitType = target.dataset.type;
+        splitTypeManuallySet = true;
+        renderExpenseSplitOptions();
+        updateCustomRatioVisibility();
+        break;
+      case 'select-custom-ratio-mode':
+        customRatioMode = target.dataset.mode;
+        updateCustomRatioVisibility();
+        break;
+      case 'select-paidby':
+        currentPaidBy = target.dataset.person;
+        renderExpensePaidBySegmented();
+        break;
+      case 'select-expense-kind':
+        currentIsInitialCost = target.dataset.value === 'true';
+        renderExpenseKindSegmented();
+        break;
+      case 'select-category':
+        currentCategory = target.dataset.category;
+        categoryManuallySet = true;
+        renderExpenseCategoryPicker();
+        applyCategoryDefaultSplitType();
+        break;
+      case 'select-income-entry-mode':
+        currentIncomeEntryMode = target.dataset.mode;
+        renderIncomeEntryModeSegmented();
+        updateIncomeEntryModeVisibility();
+        updateIncomePeriodHint();
+        break;
+      case 'add-income': openIncomeSheet(null); break;
+      case 'edit-income': openIncomeSheet(target.dataset.id); break;
+      case 'delete-income': deleteIncome(); break;
+      case 'save-income': saveIncome(); break;
+      case 'add-category': openCategorySheet(null); break;
+      case 'edit-category': openCategorySheet(target.dataset.id); break;
+      case 'add-category-from-expense': openCategorySheet(null, { returnToExpense: true }); break;
+      case 'delete-category': deleteCategory(); break;
+      case 'save-category': saveCategory(); break;
+      case 'select-category-split-type':
+        currentCategorySplitType = target.dataset.type;
+        renderCategorySplitOptions();
+        break;
+      case 'close-sheet': closeSheet(target.dataset.sheet + '-sheet-backdrop'); break;
+      case 'toggle-settled': toggleSettled(target.dataset.key); break;
+      case 'toggle-initial-cost-settled': toggleInitialCostSettled(); break;
+      case 'open-manual': showSheet('manual-sheet-backdrop'); break;
+      case 'export-data': exportBackup(); break;
+      case 'reset-data': resetAllData(); break;
+      case 'create-household': createHousehold(); break;
+      case 'join-household': joinHousehold(document.getElementById('join-code-input').value); break;
+      case 'copy-created-code': copyCode(document.getElementById('created-code-value').textContent); break;
+      case 'copy-settings-code': copyCode(currentCode); break;
+      case 'enter-app': enterApp(); break;
+      case 'leave-household': leaveHousehold(); break;
+      case 'import-pdf-trigger': document.getElementById('import-pdf-input').click(); break;
+      case 'toggle-import-item': toggleImportItem(Number(target.dataset.index)); break;
+      case 'edit-import-item': openExpenseSheetForPendingImport(Number(target.dataset.index)); break;
+      case 'select-import-paidby':
+        importDefaultPaidBy = target.dataset.person;
+        // Every row in one imported statement is necessarily the same card,
+        // so changing this applies to the whole batch already on screen, not
+        // just to future imports.
+        pendingImportItems.forEach(function (item) { item.paidBy = importDefaultPaidBy; });
+        renderImportPaidBySegmented();
+        renderImportReviewList();
+        break;
+      case 'commit-import': commitImport(); break;
+      case 'ocr-all-garbled': ocrAllGarbledRows(); break;
+      default: break;
+    }
+  });
+
+  document.getElementById('join-code-input').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') joinHousehold(e.target.value);
+  });
+
+  document.getElementById('expense-custom-slider').addEventListener('input', function (e) {
+    currentCustomPercent = Number(e.target.value);
+    updateCustomRatioLabel();
+  });
+
+  document.getElementById('expense-memo').addEventListener('input', maybeAutoGuessCategory);
+
+  ['expense-amount', 'income-lump-a', 'income-lump-b'].forEach(function (id) {
+    document.getElementById(id).addEventListener('input', function (e) {
+      reformatAmountInput(e.target);
+    });
+  });
+  ['income-lump-a', 'income-lump-b'].forEach(function (id) {
+    document.getElementById(id).addEventListener('input', updateIncomeRatioPreview);
+  });
+
+  // Keep the custom-ratio calculator (percent-mode label or amount-mode
+  // fields) live-synced as the total expense amount is typed.
+  document.getElementById('expense-amount').addEventListener('input', function () {
+    if (currentSplitType !== 'customRatio') return;
+    if (customRatioMode === 'percent') updateCustomRatioLabel();
+    else syncCustomAmountFieldsFromPercent();
+  });
+
+  document.getElementById('custom-amount-a').addEventListener('input', function () { handleCustomAmountInput('a'); });
+  document.getElementById('custom-amount-b').addEventListener('input', function () { handleCustomAmountInput('b'); });
+  ['custom-amount-a', 'custom-amount-b'].forEach(function (id) {
+    document.getElementById(id).addEventListener('blur', function () {
+      if (currentExpenseAmountValue() > 0) syncCustomAmountFieldsFromPercent();
+    });
+  });
+
+  document.getElementById('income-period-start').addEventListener('change', function () {
+    updateIncomePeriodHint();
+    if (currentIncomeEntryMode === 'perMonth') renderIncomePerMonthRows();
+  });
+  // Only re-render live (never overwrite the field) on 'input', so the user
+  // can freely clear/retype the number; clamp to 1-12 only once they're done
+  // editing (on 'blur'), otherwise the field fights back on every keystroke
+  // and an empty/mid-edit value can never be reached.
+  document.getElementById('income-period-months').addEventListener('input', function () {
+    updateIncomePeriodHint();
+    if (currentIncomeEntryMode === 'perMonth') renderIncomePerMonthRows();
+  });
+  document.getElementById('income-period-months').addEventListener('blur', function (e) {
+    let v = Number(e.target.value);
+    if (!e.target.value || !Number.isFinite(v)) v = 1;
+    v = Math.min(12, Math.max(1, Math.round(v)));
+    e.target.value = v;
+    updateIncomePeriodHint();
+    if (currentIncomeEntryMode === 'perMonth') renderIncomePerMonthRows();
+  });
+  document.getElementById('income-permonth-rows').addEventListener('input', function (e) {
+    const target = e.target;
+    if (!target.classList.contains('income-permonth-input')) return;
+    reformatAmountInput(target);
+    const index = Number(target.dataset.index);
+    const person = target.dataset.person;
+    if (!currentIncomePerMonthValues[index]) currentIncomePerMonthValues[index] = { aAmount: '', bAmount: '' };
+    currentIncomePerMonthValues[index][person === 'a' ? 'aAmount' : 'bAmount'] = target.value;
+    updateIncomeRatioPreview();
+  });
+  document.getElementById('income-permonth-rows').addEventListener('change', function (e) {
+    const target = e.target;
+    if (!target.classList.contains('income-permonth-month') || !target.value) return;
+    const index = Number(target.dataset.index);
+    const parts = target.value.split('-');
+    if (!currentIncomePerMonthValues[index]) currentIncomePerMonthValues[index] = { aAmount: '', bAmount: '' };
+    currentIncomePerMonthValues[index].year = Number(parts[0]);
+    currentIncomePerMonthValues[index].month = Number(parts[1]);
+    currentIncomePerMonthValues[index].ymCustom = true;
+  });
+  document.getElementById('income-extra-rows').addEventListener('input', function (e) {
+    const target = e.target;
+    const index = Number(target.dataset.index);
+    if (!currentIncomeExtraValues[index]) currentIncomeExtraValues[index] = { label: '', aAmount: '', bAmount: '' };
+    if (target.classList.contains('income-extra-label')) {
+      currentIncomeExtraValues[index].label = target.value;
+    } else if (target.classList.contains('income-extra-input')) {
+      reformatAmountInput(target);
+      const person = target.dataset.person;
+      currentIncomeExtraValues[index][person === 'a' ? 'aAmount' : 'bAmount'] = target.value;
+    }
+    updateIncomeRatioPreview();
+  });
+
+  document.getElementById('summary-cycle-select').addEventListener('change', function (e) {
+    summarySelectedKey = e.target.value;
+    renderSummary();
+  });
+
+  document.getElementById('setting-name-a').addEventListener('change', function (e) {
+    updateSettings({ personAName: e.target.value.trim() || 'A' });
+  });
+  document.getElementById('setting-name-b').addEventListener('change', function (e) {
+    updateSettings({ personBName: e.target.value.trim() || 'B' });
+  });
+  document.getElementById('setting-closing-day').addEventListener('change', function (e) {
+    let v = Number(e.target.value);
+    if (!Number.isFinite(v)) v = 6;
+    v = Math.min(28, Math.max(1, Math.round(v)));
+    e.target.value = v;
+    updateSettings({ cardClosingDay: v });
+  });
+
+  document.getElementById('import-pdf-input').addEventListener('change', function (e) {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.type !== 'application/pdf') { toast('PDFファイルを選んでください'); return; }
+    handlePdfFile(file);
+  });
+
+  document.querySelectorAll('.sheet-backdrop').forEach(function (backdrop) {
+    backdrop.addEventListener('click', function (e) {
+      if (e.target === backdrop) closeSheet(backdrop.id);
+    });
+  });
+
+  // ============================================================
+  // Onboarding: create / join a household by its shared code
+  // ============================================================
+
+  function showOnboardingError(msg) {
+    const el = document.getElementById('onboarding-error');
+    el.textContent = msg;
+    el.hidden = false;
+  }
+  function clearOnboardingError() {
+    document.getElementById('onboarding-error').hidden = true;
+  }
+
+  function showOnboarding() {
+    document.getElementById('loading-screen').hidden = true;
+    document.getElementById('app').hidden = true;
+    document.getElementById('onboarding').hidden = false;
+    document.getElementById('onboarding-start').hidden = false;
+    document.getElementById('onboarding-created').hidden = true;
+  }
+
+  async function createHousehold() {
+    clearOnboardingError();
+    const code = generateHouseholdCode();
+    try {
+      await setDoc(configRef(code), Object.assign({}, defaultState().settings, { settledCycles: {} }));
+      localStorage.setItem(CODE_STORAGE_KEY, code);
+      currentCode = code;
+      document.getElementById('onboarding-start').hidden = true;
+      document.getElementById('onboarding-created').hidden = false;
+      document.getElementById('created-code-value').textContent = code;
+    } catch (e) {
+      showOnboardingError('作成に失敗しました。通信環境を確認してください');
+    }
+  }
+
+  async function joinHousehold(rawCode) {
+    clearOnboardingError();
+    const code = (rawCode || '').trim().toLowerCase();
+    if (!code) { showOnboardingError('コードを入力してください'); return; }
+    try {
+      const snap = await getDoc(configRef(code));
+      if (!snap.exists()) { showOnboardingError('そのコードは見つかりませんでした'); return; }
+      localStorage.setItem(CODE_STORAGE_KEY, code);
+      currentCode = code;
+      enterApp();
+    } catch (e) {
+      showOnboardingError('参加に失敗しました。通信環境を確認してください');
+    }
+  }
+
+  function enterApp() {
+    document.getElementById('loading-screen').hidden = true;
+    document.getElementById('onboarding').hidden = true;
+    document.getElementById('app').hidden = false;
+    subscribeToHousehold(currentCode);
+    switchTab('expenses');
+  }
+
+  function leaveHousehold() {
+    if (!confirm('別の世帯コードに切り替えます。この端末に保存されたコードの記録を消しますが、データ自体は削除されません。よろしいですか？')) return;
+    unsubscribers.forEach(function (u) { u(); });
+    unsubscribers = [];
+    localStorage.removeItem(CODE_STORAGE_KEY);
+    currentCode = null;
+    state = defaultState();
+    showOnboarding();
+  }
+
+  async function copyCode(code) {
+    try {
+      await navigator.clipboard.writeText(code);
+      toast('コピーしました');
+    } catch (e) {
+      toast('コピーできませんでした。長押しで手動でコピーしてください');
+    }
+  }
+
+  // ============================================================
+  // Startup
+  // ============================================================
+
+  (async function start() {
+    const savedCode = localStorage.getItem(CODE_STORAGE_KEY);
+    if (!savedCode) { showOnboarding(); return; }
+    currentCode = savedCode;
+    try {
+      const snap = await getDoc(configRef(savedCode));
+      if (snap.exists()) {
+        enterApp();
+      } else {
+        localStorage.removeItem(CODE_STORAGE_KEY);
+        currentCode = null;
+        showOnboarding();
+      }
+    } catch (e) {
+      // Offline on first load: proceed optimistically, onSnapshot will sync once back online.
+      enterApp();
+    }
+  })();
+})({ initializeApp: initializeApp, getFirestore: getFirestore, doc: doc, getDoc: getDoc, setDoc: setDoc, updateDoc: updateDoc, deleteDoc: deleteDoc, addDoc: addDoc, collection: collection, onSnapshot: onSnapshot, deleteField: deleteField, writeBatch: writeBatch, getDocs: getDocs });
+</script>
+</body>
+</html>
