@@ -1558,6 +1558,17 @@ import {
     };
   }
 
+  // The big settlement-card always used to show the raw, un-redirected
+  // s.settle amount, even when a shared-card plan exists -- but that raw
+  // amount double-counts money already accounted for by the joint-account
+  // transfers in the plan above it. Once a plan exists, the only DIRECT
+  // A/B transfer still owed is sharedPlan.debtorToCreditor (possibly 0).
+  function effectiveSettle(s, sharedPlan) {
+    if (!sharedPlan) return s.settle;
+    if (sharedPlan.debtorToCreditor <= 0) return null;
+    return { payer: sharedPlan.debtor, receiver: sharedPlan.creditor, amount: sharedPlan.debtorToCreditor };
+  }
+
   const SPLIT_TYPES = ['incomeRatio', 'equal', 'aOnly', 'bOnly', 'customRatio'];
 
   function splitLabel(type, names) {
@@ -2034,9 +2045,9 @@ import {
         : '') +
       '<div class="settlement-card">' +
         (settled ? '<div class="stamp">精算済</div>' : '') +
-        (s.settle ?
-          '<div class="settlement-flow"><span>' + escapeHtml(s.settle.payer === 'a' ? names.a : names.b) + '</span><span class="arrow">→</span><span>' + escapeHtml(s.settle.receiver === 'a' ? names.a : names.b) + '</span></div>' +
-          '<div class="settlement-amount">' + formatYen(s.settle.amount) + '</div>'
+        (effectiveSettle(s, sharedPlan) ?
+          '<div class="settlement-flow"><span>' + escapeHtml(effectiveSettle(s, sharedPlan).payer === 'a' ? names.a : names.b) + '</span><span class="arrow">→</span><span>' + escapeHtml(effectiveSettle(s, sharedPlan).receiver === 'a' ? names.a : names.b) + '</span></div>' +
+          '<div class="settlement-amount">' + formatYen(effectiveSettle(s, sharedPlan).amount) + '</div>'
           : '<div class="settlement-none">精算の必要はありません</div>') +
         '<button class="btn ' + (settled ? 'btn-ghost' : 'btn-primary') + '" data-action="toggle-initial-cost-settled">' +
           (settled ? 'この初期費用の精算済みを取り消す' : 'この初期費用を精算済みにする') +
@@ -2115,9 +2126,9 @@ import {
         : '') +
       '<div class="settlement-card">' +
         (settled ? '<div class="stamp">精算済</div>' : '') +
-        (s.settle ?
-          '<div class="settlement-flow"><span>' + escapeHtml(s.settle.payer === 'a' ? names.a : names.b) + '</span><span class="arrow">→</span><span>' + escapeHtml(s.settle.receiver === 'a' ? names.a : names.b) + '</span></div>' +
-          '<div class="settlement-amount">' + formatYen(s.settle.amount) + '</div>'
+        (effectiveSettle(s, sharedPlan) ?
+          '<div class="settlement-flow"><span>' + escapeHtml(effectiveSettle(s, sharedPlan).payer === 'a' ? names.a : names.b) + '</span><span class="arrow">→</span><span>' + escapeHtml(effectiveSettle(s, sharedPlan).receiver === 'a' ? names.a : names.b) + '</span></div>' +
+          '<div class="settlement-amount">' + formatYen(effectiveSettle(s, sharedPlan).amount) + '</div>'
           : '<div class="settlement-none">精算の必要はありません</div>') +
         '<button class="btn ' + (settled ? 'btn-ghost' : 'btn-primary') + '" data-action="toggle-settled" data-key="' + key + '">' +
           (settled ? 'この月の精算済みを取り消す' : 'この月を精算済みにする') +
