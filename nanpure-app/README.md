@@ -46,8 +46,9 @@ src/
   components/
     DifficultySelector.tsx  難易度選択画面
     Board.tsx / Cell.tsx     盤面・マスの描画とハイライト
-    NumberPad.tsx            数字入力・メモ切り替え・戻す・消去
-    HintPanel.tsx             ヒントの説明表示・適用
+    Toolbar.tsx               アイコン形式のツールバー（元に戻す・消す・メモ・ヒント）
+    NumberPad.tsx            数字入力（1〜9の1行）
+    HintPanel.tsx             ヒントの説明表示・適用（ヒント要求時のみ表示）
     InviteShare.tsx           招待リンク（同じ問題を共有するURL）のコピー
   App.tsx               画面全体の組み立て・キーボード操作・共有URLの読み込み
 ```

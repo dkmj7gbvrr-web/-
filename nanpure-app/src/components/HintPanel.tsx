@@ -2,30 +2,13 @@ import type { HintDisplay } from '../hooks/useSudokuGame'
 
 interface Props {
   hint: HintDisplay | null
-  onRequestHint: () => void
   onApplyFill: () => void
   onApplyElimination: () => void
   onClose: () => void
-  disabled: boolean
 }
 
-export const HintPanel = ({
-  hint,
-  onRequestHint,
-  onApplyFill,
-  onApplyElimination,
-  onClose,
-  disabled,
-}: Props) => {
-  if (!hint) {
-    return (
-      <div className="hint-panel hint-panel--idle">
-        <button type="button" className="hint-panel__request" onClick={onRequestHint} disabled={disabled}>
-          ヒントを見る
-        </button>
-      </div>
-    )
-  }
+export const HintPanel = ({ hint, onApplyFill, onApplyElimination, onClose }: Props) => {
+  if (!hint) return null
 
   if (hint.kind === 'none-left') {
     return (

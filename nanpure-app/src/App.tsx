@@ -5,6 +5,7 @@ import { DifficultySelector } from './components/DifficultySelector'
 import { HintPanel } from './components/HintPanel'
 import { InviteShare } from './components/InviteShare'
 import { NumberPad } from './components/NumberPad'
+import { Toolbar } from './components/Toolbar'
 import { useSudokuGame } from './hooks/useSudokuGame'
 import { DIFFICULTIES } from './sudoku/types'
 import type { Difficulty, Digit } from './sudoku/types'
@@ -168,24 +169,23 @@ function App() {
         </div>
 
         <div className="side-area">
-          <NumberPad
-            remainingCounts={remainingCounts}
+          <Toolbar
             memoMode={memoMode}
-            onDigit={inputDigit}
-            onErase={eraseSelected}
-            onToggleMemo={() => setMemoMode((m) => !m)}
+            hintActive={hint !== null}
             onUndo={undo}
             canUndo={canUndo}
+            onErase={eraseSelected}
+            onToggleMemo={() => setMemoMode((m) => !m)}
+            onHint={requestHint}
             disabled={isSolved}
           />
           <HintPanel
             hint={hint}
-            onRequestHint={requestHint}
             onApplyFill={applyHintFill}
             onApplyElimination={applyHintElimination}
             onClose={clearHint}
-            disabled={isSolved}
           />
+          <NumberPad remainingCounts={remainingCounts} onDigit={inputDigit} disabled={isSolved} />
         </div>
       </main>
     </div>
