@@ -10,6 +10,7 @@ import type { CandidateMap } from '../sudoku/board'
 import { generatePuzzle } from '../sudoku/generator'
 import { applyStepToCandidates, findNextStep } from '../sudoku/techniques'
 import type { Difficulty, Digit, GeneratedPuzzle, Grid, HintStep } from '../sudoku/types'
+import { clearSavedGame, loadSavedGame, saveGame } from './persistence'
 
 export interface CellState {
   value: Digit
@@ -98,6 +99,36 @@ export const useSudokuGame = () => {
 
   useEffect(() => clearMistakeTimeout, [])
 
+  // 途中経過を自動保存する（タスクキルやタブを閉じたあとも再開できるように）
+  useEffect(() => {
+    if (difficulty === null || !puzzle || board.length === 0 || isSolved) return
+    saveGame({ difficulty, puzzle, board, elapsedSeconds, memoMode })
+  }, [difficulty, puzzle, board, elapsedSeconds, memoMode, isSolved])
+
+  // ↑の自動保存はReactのエフェクトなので、操作直後に即タスクキルされると
+  // 間に合わない可能性がある。タブが非表示になった瞬間（バックグラウンド化・
+  // タスクスイッチ等、実際にOSに強制終了される直前に必ず先に起きるタイミング）
+  // にも同期的に保存し直すことで取りこぼしを防ぐ。
+  useEffect(() => {
+    if (difficulty === null || !puzzle || board.length === 0 || isSolved) return
+    const flush = () => {
+      if (document.visibilityState === 'hidden') {
+        saveGame({ difficulty, puzzle, board, elapsedSeconds, memoMode })
+      }
+    }
+    document.addEventListener('visibilitychange', flush)
+    window.addEventListener('pagehide', flush)
+    return () => {
+      document.removeEventListener('visibilitychange', flush)
+      window.removeEventListener('pagehide', flush)
+    }
+  }, [difficulty, puzzle, board, elapsedSeconds, memoMode, isSolved])
+
+  // クリア済みなら再開する意味がないので保存データを消しておく
+  useEffect(() => {
+    if (isSolved) clearSavedGame()
+  }, [isSolved])
+
   const startNewGame = useCallback((level: Difficulty, seed?: number) => {
     setIsGenerating(true)
     setDifficulty(level)
@@ -127,6 +158,28 @@ export const useSudokuGame = () => {
     hintCandidatesRef.current = null
     clearMistakeTimeout()
     setMistake(null)
+    clearSavedGame()
+  }, [])
+
+  /** 前回タスクキルされる前の続きから再開する。保存データが無ければ何もせずfalseを返す */
+  const resumeSavedGame = useCallback((): boolean => {
+    const saved = loadSavedGame()
+    if (!saved) return false
+    if (gridsEqual(boardValues(saved.board), saved.puzzle.solution)) {
+      // 保存後に別の場所でクリア済みになっていた等、再開する意味が無い状態
+      clearSavedGame()
+      return false
+    }
+    setDifficulty(saved.difficulty)
+    setPuzzle(saved.puzzle)
+    setBoard(saved.board)
+    setElapsedSeconds(saved.elapsedSeconds)
+    setMemoMode(saved.memoMode)
+    setSelected(null)
+    setHistory([])
+    setHint(null)
+    hintCandidatesRef.current = null
+    return true
   }, [])
 
   const clearHint = useCallback(() => {
@@ -306,6 +359,7 @@ export const useSudokuGame = () => {
     setMemoMode,
     startNewGame,
     backToMenu,
+    resumeSavedGame,
     inputDigit,
     eraseSelected,
     undo,
