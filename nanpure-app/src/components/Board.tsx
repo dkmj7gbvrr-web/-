@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { PEERS } from '../sudoku/board'
 import type { Digit } from '../sudoku/types'
-import type { CellState, HintDisplay } from '../hooks/useSudokuGame'
+import type { CellState, HintDisplay, Mistake } from '../hooks/useSudokuGame'
 import { Cell } from './Cell'
 
 interface Props {
@@ -9,10 +9,11 @@ interface Props {
   selected: number | null
   conflicts: Set<number>
   hint: HintDisplay | null
+  mistake: Mistake | null
   onSelect: (index: number) => void
 }
 
-export const Board = ({ board, selected, conflicts, hint, onSelect }: Props) => {
+export const Board = ({ board, selected, conflicts, hint, mistake, onSelect }: Props) => {
   const peers = useMemo(() => {
     if (selected === null) return new Set<number>()
     return new Set(PEERS[selected])
@@ -62,6 +63,7 @@ export const Board = ({ board, selected, conflicts, hint, onSelect }: Props) => 
             hintLevel={hintLevel}
             hintDigits={hintDigitsByCell.get(index) ?? null}
             sameValueDigit={selectedValue !== 0 ? selectedValue : null}
+            mistakeDigit={mistake && mistake.index === index ? mistake.digit : null}
             onSelect={onSelect}
           />
         )

@@ -45,11 +45,13 @@ function App() {
     hint,
     isSolved,
     conflicts,
+    mistake,
     remainingCounts,
     setSelected,
     setMemoMode,
     startNewGame,
     backToMenu,
+    resumeSavedGame,
     inputDigit,
     eraseSelected,
     undo,
@@ -90,8 +92,14 @@ function App() {
 
   useEffect(() => {
     const shared = parseSharedPuzzle()
-    if (shared) startNewGame(shared.level, shared.seed)
-    // 起動時のURL共有問題の読み込みは一度だけ行う
+    if (shared) {
+      // 招待リンクを開いた場合は、それを優先して新しく開始する
+      startNewGame(shared.level, shared.seed)
+    } else {
+      // それ以外は、前回タスクキルなどで中断された続きがあれば自動的に再開する
+      resumeSavedGame()
+    }
+    // 起動時の読み込みは一度だけ行う
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -135,7 +143,14 @@ function App() {
 
       <main className="game-main">
         <div className="board-area">
-          <Board board={board} selected={selected} conflicts={conflicts} hint={hint} onSelect={setSelected} />
+          <Board
+            board={board}
+            selected={selected}
+            conflicts={conflicts}
+            hint={hint}
+            mistake={mistake}
+            onSelect={setSelected}
+          />
           {isSolved && (
             <div className="solved-overlay">
               <p className="solved-overlay__title">クリア！</p>
