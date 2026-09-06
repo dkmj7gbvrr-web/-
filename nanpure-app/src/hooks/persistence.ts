@@ -11,6 +11,7 @@ export interface SavedGame {
   board: CellState[]
   elapsedSeconds: number
   memoMode: boolean
+  mistakeCount: number
 }
 
 /** 保存データの形が壊れていないか最低限チェックする */
