@@ -3,8 +3,8 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 16px;
-  gap: 16px;
+  padding: 8px 10px;
+  gap: 6px;
   max-width: 960px;
   margin: 0 auto;
   width: 100%;
@@ -120,9 +120,9 @@
   border: 1px solid var(--border);
   background: var(--panel-bg);
   border-radius: 8px;
-  padding: 8px 12px;
+  padding: 6px 10px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -150,11 +150,11 @@
   max-width: 480px;
   border: 1px dashed var(--accent);
   border-radius: 8px;
-  padding: 10px;
+  padding: 6px;
   background: transparent;
   color: var(--accent);
   font-weight: 600;
-  font-size: 13px;
+  font-size: 12px;
   cursor: pointer;
 }
 
@@ -164,8 +164,9 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  gap: 8px;
   width: 100%;
+  min-height: 0;
 }
 
 @media (min-width: 720px) {
@@ -178,14 +179,14 @@
 
 .board-area {
   position: relative;
-  width: min(92vw, 480px);
+  width: min(84vw, 34svh, 420px);
 }
 
 .side-area {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  width: min(92vw, 480px);
+  gap: 6px;
+  width: min(84vw, 420px);
 }
 
 /* ---------- 盤面 ---------- */
@@ -370,23 +371,23 @@
   background: var(--panel-bg);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 12px;
+  padding: 8px;
   box-shadow: var(--shadow);
 }
 
 .number-pad__digits {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  gap: 6px;
 }
 
 .number-pad__digit {
   position: relative;
-  aspect-ratio: 1;
+  height: clamp(34px, 7svh, 42px);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--bg);
-  font-size: clamp(22px, 7vw, 34px);
+  font-size: clamp(18px, 5vw, 24px);
   font-weight: 600;
   cursor: pointer;
 }
@@ -398,25 +399,25 @@
 
 .number-pad__remaining {
   position: absolute;
-  bottom: 4px;
-  right: 8px;
-  font-size: 13px;
+  bottom: 3px;
+  right: 6px;
+  font-size: 11px;
   color: var(--text-muted);
   font-weight: 400;
 }
 
 .number-pad__tools {
   display: flex;
-  gap: 8px;
-  margin-top: 10px;
+  gap: 6px;
+  margin-top: 6px;
 }
 
 .number-pad__tool {
   flex: 1;
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 16px 10px;
-  font-size: 15px;
+  padding: 10px 8px;
+  font-size: 13px;
   background: var(--bg);
   cursor: pointer;
   font-weight: 600;
@@ -434,11 +435,11 @@
   background: var(--panel-bg);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 14px;
+  padding: 6px 8px;
   box-shadow: var(--shadow);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
 .hint-panel--idle {
@@ -449,45 +450,48 @@
   width: 100%;
   border: none;
   border-radius: 8px;
-  padding: 12px;
+  padding: 8px;
   background: var(--accent);
   color: var(--accent-contrast);
   font-weight: 700;
   cursor: pointer;
+  font-size: 13px;
 }
 
 .hint-panel__technique {
   font-weight: 700;
   color: var(--accent);
-  font-size: 13px;
+  font-size: 11px;
 }
 
 .hint-panel__text {
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .hint-panel__actions {
   display: flex;
-  gap: 8px;
-  margin-top: 4px;
+  gap: 6px;
+  margin-top: 2px;
 }
 
 .hint-panel__apply {
   flex: 1;
   border: none;
   border-radius: 8px;
-  padding: 10px;
+  padding: 8px;
   background: var(--accent);
   color: var(--accent-contrast);
   font-weight: 700;
   cursor: pointer;
+  font-size: 13px;
 }
 
 .hint-panel__close {
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 10px 14px;
+  padding: 8px 12px;
+  font-size: 13px;
   background: var(--bg);
   cursor: pointer;
 }
