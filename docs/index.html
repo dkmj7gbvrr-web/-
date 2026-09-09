@@ -32,6 +32,16 @@
     --split-equal: #1baf7a;
     --split-incomeRatio: #eda100;
     --split-customRatio: #e87ba4;
+    /* Categorical: one color per ジャンル (pie/bar charts), fixed order,
+       capped at 6 -- anything past that folds into --cat-other (gray). */
+    --cat-1: #2a78d6;
+    --cat-2: #eb6834;
+    --cat-3: #1baf7a;
+    --cat-4: #eda100;
+    --cat-5: #e87ba4;
+    --cat-6: #008300;
+    --cat-other: #898781;
+    --delta-good: #006300;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -51,6 +61,14 @@
       --split-equal: #199e70;
       --split-incomeRatio: #c98500;
       --split-customRatio: #d55181;
+      --cat-1: #3987e5;
+      --cat-2: #d95926;
+      --cat-3: #199e70;
+      --cat-4: #c98500;
+      --cat-5: #d55181;
+      --cat-6: #008300;
+      --cat-other: #898781;
+      --delta-good: #0ca30c;
     }
   }
   :root[data-theme="dark"] {
@@ -70,6 +88,14 @@
     --split-equal: #199e70;
     --split-incomeRatio: #c98500;
     --split-customRatio: #d55181;
+    --cat-1: #3987e5;
+    --cat-2: #d95926;
+    --cat-3: #199e70;
+    --cat-4: #c98500;
+    --cat-5: #d55181;
+    --cat-6: #008300;
+    --cat-other: #898781;
+    --delta-good: #0ca30c;
   }
 
   * { box-sizing: border-box; }
@@ -331,6 +357,46 @@
     letter-spacing: -0.01em;
   }
   .settlement-none { font-size: 15px; color: var(--ink-muted); padding: 6px 0; }
+
+  .budget-list { padding: 4px 16px 14px; }
+  .budget-row { padding: 10px 0; border-top: 1px solid var(--line); }
+  .budget-row:first-child { border-top: none; }
+  .budget-row-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; margin-bottom: 6px; gap: 8px; }
+  .budget-row-top .num { font-size: 13px; color: var(--ink-muted); white-space: nowrap; }
+  .budget-bar { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+  .budget-bar-fill { height: 100%; background: var(--accent); border-radius: 999px; }
+  .budget-row-over .budget-bar-fill { background: var(--red); }
+  .budget-row-over .budget-row-top .num { color: var(--red); font-weight: 700; }
+  .budget-over-label { font-size: 12px; color: var(--red); margin-top: 4px; font-weight: 600; }
+
+  .category-bar-row .kv-row { padding-bottom: 2px; }
+  .category-bar-track { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin: 0 16px 12px; }
+  .category-bar-fill { height: 100%; border-radius: 999px; background: var(--accent); }
+
+  .category-pie-wrap { display: flex; flex-direction: column; align-items: center; padding: 6px 16px 16px; }
+  .category-pie { width: 168px; height: 168px; }
+  .category-pie-total-label { font-size: 11px; fill: var(--ink-muted); font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif; }
+  .category-pie-total-amount { font-size: 20px; font-weight: 700; fill: var(--ink); font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace; }
+  .category-pie-legend { width: 100%; margin-top: 14px; }
+  .category-pie-legend-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 13.5px; }
+  .category-pie-legend-row:first-child { border-top: none; }
+  .category-pie-swatch { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+  .category-pie-legend-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .category-pie-legend-pct { color: var(--ink-muted); font-size: 12px; width: 38px; flex: none; text-align: right; }
+  .category-pie-legend-amount { flex: none; }
+
+  .mom-delta { font-size: 12px; font-weight: 700; }
+  .mom-delta.mom-up { color: var(--red); }
+  .mom-delta.mom-down { color: var(--delta-good); }
+
+  .trend-chart { display: flex; align-items: flex-end; gap: 8px; padding: 8px 16px 16px; height: 150px; }
+  .trend-bar-col { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; height: 100%; }
+  .trend-bar-value { font-size: 10.5px; color: var(--ink-muted); margin-bottom: 4px; white-space: nowrap; }
+  .trend-bar-track { flex: 1; width: 100%; display: flex; align-items: flex-end; background: var(--surface-2); border-radius: 5px 5px 0 0; overflow: hidden; }
+  .trend-bar-fill { width: 100%; background: var(--accent); border-radius: 5px 5px 0 0; min-height: 2px; }
+  .trend-bar-label { font-size: 11px; color: var(--ink-muted); margin-top: 6px; }
+  .trend-bar-current .trend-bar-fill { background: var(--split-customRatio); }
+  .trend-bar-current .trend-bar-label { color: var(--ink); font-weight: 700; }
 
   .stamp {
     position: absolute;
@@ -898,6 +964,9 @@
           <button class="icon-btn" data-action="import-pdf-trigger" aria-label="明細PDFを読み込む">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9.5 17v-4.5h1.3a1.3 1.3 0 0 1 0 2.6H9.5M13.5 17v-4.5h1.6a1 1 0 0 1 0 4.5h-1.6z"/></svg>
           </button>
+          <button class="icon-btn" data-action="open-template-picker" aria-label="定期支出から追加">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 21v-5h5"/><path d="M12 8v4l3 2"/></svg>
+          </button>
           <button class="icon-btn" data-action="add-expense" aria-label="支出を追加">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
           </button>
@@ -978,6 +1047,23 @@
       </div>
 
       <div class="settings-section">
+        <div class="section-title">予算</div>
+        <div class="field-hint" style="padding-top:0; margin-bottom:12px;">ジャンルごとに毎月の予算額を設定すると、集計タブで実績と比較できます。</div>
+        <div class="settings-actions">
+          <button class="btn btn-secondary" data-action="open-budget-sheet">予算を設定</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="section-title">定期支出</div>
+        <div class="field-hint" style="padding-top:0; margin-bottom:12px;">家賃・サブスクなど毎月同じ内容の支出をテンプレートとして登録しておくと、支出タブからワンタップで追加できます。</div>
+        <div id="recurring-template-list"></div>
+        <div class="settings-actions" style="margin-top:10px;">
+          <button class="btn btn-secondary" data-action="open-template-sheet">＋ 定期支出を追加</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
         <div class="section-title">バックアップ</div>
         <div class="field-hint" style="padding-top:0; margin-bottom:12px;">
           入力したデータは自動的に2人の間で共有されます。念のための保存用に、いつでもファイルとして書き出せます。
@@ -1033,7 +1119,7 @@
         <label class="field-label" for="expense-note">備考</label>
         <input type="text" id="expense-note" placeholder="例: 東京都渋谷区" maxlength="120">
       </div>
-      <div class="field-group">
+      <div class="field-group" id="expense-date-field">
         <label class="field-label" for="expense-date">日付</label>
         <input type="date" id="expense-date">
       </div>
@@ -1045,9 +1131,11 @@
         </div>
       </div>
 
-      <div class="section-label">この支出の種類</div>
-      <div class="segmented" id="expense-kind-segmented"></div>
-      <div class="field-hint" id="expense-kind-hint" style="padding-top:6px; margin-bottom:16px;"></div>
+      <div id="expense-kind-field">
+        <div class="section-label">この支出の種類</div>
+        <div class="segmented" id="expense-kind-segmented"></div>
+        <div class="field-hint" id="expense-kind-hint" style="padding-top:6px; margin-bottom:16px;"></div>
+      </div>
 
       <div class="section-label">ジャンル</div>
       <div class="category-picker" id="expense-category-picker"></div>
@@ -1218,6 +1306,16 @@
       </div>
 
       <div class="manual-section">
+        <h3>予算・支出の可視化</h3>
+        <p>設定タブの「予算」からジャンルごとに毎月の予算額を設定すると、集計タブに実績との比較（超過時は赤色で表示）が出ます。集計タブにはこのほか、ジャンル別の支出構成を示す円グラフ、金額順に並ぶジャンル別内訳（バー付き）、直近6サイクル分の支出推移グラフと先月比も表示されます。</p>
+      </div>
+
+      <div class="manual-section">
+        <h3>定期支出</h3>
+        <p>設定タブの「定期支出」から、家賃やサブスクなど毎月同じ内容の支出をテンプレートとして登録できます。支出タブの時計アイコンから選ぶと、日付以外の内容（金額・ジャンル・負担の分け方・立替えた人）が入力済みの状態で支出の追加画面が開くので、日付を確認して保存するだけで登録できます。</p>
+      </div>
+
+      <div class="manual-section">
         <h3>集計・精算</h3>
         <p>集計タブで、締め日ごとの請求サイクルの負担額・精算額を確認できます。精算が終わったサイクルは「精算済み」にできます。</p>
       </div>
@@ -1262,6 +1360,21 @@
   </div>
 </div>
 
+<div class="sheet-backdrop" id="budget-sheet-backdrop" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="budget-sheet-title">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <button class="sheet-btn" data-action="close-sheet" data-sheet="budget">キャンセル</button>
+      <div class="sheet-title" id="budget-sheet-title">予算を設定</div>
+      <button class="sheet-btn sheet-btn-primary" data-action="save-budgets">保存</button>
+    </div>
+    <div class="sheet-body">
+      <div class="field-hint" style="padding-top:0; margin-bottom:12px;">ジャンルごとに毎月の予算額を設定できます。空欄のジャンルは予算なしとして扱われ、集計タブには表示されません。</div>
+      <div id="budget-fields"></div>
+    </div>
+  </div>
+</div>
+
 <div class="sheet-backdrop" id="import-sheet-backdrop" hidden>
   <div class="sheet import-sheet" role="dialog" aria-modal="true" aria-labelledby="import-sheet-title">
     <div class="sheet-handle"></div>
@@ -1285,6 +1398,20 @@
     </div>
     <div class="import-sheet-footer">
       <button class="btn btn-primary" data-action="commit-import" id="import-commit-btn">追加する</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet-backdrop" id="template-picker-sheet-backdrop" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="template-picker-title">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <button class="sheet-btn" data-action="close-sheet" data-sheet="template-picker">キャンセル</button>
+      <div class="sheet-title" id="template-picker-title">定期支出から追加</div>
+      <span style="width:52px;"></span>
+    </div>
+    <div class="sheet-body">
+      <div id="template-picker-list"></div>
     </div>
   </div>
 </div>
@@ -1699,6 +1826,16 @@ import {
   function findCustomCategory(id) {
     return customCategoryList().find(function (c) { return c.id === id; }) || null;
   }
+
+  // 定期支出 (recurring expense templates): saved presets for rent,
+  // subscriptions, etc. -- everything an expense needs except a date,
+  // which is chosen fresh each time the template is applied.
+  function recurringTemplates() {
+    return (state.settings && Array.isArray(state.settings.recurringTemplates)) ? state.settings.recurringTemplates : [];
+  }
+  function findRecurringTemplate(id) {
+    return recurringTemplates().find(function (t) { return t.id === id; }) || null;
+  }
   // Built-ins first (その他 held back to the end), then custom categories in
   // the order they were created, then その他 -- so その他 always reads as
   // the final catch-all rather than sitting in the middle of the list.
@@ -1719,6 +1856,148 @@ import {
   function categoryChipHtml(category) {
     const key = isKnownCategory(category) ? category : 'other';
     return '<span class="category-chip">' + escapeHtml(categoryDisplayName(key)) + '</span>';
+  }
+
+  // Caps the pie chart at the top 6 real categories (a fixed, validated
+  // 6-color categorical palette -- never a generated 7th hue); everything
+  // past that, plus the built-in その他 category itself, folds into one
+  // gray その他 slice so the two "other"s never show as separate rows.
+  function categoryPieEntries(byCategory) {
+    const entries = allCategoryOrder()
+      .filter(function (cat) { return cat !== 'other' && byCategory[cat] > 0; })
+      .map(function (cat) { return { id: cat, name: categoryDisplayName(cat), amount: byCategory[cat] }; })
+      .sort(function (a, b) { return b.amount - a.amount; });
+    const top = entries.slice(0, 6);
+    const rest = entries.slice(6);
+    let restTotal = rest.reduce(function (sum, e) { return sum + e.amount; }, 0);
+    restTotal += byCategory.other || 0;
+    const colors = ['var(--cat-1)', 'var(--cat-2)', 'var(--cat-3)', 'var(--cat-4)', 'var(--cat-5)', 'var(--cat-6)'];
+    const result = top.map(function (e, i) { return { id: e.id, name: e.name, amount: e.amount, color: colors[i] }; });
+    if (restTotal > 0) result.push({ id: 'other', name: categoryDisplayName('other'), amount: restTotal, color: 'var(--cat-other)' });
+    return result;
+  }
+
+  // Ring built from a plain <circle> per slice (stroke-dasharray/-offset),
+  // rotated so the first slice starts at 12 o'clock -- no arc-path trig
+  // needed. A small gap between slices (mark-spec spacer) keeps adjacent
+  // same-ish-size slices visually separated even without a legend.
+  function categoryPieSvg(entries, total) {
+    if (total <= 0 || entries.length === 0) return '';
+    const size = 200, r = 80, sw = 30, cx = size / 2, cy = size / 2;
+    const circumference = 2 * Math.PI * r;
+    const gap = entries.length > 1 ? 3 : 0;
+    let offset = 0;
+    const segs = entries.map(function (e) {
+      const frac = e.amount / total;
+      const rawLen = frac * circumference;
+      const len = Math.max(0, rawLen - gap);
+      const seg = '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + e.color + '" stroke-width="' + sw + '" stroke-dasharray="' + len + ' ' + (circumference - len) + '" stroke-dashoffset="' + (-offset) + '"></circle>';
+      offset += rawLen;
+      return seg;
+    }).join('');
+    return '' +
+      '<div class="category-pie-wrap">' +
+        '<svg viewBox="0 0 ' + size + ' ' + size + '" class="category-pie" role="img" aria-label="ジャンル別支出の割合の円グラフ">' +
+          '<g transform="rotate(-90 ' + cx + ' ' + cy + ')">' + segs + '</g>' +
+          '<text x="' + cx + '" y="' + (cy - 4) + '" text-anchor="middle" class="category-pie-total-label">合計</text>' +
+          '<text x="' + cx + '" y="' + (cy + 20) + '" text-anchor="middle" class="category-pie-total-amount">' + formatYen(total) + '</text>' +
+        '</svg>';
+  }
+
+  function categoryPieLegendHtml(entries, total) {
+    return '<div class="category-pie-legend">' + entries.map(function (e) {
+      const pct = total > 0 ? Math.round(e.amount / total * 100) : 0;
+      return '' +
+        '<div class="category-pie-legend-row">' +
+          '<span class="category-pie-swatch" style="background:' + e.color + '"></span>' +
+          '<span class="category-pie-legend-name">' + escapeHtml(e.name) + '</span>' +
+          '<span class="category-pie-legend-pct">' + pct + '%</span>' +
+          '<span class="category-pie-legend-amount num">' + formatYen(e.amount) + '</span>' +
+        '</div>';
+    }).join('') + '</div></div>';
+  }
+
+  // Compact label for narrow trend-chart bars: "6万" instead of "¥60,000".
+  function formatYenCompact(n) {
+    if (n >= 10000) {
+      const man = Math.round(n / 1000) / 10;
+      return man + '万';
+    }
+    return String(Math.round(n));
+  }
+
+  // Percent change vs. the cycle immediately before this one (by calendar
+  // month, not just "previous in the list" -- a gap month with no expenses
+  // correctly means no comparison rather than comparing across the gap).
+  function monthOverMonthDelta(groups, cycle) {
+    const prevYm = addMonths(cycle.ym.year, cycle.ym.month, -1);
+    const prevGroup = groups.find(function (g) { return g.cycle.ym.year === prevYm.year && g.cycle.ym.month === prevYm.month; });
+    if (!prevGroup) return null;
+    const currentTotal = settlement(state.expenses, cycle, state.incomePeriods, state.settings.cardClosingDay).total;
+    const prevTotal = settlement(state.expenses, prevGroup.cycle, state.incomePeriods, state.settings.cardClosingDay).total;
+    if (prevTotal <= 0) return null;
+    return { pct: Math.round((currentTotal - prevTotal) / prevTotal * 100) };
+  }
+
+  // Bar chart of total household spending across the most recent cycles
+  // (oldest to newest, left to right), highlighting whichever cycle is
+  // currently selected in the picker above.
+  function renderTrendChartHtml(groups, currentCycle, momDelta) {
+    const maxMonths = 6;
+    const recent = groups.slice(0, maxMonths).slice().reverse();
+    if (recent.length === 0) return '';
+    const totals = recent.map(function (g) {
+      return settlement(state.expenses, g.cycle, state.incomePeriods, state.settings.cardClosingDay).total;
+    });
+    const maxTotal = Math.max.apply(null, totals.concat([1]));
+    const currentKey = cycleKey(currentCycle.ym);
+    const bars = recent.map(function (g, i) {
+      const total = totals[i];
+      const pct = Math.round(total / maxTotal * 100);
+      const isCurrent = cycleKey(g.cycle.ym) === currentKey;
+      // The cycle's display label may name a different month than its
+      // internal ym (see the majority-of-days cycle labeling) -- pull the
+      // short "◯月" straight from the label so the bar matches what the
+      // cycle picker above actually calls it.
+      const labelMatch = g.cycle.label.match(/(\d+)月/);
+      const shortLabel = labelMatch ? labelMatch[1] + '月' : g.cycle.ym.month + '月';
+      return '' +
+        '<div class="trend-bar-col' + (isCurrent ? ' trend-bar-current' : '') + '">' +
+          '<div class="trend-bar-value">' + formatYenCompact(total) + '</div>' +
+          '<div class="trend-bar-track"><div class="trend-bar-fill" style="height:' + pct + '%"></div></div>' +
+          '<div class="trend-bar-label">' + shortLabel + '</div>' +
+        '</div>';
+    }).join('');
+    const momHtml = momDelta ?
+      '<span class="mom-delta ' + (momDelta.pct > 0 ? 'mom-up' : (momDelta.pct < 0 ? 'mom-down' : '')) + '">先月比 ' + (momDelta.pct > 0 ? '+' : '') + momDelta.pct + '%</span>'
+      : '';
+    return '' +
+      '<div class="ledger-card">' +
+        '<div class="ledger-title" style="display:flex; justify-content:space-between; align-items:center;"><span>月次推移</span>' + momHtml + '</div>' +
+        '<div class="trend-chart">' + bars + '</div>' +
+      '</div>';
+  }
+
+  // 予算 card: only shows categories that actually have a budget set, each
+  // with a progress bar and (once spending passes the budget) an explicit
+  // over-budget callout -- never just a silent red bar.
+  function renderBudgetCardHtml(s, names) {
+    const budgets = state.settings.categoryBudgets || {};
+    const budgetedCats = allCategoryOrder().filter(function (id) { return budgets[id] > 0; });
+    if (budgetedCats.length === 0) return '';
+    const rows = budgetedCats.map(function (id) {
+      const spent = s.byCategory[id] || 0;
+      const budget = budgets[id];
+      const pct = Math.min(100, Math.round(spent / budget * 100));
+      const over = spent > budget;
+      return '' +
+        '<div class="budget-row' + (over ? ' budget-row-over' : '') + '">' +
+          '<div class="budget-row-top"><span>' + escapeHtml(categoryDisplayName(id)) + '</span><span class="num">' + formatYen(spent) + ' / ' + formatYen(budget) + '</span></div>' +
+          '<div class="budget-bar"><div class="budget-bar-fill" style="width:' + pct + '%"></div></div>' +
+          (over ? '<div class="budget-over-label">' + formatYen(spent - budget) + ' 超過</div>' : '') +
+        '</div>';
+    }).join('');
+    return '<div class="ledger-card"><div class="ledger-title">予算</div><div class="budget-list">' + rows + '</div></div>';
   }
 
   function guessCategory(memo, merchantMemory) {
@@ -1788,7 +2067,7 @@ import {
 
   function defaultState() {
     return {
-      settings: { personAName: 'A', personBName: 'B', cardClosingDay: 6, customCategories: [] },
+      settings: { personAName: 'A', personBName: 'B', cardClosingDay: 6, customCategories: [], categoryBudgets: {}, recurringTemplates: [] },
       expenses: [],
       incomePeriods: [],
       settledCycles: {},
@@ -1821,7 +2100,9 @@ import {
           personAName: data.personAName || d.settings.personAName,
           personBName: data.personBName || d.settings.personBName,
           cardClosingDay: data.cardClosingDay || d.settings.cardClosingDay,
-          customCategories: Array.isArray(data.customCategories) ? data.customCategories : []
+          customCategories: Array.isArray(data.customCategories) ? data.customCategories : [],
+          categoryBudgets: (data.categoryBudgets && typeof data.categoryBudgets === 'object') ? data.categoryBudgets : {},
+          recurringTemplates: Array.isArray(data.recurringTemplates) ? data.recurringTemplates : []
         };
         state.settledCycles = (data.settledCycles && typeof data.settledCycles === 'object') ? data.settledCycles : {};
         state.settledInitialCosts = !!data.settledInitialCosts;
@@ -2078,17 +2359,32 @@ import {
 
     document.getElementById('summary-range').textContent = formatFullDate(cycle.start) + ' 〜 ' + formatFullDate(cycle.end);
 
+    const momDelta = monthOverMonthDelta(groups, cycle);
+    const trendChartHtml = renderTrendChartHtml(groups, cycle, momDelta);
+
     const breakdown = SPLIT_TYPES.filter(function (t) { return s.bySplitType[t] > 0; })
       .map(function (t) {
         return '<div class="kv-row"><span style="display:flex; align-items:center; gap:8px;">' + splitDotHtml(t) + '<span>' + escapeHtml(splitLabel(t, names)) + '</span></span><span class="num">' + formatYen(s.bySplitType[t]) + '</span></div>';
       }).join('');
 
-    const categoryBreakdown = allCategoryOrder()
+    const categoryEntries = allCategoryOrder()
       .filter(function (cat) { return s.byCategory[cat] > 0; })
-      .sort(function (a, b) { return s.byCategory[b] - s.byCategory[a]; })
-      .map(function (cat) {
-        return '<div class="kv-row"><span>' + escapeHtml(categoryDisplayName(cat)) + '</span><span class="num">' + formatYen(s.byCategory[cat]) + '</span></div>';
-      }).join('');
+      .map(function (cat) { return { id: cat, name: categoryDisplayName(cat), amount: s.byCategory[cat] }; })
+      .sort(function (a, b) { return b.amount - a.amount; });
+    const maxCategoryAmount = categoryEntries.length ? categoryEntries[0].amount : 0;
+    // A bar under each row (relative to the biggest category) so the
+    // ranked list also reads visually, not just as numbers.
+    const categoryBreakdown = categoryEntries.map(function (e) {
+      const pct = maxCategoryAmount > 0 ? Math.round(e.amount / maxCategoryAmount * 100) : 0;
+      return '' +
+        '<div class="category-bar-row">' +
+          '<div class="kv-row"><span>' + escapeHtml(e.name) + '</span><span class="num">' + formatYen(e.amount) + '</span></div>' +
+          '<div class="category-bar-track"><div class="category-bar-fill" style="width:' + pct + '%"></div></div>' +
+        '</div>';
+    }).join('');
+    const pieEntries = categoryPieEntries(s.byCategory);
+    const pieHtml = pieEntries.length ? categoryPieSvg(pieEntries, s.total) + categoryPieLegendHtml(pieEntries, s.total) : '';
+    const budgetCardHtml = renderBudgetCardHtml(s, names);
 
     const sharedPlan = sharedAccountPlan(s);
     const sharedPlanLines = [];
@@ -2106,6 +2402,7 @@ import {
         '<div class="kv-row"><span>' + escapeHtml(names.b) + '</span><span class="num">' + formatYen(s.burdenB) + '</span></div>' +
         '<div class="kv-row total"><span>合計</span><span class="num">' + formatYen(s.total) + '</span></div>' +
       '</div>' +
+      trendChartHtml +
       '<div class="ledger-card">' +
         '<div class="ledger-title">実際の立替額</div>' +
         '<div class="kv-row"><span>' + escapeHtml(names.a) + '</span><span class="num">' + formatYen(s.paidByA) + '</span></div>' +
@@ -2134,6 +2431,13 @@ import {
           (settled ? 'この月の精算済みを取り消す' : 'この月を精算済みにする') +
         '</button>' +
       '</div>' +
+      budgetCardHtml +
+      (pieHtml ?
+        '<div class="ledger-card">' +
+          '<div class="ledger-title">支出の構成</div>' +
+          pieHtml +
+        '</div>'
+        : '') +
       '<div class="ledger-card">' +
         '<div class="ledger-title">内訳（ジャンル別）</div>' +
         (categoryBreakdown || '<div class="empty-inline">この月の支出はありません</div>') +
@@ -2197,6 +2501,7 @@ import {
     document.getElementById('setting-closing-day').value = state.settings.cardClosingDay;
     document.getElementById('settings-code-value').textContent = currentCode || '';
     renderCustomCategoryList();
+    renderRecurringTemplateList();
   }
 
   function renderCustomCategoryList() {
@@ -2216,6 +2521,107 @@ import {
           '</div>' +
         '</button>';
     }).join('') + '</div>';
+  }
+
+  function renderRecurringTemplateList() {
+    const names = currentNames();
+    const container = document.getElementById('recurring-template-list');
+    const list = recurringTemplates();
+    if (list.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+    container.innerHTML = '<div class="ledger">' + list.map(function (t) {
+      return '' +
+        '<button class="row" data-action="edit-template" data-id="' + t.id + '">' +
+          '<div class="main">' +
+            '<div class="title">' + escapeHtml(t.memo || splitShort(t.splitType)) + '</div>' +
+            '<div class="meta">' +
+              splitDotHtml(t.splitType) +
+              '<span>' + escapeHtml(splitLabel(t.splitType, names)) + '</span><span>・</span>' +
+              '<span>立替: ' + escapeHtml(paidByLabel(t.paidBy, names)) + '</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="amount">' + formatYen(t.amount) + '</div>' +
+        '</button>';
+    }).join('') + '</div>';
+  }
+
+  function openTemplatePicker() {
+    renderTemplatePickerList();
+    showSheet('template-picker-sheet-backdrop');
+  }
+
+  function renderTemplatePickerList() {
+    const names = currentNames();
+    const container = document.getElementById('template-picker-list');
+    const list = recurringTemplates();
+    if (list.length === 0) {
+      container.innerHTML = emptyState('tray', '定期支出がありません', '設定タブの「定期支出」から、家賃やサブスクなどを登録できます');
+      return;
+    }
+    container.innerHTML = '<div class="ledger">' + list.map(function (t) {
+      return '' +
+        '<button class="row" data-action="apply-template" data-id="' + t.id + '">' +
+          '<div class="main">' +
+            '<div class="title">' + escapeHtml(t.memo || splitShort(t.splitType)) + '</div>' +
+            '<div class="meta">' +
+              splitDotHtml(t.splitType) +
+              '<span>' + escapeHtml(splitLabel(t.splitType, names)) + '</span><span>・</span>' +
+              categoryChipHtml(t.category) +
+            '</div>' +
+          '</div>' +
+          '<div class="amount">' + formatYen(t.amount) + '</div>' +
+        '</button>';
+    }).join('') + '</div>';
+  }
+
+  // Pre-fills a brand-new expense from a saved template (today's date,
+  // everything else copied) -- opens the normal expense sheet so the date
+  // (or anything else) can still be adjusted before saving, rather than
+  // silently committing on a single tap.
+  function applyTemplateToNewExpense(id) {
+    const t = findRecurringTemplate(id);
+    if (!t) return;
+    closeSheet('template-picker-sheet-backdrop');
+    resetExpenseSheetMode();
+    editingExpenseId = null;
+    editingPendingImportIndex = null;
+    populateExpenseSheetFields(Object.assign({}, t, { date: toDateInputValue(new Date()) }), false);
+    showSheet('expense-sheet-backdrop');
+  }
+
+  function openBudgetSheet() {
+    renderBudgetFields();
+    showSheet('budget-sheet-backdrop');
+  }
+
+  function renderBudgetFields() {
+    const container = document.getElementById('budget-fields');
+    const budgets = state.settings.categoryBudgets || {};
+    container.innerHTML = allCategoryOrder().map(function (catId) {
+      const val = budgets[catId] != null ? formatDigitsWithCommas(String(budgets[catId])) : '';
+      return '' +
+        '<div class="field-group">' +
+          '<label class="field-label">' + escapeHtml(categoryDisplayName(catId)) + '</label>' +
+          '<div class="amount-field">' +
+            '<span class="yen-mark">¥</span>' +
+            '<input type="text" inputmode="numeric" class="amount-input budget-input" data-category="' + catId + '" placeholder="0" value="' + escapeHtml(val) + '">' +
+          '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  async function saveBudgets() {
+    const inputs = document.querySelectorAll('#budget-fields .budget-input');
+    const next = {};
+    inputs.forEach(function (el) {
+      const raw = el.value.replace(/[^\d]/g, '');
+      const n = Number(raw);
+      if (raw && n > 0) next[el.dataset.category] = n;
+    });
+    closeSheet('budget-sheet-backdrop');
+    await updateSettings({ categoryBudgets: next });
   }
 
   function renderAll() {
@@ -2239,6 +2645,8 @@ import {
   let editingExpenseId = null;
   let editingIncomeId = null;
   let editingPendingImportIndex = null;
+  let templateMode = false;
+  let editingTemplateId = null;
   let currentSplitType = 'equal';
   let currentCustomPercent = 50;
   let customRatioMode = 'percent';
@@ -2595,7 +3003,16 @@ import {
     document.getElementById('income-ratio-select').value = String(Math.round(raw));
   }
 
+  function resetExpenseSheetMode() {
+    templateMode = false;
+    editingTemplateId = null;
+    document.getElementById('expense-date-field').hidden = false;
+    document.getElementById('expense-kind-field').hidden = false;
+    document.getElementById('expense-delete-btn').textContent = 'この支出を削除';
+  }
+
   function openExpenseSheet(id) {
+    resetExpenseSheetMode();
     editingExpenseId = id || null;
     editingPendingImportIndex = null;
     const e = id ? state.expenses.find(function (x) { return x.id === id; }) : null;
@@ -2604,9 +3021,25 @@ import {
   }
 
   function openExpenseSheetForPendingImport(index) {
+    resetExpenseSheetMode();
     editingExpenseId = null;
     editingPendingImportIndex = index;
     populateExpenseSheetFields(pendingImportItems[index], true);
+    showSheet('expense-sheet-backdrop');
+  }
+
+  function openTemplateSheet(id) {
+    resetExpenseSheetMode();
+    editingExpenseId = null;
+    editingPendingImportIndex = null;
+    templateMode = true;
+    editingTemplateId = id || null;
+    const t = id ? findRecurringTemplate(id) : null;
+    populateExpenseSheetFields(t, !!t);
+    document.getElementById('expense-sheet-title').textContent = t ? '定期支出を編集' : '定期支出を追加';
+    document.getElementById('expense-date-field').hidden = true;
+    document.getElementById('expense-kind-field').hidden = true;
+    document.getElementById('expense-delete-btn').textContent = 'この定期支出を削除';
     showSheet('expense-sheet-backdrop');
   }
 
@@ -2614,7 +3047,7 @@ import {
     document.getElementById('expense-sheet-title').textContent = showDeleteButton ? '支出を編集' : '支出を追加';
     document.getElementById('expense-memo').value = e ? e.memo : '';
     document.getElementById('expense-note').value = e && e.note ? e.note : '';
-    document.getElementById('expense-date').value = e ? e.date : toDateInputValue(new Date());
+    document.getElementById('expense-date').value = (e && e.date) ? e.date : toDateInputValue(new Date());
     document.getElementById('expense-amount').value = e ? formatDigitsWithCommas(String(e.amount)) : '';
     document.getElementById('expense-delete-btn').hidden = !showDeleteButton;
 
@@ -2642,14 +3075,33 @@ import {
     updateCustomRatioVisibility();
   }
 
+  async function saveRecurringTemplate(fields) {
+    const list = recurringTemplates().slice();
+    if (editingTemplateId) {
+      const idx = list.findIndex(function (t) { return t.id === editingTemplateId; });
+      if (idx !== -1) list[idx] = Object.assign({ id: editingTemplateId }, fields);
+      else list.push(Object.assign({ id: editingTemplateId }, fields));
+    } else {
+      list.push(Object.assign({ id: uid() }, fields));
+    }
+    closeSheet('expense-sheet-backdrop');
+    await updateSettings({ recurringTemplates: list });
+  }
+
   async function saveExpense() {
     const amountRaw = document.getElementById('expense-amount').value.replace(/[^\d]/g, '');
     const amount = Number(amountRaw);
     if (!amountRaw || !Number.isFinite(amount) || amount <= 0) { toast('金額を入力してください'); return; }
-    const date = document.getElementById('expense-date').value || toDateInputValue(new Date());
     const memo = document.getElementById('expense-memo').value.trim();
     const note = document.getElementById('expense-note').value.trim();
     const customAPercent = currentSplitType === 'customRatio' ? currentCustomPercent : null;
+
+    if (templateMode) {
+      await saveRecurringTemplate({ memo: memo, note: note, amount: amount, splitType: currentSplitType, customAPercent: customAPercent, paidBy: currentPaidBy, category: currentCategory });
+      return;
+    }
+
+    const date = document.getElementById('expense-date').value || toDateInputValue(new Date());
     const payload = { date: date, amount: amount, memo: memo, note: note, splitType: currentSplitType, customAPercent: customAPercent, paidBy: currentPaidBy, category: currentCategory, isInitialCost: currentIsInitialCost };
 
     if (editingPendingImportIndex !== null) {
@@ -2675,6 +3127,14 @@ import {
   }
 
   async function deleteExpense() {
+    if (templateMode) {
+      if (!editingTemplateId) { closeSheet('expense-sheet-backdrop'); return; }
+      if (!confirm('この定期支出を削除しますか？')) return;
+      const list = recurringTemplates().filter(function (t) { return t.id !== editingTemplateId; });
+      closeSheet('expense-sheet-backdrop');
+      await updateSettings({ recurringTemplates: list });
+      return;
+    }
     if (editingPendingImportIndex !== null) {
       pendingImportItems.splice(editingPendingImportIndex, 1);
       closeSheet('expense-sheet-backdrop');
@@ -3529,6 +3989,12 @@ import {
       case 'add-category': openCategorySheet(null); break;
       case 'edit-category': openCategorySheet(target.dataset.id); break;
       case 'add-category-from-expense': openCategorySheet(null, { returnToExpense: true }); break;
+      case 'open-budget-sheet': openBudgetSheet(); break;
+      case 'save-budgets': saveBudgets(); break;
+      case 'open-template-sheet': openTemplateSheet(null); break;
+      case 'edit-template': openTemplateSheet(target.dataset.id); break;
+      case 'open-template-picker': openTemplatePicker(); break;
+      case 'apply-template': applyTemplateToNewExpense(target.dataset.id); break;
       case 'delete-category': deleteCategory(); break;
       case 'save-category': saveCategory(); break;
       case 'select-category-split-type':
@@ -3653,6 +4119,11 @@ import {
       currentIncomeExtraValues[index][person === 'a' ? 'aAmount' : 'bAmount'] = target.value;
     }
     updateIncomeRatioPreview();
+  });
+
+  document.getElementById('budget-fields').addEventListener('input', function (e) {
+    if (!e.target.classList.contains('budget-input')) return;
+    reformatAmountInput(e.target);
   });
 
   document.getElementById('summary-cycle-select').addEventListener('change', function (e) {
