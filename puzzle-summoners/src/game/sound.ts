@@ -198,8 +198,12 @@ export const playReversalSting = (): void => {
   playNoiseBurst(ctx, now + 0.28, 0.25, 0.3, 4200)
 }
 
-/** 開封が始まる直前の「先バレ」演出音。低い地鳴りのような予兆音 */
-export const playOmenRumble = (): void => {
+/**
+ * 開封が始まる直前の「先バレ」演出音。低い地鳴りのような予兆音。
+ * 文字では一切ネタバレせず、音の違いだけで格の違いを伝える「音声先読み」（リゼロのスロット演出を意識）。
+ * tier='legend'（虹卵が混ざっている）のときだけ、地鳴りの上にきらめく旋律を重ねて別格感を出す
+ */
+export const playOmenRumble = (tier: 'high' | 'legend' = 'high'): void => {
   const ctx = getContext()
   if (!ctx) return
   const now = ctx.currentTime
@@ -207,7 +211,7 @@ export const playOmenRumble = (): void => {
   const gainNode = ctx.createGain()
   osc.type = 'sine'
   osc.frequency.setValueAtTime(48, now)
-  osc.frequency.linearRampToValueAtTime(64, now + 0.9)
+  osc.frequency.linearRampToValueAtTime(tier === 'legend' ? 76 : 64, now + 0.9)
   gainNode.gain.setValueAtTime(0, now)
   gainNode.gain.linearRampToValueAtTime(0.14, now + 0.2)
   gainNode.gain.linearRampToValueAtTime(0.1, now + 0.7)
@@ -217,6 +221,13 @@ export const playOmenRumble = (): void => {
   osc.start(now)
   osc.stop(now + 1.05)
   playNoiseBurst(ctx, now, 0.9, 0.05, 300)
+
+  if (tier === 'legend') {
+    const notes = [880, 1046.5, 1318.5]
+    notes.forEach((freq, i) => {
+      playTone(ctx, freq, now + 0.45 + i * 0.15, 0.55, 0.05, 'sine')
+    })
+  }
 }
 
 /** 大当たり演出（レア確定バナー表示時）のファンファーレ。レアリティが高いほど音数が増える */

@@ -42,6 +42,7 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) => {
   const hasBigHitRef = useRef(pulls.some((p) => p.monster.rarity >= 5))
+  const omenTierRef = useRef<'high' | 'legend'>(pulls.some((p) => p.monster.rarity === 6) ? 'legend' : 'high')
 
   const [revealedCount, setRevealedCount] = useState(0)
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
@@ -56,10 +57,11 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
 
   const isDone = revealedCount >= pulls.length
 
-  // 「先バレ」演出：レア以上を含む結果のときだけ、開封の最初に一度だけ予兆を挟む
+  // 「先バレ」演出：レア以上を含む結果のときだけ、開封の最初に一度だけ予兆を挟む。
+  // 文字では何も明かさず、音の違い（レジェンド級だけ特別なきらめきが重なる）だけで格を伝える
   useEffect(() => {
     if (!hasBigHitRef.current) return
-    playOmenRumble()
+    playOmenRumble(omenTierRef.current)
     const id = window.setTimeout(() => {
       setOmenActive(false)
       setIntroDone(true)
@@ -90,6 +92,11 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
 
       setPhase('reversal')
       playReversalSting()
+      // 「確定」バナーはまだ誰が出たか分からないこの逆転の瞬間に出す。
+      // 実際にどのモンスターかはこのあとの卵割りで初めて明かされる、という順番にして
+      // 「もう見えてるのに今更確定も何もない」とならないようにしている
+      playBigWinFanfare(finalRarity)
+      setBigWin({ id: myToken, rarity: finalRarity })
       await sleep(REVERSAL_MS)
       if (cancelled()) return
     }
@@ -103,10 +110,6 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
 
     playEggCrack(finalRarity)
     playGachaChime(finalRarity)
-    if (finalRarity >= 5) {
-      playBigWinFanfare(finalRarity)
-      setBigWin({ id: myToken, rarity: finalRarity })
-    }
 
     setActiveIndex(null)
     setPhase(null)
@@ -158,7 +161,6 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
       {omenActive && (
         <div className="gacha-omen-overlay">
           <div className="gacha-omen-silhouette" />
-          <p className="gacha-omen-text">……何かが来る…？</p>
         </div>
       )}
 

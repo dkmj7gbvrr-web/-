@@ -1560,14 +1560,6 @@
   }
 }
 
-.gacha-omen-text {
-  font-family: var(--font-display);
-  font-size: 1.1rem;
-  color: #ffb3b3;
-  text-shadow: 0 0 12px rgba(255, 111, 111, 0.8);
-  letter-spacing: 0.05em;
-}
-
 /* --- 保留ランプ（先読み・期待度色） --- */
 .gacha-hold-lamp {
   position: absolute;
