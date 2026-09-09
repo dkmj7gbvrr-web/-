@@ -169,6 +169,56 @@ export const playEggUpgrade = (): void => {
   playTone(ctx, 2093, now + 0.5, 0.45, 0.11, 'sine')
 }
 
+/** 「外れたと思ったらあたり」演出の前フリ。一瞬しょぼんとした落胆音を鳴らす */
+export const playMissThud = (): void => {
+  const ctx = getContext()
+  if (!ctx) return
+  const now = ctx.currentTime
+  playTone(ctx, 180, now, 0.18, 0.09, 'sine')
+  playTone(ctx, 120, now + 0.06, 0.22, 0.07, 'sine')
+}
+
+/** 「外れたと思ったらあたり」の大逆転音。急上昇するスイープの着地にノイズの弾けを重ねる */
+export const playReversalSting = (): void => {
+  const ctx = getContext()
+  if (!ctx) return
+  const now = ctx.currentTime
+  const osc = ctx.createOscillator()
+  const gainNode = ctx.createGain()
+  osc.type = 'sawtooth'
+  osc.frequency.setValueAtTime(220, now)
+  osc.frequency.exponentialRampToValueAtTime(1400, now + 0.32)
+  gainNode.gain.setValueAtTime(0, now)
+  gainNode.gain.linearRampToValueAtTime(0.09, now + 0.05)
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.36)
+  osc.connect(gainNode)
+  gainNode.connect(ctx.destination)
+  osc.start(now)
+  osc.stop(now + 0.4)
+  playNoiseBurst(ctx, now + 0.28, 0.25, 0.3, 4200)
+}
+
+/** 開封が始まる直前の「先バレ」演出音。低い地鳴りのような予兆音 */
+export const playOmenRumble = (): void => {
+  const ctx = getContext()
+  if (!ctx) return
+  const now = ctx.currentTime
+  const osc = ctx.createOscillator()
+  const gainNode = ctx.createGain()
+  osc.type = 'sine'
+  osc.frequency.setValueAtTime(48, now)
+  osc.frequency.linearRampToValueAtTime(64, now + 0.9)
+  gainNode.gain.setValueAtTime(0, now)
+  gainNode.gain.linearRampToValueAtTime(0.14, now + 0.2)
+  gainNode.gain.linearRampToValueAtTime(0.1, now + 0.7)
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 1.0)
+  osc.connect(gainNode)
+  gainNode.connect(ctx.destination)
+  osc.start(now)
+  osc.stop(now + 1.05)
+  playNoiseBurst(ctx, now, 0.9, 0.05, 300)
+}
+
 /** 大当たり演出（レア確定バナー表示時）のファンファーレ。レアリティが高いほど音数が増える */
 export const playBigWinFanfare = (rarity: Rarity): void => {
   const ctx = getContext()

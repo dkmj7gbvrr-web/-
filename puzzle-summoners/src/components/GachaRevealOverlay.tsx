@@ -1,9 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import { withCssVar } from '../game/cssVar'
 import type { PullRecord } from '../game/gacha'
-import { EGG_TIER_THEME, RARITY_STAR_COLOR, initialEggTier } from '../game/orbTheme'
-import type { EggTier } from '../game/orbTheme'
-import { playBigWinFanfare, playEggCrack, playEggUpgrade, playGachaChime } from '../game/sound'
+import { EGG_TIER_THEME, EXPECTATION_LABEL, RARITY_STAR_COLOR, expectationOf, initialEggTier } from '../game/orbTheme'
+import type { EggTier, Expectation } from '../game/orbTheme'
+import {
+  playBigWinFanfare,
+  playEggCrack,
+  playEggUpgrade,
+  playGachaChime,
+  playMissThud,
+  playOmenRumble,
+  playReversalSting,
+} from '../game/sound'
 import type { Rarity } from '../game/types'
 import { MonsterCard } from './MonsterCard'
 
@@ -13,14 +21,17 @@ interface GachaRevealOverlayProps {
 }
 
 const SHAKE_MS = 320
+const MISS_MS = 420
+const REVERSAL_MS = 480
 const UPGRADE_MS = 700
 const AUTO_ADVANCE_MS = 320
+const OMEN_MS = 950
 const BIG_WIN_LABEL: Partial<Record<Rarity, string>> = {
   5: '激レア確定！！',
   6: 'LEGEND!!!',
 }
 
-type CrackPhase = 'shake' | 'upgrade' | null
+type CrackPhase = 'shake' | 'miss' | 'reversal' | 'upgrade' | null
 
 interface BigWinBanner {
   readonly id: number
@@ -30,15 +41,33 @@ interface BigWinBanner {
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) => {
+  const hasBigHitRef = useRef(pulls.some((p) => p.monster.rarity >= 5))
+
   const [revealedCount, setRevealedCount] = useState(0)
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const [phase, setPhase] = useState<CrackPhase>(null)
   const [bigWin, setBigWin] = useState<BigWinBanner | null>(null)
+  const [omenActive, setOmenActive] = useState(hasBigHitRef.current)
+  const [introDone, setIntroDone] = useState(!hasBigHitRef.current)
 
   const advanceTimeoutRef = useRef<number | null>(null)
+  const omenTimeoutRef = useRef<number | null>(null)
   const sequenceTokenRef = useRef(0)
 
   const isDone = revealedCount >= pulls.length
+
+  // 「先バレ」演出：レア以上を含む結果のときだけ、開封の最初に一度だけ予兆を挟む
+  useEffect(() => {
+    if (!hasBigHitRef.current) return
+    playOmenRumble()
+    const id = window.setTimeout(() => {
+      setOmenActive(false)
+      setIntroDone(true)
+    }, OMEN_MS)
+    omenTimeoutRef.current = id
+    return () => window.clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const startCrack = async (index: number) => {
     if (index >= pulls.length || activeIndex !== null) return
@@ -51,6 +80,19 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
     setPhase('shake')
     await sleep(SHAKE_MS)
     if (cancelled()) return
+
+    if (finalRarity >= 5) {
+      // 「外れたと思ったらあたり」：一度しょぼんと落胆させてから逆転で盛り上げる
+      setPhase('miss')
+      playMissThud()
+      await sleep(MISS_MS)
+      if (cancelled()) return
+
+      setPhase('reversal')
+      playReversalSting()
+      await sleep(REVERSAL_MS)
+      if (cancelled()) return
+    }
 
     if (finalRarity === 6) {
       setPhase('upgrade')
@@ -72,7 +114,7 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
   }
 
   useEffect(() => {
-    if (isDone || activeIndex !== null) return
+    if (isDone || activeIndex !== null || !introDone) return
     const id = window.setTimeout(
       () => {
         void startCrack(revealedCount)
@@ -83,15 +125,24 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
     return () => window.clearTimeout(id)
     // startCrackはこのレンダーのrevealedCount/pullsに紐づくクロージャなので依存配列に含める必要はない
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [revealedCount, activeIndex, isDone])
+  }, [revealedCount, activeIndex, isDone, introDone])
 
   const handleTap = () => {
-    if (activeIndex !== null || isDone) return
+    if (omenActive) {
+      if (omenTimeoutRef.current !== null) window.clearTimeout(omenTimeoutRef.current)
+      setOmenActive(false)
+      setIntroDone(true)
+      return
+    }
+    if (activeIndex !== null || isDone || !introDone) return
     if (advanceTimeoutRef.current !== null) window.clearTimeout(advanceTimeoutRef.current)
     void startCrack(revealedCount)
   }
 
   const handleSkip = () => {
+    if (omenTimeoutRef.current !== null) window.clearTimeout(omenTimeoutRef.current)
+    setOmenActive(false)
+    setIntroDone(true)
     sequenceTokenRef.current += 1
     if (advanceTimeoutRef.current !== null) window.clearTimeout(advanceTimeoutRef.current)
     setActiveIndex(null)
@@ -104,6 +155,13 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
 
   return (
     <div className="gacha-reveal-overlay" onClick={isDone ? undefined : handleTap}>
+      {omenActive && (
+        <div className="gacha-omen-overlay">
+          <div className="gacha-omen-silhouette" />
+          <p className="gacha-omen-text">……何かが来る…？</p>
+        </div>
+      )}
+
       {highestRevealedRarity >= 5 && (
         <div
           key={highestRevealedRarity}
@@ -122,6 +180,7 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
         {pulls.map((pull, index) => {
           const revealed = index < revealedCount
           const isActive = index === activeIndex
+          const expectation: Expectation = expectationOf(pull.monster.rarity)
 
           if (revealed) {
             return (
@@ -145,13 +204,21 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
             'gacha-egg',
             egg.shimmer ? 'gacha-egg--shimmer' : '',
             isActive && phase === 'shake' ? 'gacha-egg--shaking' : '',
+            isActive && phase === 'miss' ? 'gacha-egg--miss' : '',
+            isActive && phase === 'reversal' ? 'gacha-egg--reversal' : '',
             isActive && phase === 'upgrade' ? 'gacha-egg--upgrading' : '',
           ]
             .filter(Boolean)
             .join(' ')
 
+          const holdLampClass =
+            isActive && (phase === 'shake' || phase === 'miss' || phase === 'reversal')
+              ? `gacha-hold-lamp gacha-hold-lamp--locked gacha-hold-lamp--${phase === 'miss' ? 'low' : expectation}`
+              : `gacha-hold-lamp gacha-hold-lamp--cycling`
+
           return (
             <div key={index} className="gacha-reveal-slot" style={{ animationDelay: `${Math.min(index, 9) * 70}ms` }}>
+              <span className={holdLampClass} style={{ animationDelay: `${(index % 7) * 137}ms` }} />
               <button
                 type="button"
                 className={eggClass}
@@ -160,6 +227,15 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
                 title={egg.label}
                 style={{ ...withCssVar('--egg-gradient', egg.gradient), ...withCssVar('--egg-glow', egg.glow) }}
               />
+              {isActive && phase === 'shake' && EXPECTATION_LABEL[expectation] && (
+                <span className={`gacha-expect-text gacha-expect-text--${expectation}`}>
+                  {EXPECTATION_LABEL[expectation]}
+                </span>
+              )}
+              {isActive && phase === 'miss' && <span className="gacha-expect-text gacha-expect-text--low">…あれ？</span>}
+              {isActive && phase === 'reversal' && (
+                <span className="gacha-expect-text gacha-expect-text--legend">まさかの…！！</span>
+              )}
             </div>
           )
         })}

@@ -1,6 +1,7 @@
 import { withCssVar } from '../game/cssVar'
 import type { MonsterDef } from '../game/types'
-import { ELEMENT_META, RARITY_STAR_COLOR, SKILL_KIND_ICON } from '../game/orbTheme'
+import { RARITY_STAR_COLOR, SKILL_KIND_ICON } from '../game/orbTheme'
+import { MonsterPortrait } from './MonsterPortrait'
 
 interface MonsterCardProps {
   readonly def: MonsterDef
@@ -12,9 +13,9 @@ interface MonsterCardProps {
 }
 
 export const MonsterCard = ({ def, selected, onClick, badge, showSkills }: MonsterCardProps) => {
-  const meta = ELEMENT_META[def.element]
   const starColor = RARITY_STAR_COLOR[def.rarity]
-  const hasRays = def.rarity >= 5
+  const hasRays = def.rarity === 5
+  const hasGlowOrb = def.rarity >= 6
 
   return (
     <button
@@ -30,9 +31,8 @@ export const MonsterCard = ({ def, selected, onClick, badge, showSkills }: Monst
       </span>
       <div className="monster-card-portrait-wrap">
         {hasRays && <div className="monster-card-rays" />}
-        <div className="monster-card-portrait" style={{ background: meta.color }}>
-          {meta.icon}
-        </div>
+        {hasGlowOrb && <div className="monster-card-glow-orb" />}
+        <MonsterPortrait element={def.element} rarity={def.rarity} className="monster-card-portrait" />
       </div>
       <div className="monster-card-stars" style={{ color: starColor }}>
         {'★'.repeat(def.rarity)}

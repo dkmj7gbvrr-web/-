@@ -83,3 +83,19 @@ export const EGG_TIER_THEME: Record<EggTier, EggTheme> = {
 
 /** 6★（虹卵）は割る直前まで、あえて一段階格下の「ダイヤの卵」に見せて期待感を溜める */
 export const initialEggTier = (rarity: Rarity): EggTier => (rarity === 6 ? 'diamond' : EGG_TIER_BY_RARITY[rarity])
+
+/**
+ * パチンコの「保留ランプ」「文字色予告」を模した期待度ランク。
+ * 演出用の分類であり、排出率そのものには一切影響しない。
+ */
+export type Expectation = 'low' | 'mid' | 'high' | 'legend'
+
+export const expectationOf = (rarity: Rarity): Expectation =>
+  rarity <= 2 ? 'low' : rarity <= 4 ? 'mid' : rarity === 5 ? 'high' : 'legend'
+
+export const EXPECTATION_LABEL: Record<Expectation, string> = {
+  low: '',
+  mid: 'お？',
+  high: '熱い予感…！',
+  legend: '来る、これは来る…！！',
+}
