@@ -32,6 +32,15 @@
     --split-equal: #1baf7a;
     --split-incomeRatio: #eda100;
     --split-customRatio: #e87ba4;
+    /* Categorical: one color per ジャンル (pie/bar charts), fixed order,
+       capped at 6 -- anything past that folds into --cat-other (gray). */
+    --cat-1: #2a78d6;
+    --cat-2: #eb6834;
+    --cat-3: #1baf7a;
+    --cat-4: #eda100;
+    --cat-5: #e87ba4;
+    --cat-6: #008300;
+    --cat-other: #898781;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -51,6 +60,13 @@
       --split-equal: #199e70;
       --split-incomeRatio: #c98500;
       --split-customRatio: #d55181;
+      --cat-1: #3987e5;
+      --cat-2: #d95926;
+      --cat-3: #199e70;
+      --cat-4: #c98500;
+      --cat-5: #d55181;
+      --cat-6: #008300;
+      --cat-other: #898781;
     }
   }
   :root[data-theme="dark"] {
@@ -70,6 +86,13 @@
     --split-equal: #199e70;
     --split-incomeRatio: #c98500;
     --split-customRatio: #d55181;
+    --cat-1: #3987e5;
+    --cat-2: #d95926;
+    --cat-3: #199e70;
+    --cat-4: #c98500;
+    --cat-5: #d55181;
+    --cat-6: #008300;
+    --cat-other: #898781;
   }
 
   * { box-sizing: border-box; }
@@ -331,6 +354,33 @@
     letter-spacing: -0.01em;
   }
   .settlement-none { font-size: 15px; color: var(--ink-muted); padding: 6px 0; }
+
+  .budget-list { padding: 4px 16px 14px; }
+  .budget-row { padding: 10px 0; border-top: 1px solid var(--line); }
+  .budget-row:first-child { border-top: none; }
+  .budget-row-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; margin-bottom: 6px; gap: 8px; }
+  .budget-row-top .num { font-size: 13px; color: var(--ink-muted); white-space: nowrap; }
+  .budget-bar { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+  .budget-bar-fill { height: 100%; background: var(--accent); border-radius: 999px; }
+  .budget-row-over .budget-bar-fill { background: var(--red); }
+  .budget-row-over .budget-row-top .num { color: var(--red); font-weight: 700; }
+  .budget-over-label { font-size: 12px; color: var(--red); margin-top: 4px; font-weight: 600; }
+
+  .category-bar-row .kv-row { padding-bottom: 2px; }
+  .category-bar-track { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin: 0 16px 12px; }
+  .category-bar-fill { height: 100%; border-radius: 999px; background: var(--accent); }
+
+  .category-pie-wrap { display: flex; flex-direction: column; align-items: center; padding: 6px 16px 16px; }
+  .category-pie { width: 168px; height: 168px; }
+  .category-pie-total-label { font-size: 11px; fill: var(--ink-muted); font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif; }
+  .category-pie-total-amount { font-size: 20px; font-weight: 700; fill: var(--ink); font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace; }
+  .category-pie-legend { width: 100%; margin-top: 14px; }
+  .category-pie-legend-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 13.5px; }
+  .category-pie-legend-row:first-child { border-top: none; }
+  .category-pie-swatch { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+  .category-pie-legend-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .category-pie-legend-pct { color: var(--ink-muted); font-size: 12px; width: 38px; flex: none; text-align: right; }
+  .category-pie-legend-amount { flex: none; }
 
   .stamp {
     position: absolute;
@@ -978,6 +1028,14 @@
       </div>
 
       <div class="settings-section">
+        <div class="section-title">予算</div>
+        <div class="field-hint" style="padding-top:0; margin-bottom:12px;">ジャンルごとに毎月の予算額を設定すると、集計タブで実績と比較できます。</div>
+        <div class="settings-actions">
+          <button class="btn btn-secondary" data-action="open-budget-sheet">予算を設定</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
         <div class="section-title">バックアップ</div>
         <div class="field-hint" style="padding-top:0; margin-bottom:12px;">
           入力したデータは自動的に2人の間で共有されます。念のための保存用に、いつでもファイルとして書き出せます。
@@ -1258,6 +1316,21 @@
       <div class="section-label">既定の負担方法</div>
       <div class="option-list" id="category-split-options"></div>
       <button class="btn btn-danger-ghost" id="category-delete-btn" data-action="delete-category" hidden>このジャンルを削除</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet-backdrop" id="budget-sheet-backdrop" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="budget-sheet-title">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <button class="sheet-btn" data-action="close-sheet" data-sheet="budget">キャンセル</button>
+      <div class="sheet-title" id="budget-sheet-title">予算を設定</div>
+      <button class="sheet-btn sheet-btn-primary" data-action="save-budgets">保存</button>
+    </div>
+    <div class="sheet-body">
+      <div class="field-hint" style="padding-top:0; margin-bottom:12px;">ジャンルごとに毎月の予算額を設定できます。空欄のジャンルは予算なしとして扱われ、集計タブには表示されません。</div>
+      <div id="budget-fields"></div>
     </div>
   </div>
 </div>
@@ -1721,6 +1794,87 @@ import {
     return '<span class="category-chip">' + escapeHtml(categoryDisplayName(key)) + '</span>';
   }
 
+  // Caps the pie chart at the top 6 real categories (a fixed, validated
+  // 6-color categorical palette -- never a generated 7th hue); everything
+  // past that, plus the built-in その他 category itself, folds into one
+  // gray その他 slice so the two "other"s never show as separate rows.
+  function categoryPieEntries(byCategory) {
+    const entries = allCategoryOrder()
+      .filter(function (cat) { return cat !== 'other' && byCategory[cat] > 0; })
+      .map(function (cat) { return { id: cat, name: categoryDisplayName(cat), amount: byCategory[cat] }; })
+      .sort(function (a, b) { return b.amount - a.amount; });
+    const top = entries.slice(0, 6);
+    const rest = entries.slice(6);
+    let restTotal = rest.reduce(function (sum, e) { return sum + e.amount; }, 0);
+    restTotal += byCategory.other || 0;
+    const colors = ['var(--cat-1)', 'var(--cat-2)', 'var(--cat-3)', 'var(--cat-4)', 'var(--cat-5)', 'var(--cat-6)'];
+    const result = top.map(function (e, i) { return { id: e.id, name: e.name, amount: e.amount, color: colors[i] }; });
+    if (restTotal > 0) result.push({ id: 'other', name: categoryDisplayName('other'), amount: restTotal, color: 'var(--cat-other)' });
+    return result;
+  }
+
+  // Ring built from a plain <circle> per slice (stroke-dasharray/-offset),
+  // rotated so the first slice starts at 12 o'clock -- no arc-path trig
+  // needed. A small gap between slices (mark-spec spacer) keeps adjacent
+  // same-ish-size slices visually separated even without a legend.
+  function categoryPieSvg(entries, total) {
+    if (total <= 0 || entries.length === 0) return '';
+    const size = 200, r = 80, sw = 30, cx = size / 2, cy = size / 2;
+    const circumference = 2 * Math.PI * r;
+    const gap = entries.length > 1 ? 3 : 0;
+    let offset = 0;
+    const segs = entries.map(function (e) {
+      const frac = e.amount / total;
+      const rawLen = frac * circumference;
+      const len = Math.max(0, rawLen - gap);
+      const seg = '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + e.color + '" stroke-width="' + sw + '" stroke-dasharray="' + len + ' ' + (circumference - len) + '" stroke-dashoffset="' + (-offset) + '"></circle>';
+      offset += rawLen;
+      return seg;
+    }).join('');
+    return '' +
+      '<div class="category-pie-wrap">' +
+        '<svg viewBox="0 0 ' + size + ' ' + size + '" class="category-pie" role="img" aria-label="ジャンル別支出の割合の円グラフ">' +
+          '<g transform="rotate(-90 ' + cx + ' ' + cy + ')">' + segs + '</g>' +
+          '<text x="' + cx + '" y="' + (cy - 4) + '" text-anchor="middle" class="category-pie-total-label">合計</text>' +
+          '<text x="' + cx + '" y="' + (cy + 20) + '" text-anchor="middle" class="category-pie-total-amount">' + formatYen(total) + '</text>' +
+        '</svg>';
+  }
+
+  function categoryPieLegendHtml(entries, total) {
+    return '<div class="category-pie-legend">' + entries.map(function (e) {
+      const pct = total > 0 ? Math.round(e.amount / total * 100) : 0;
+      return '' +
+        '<div class="category-pie-legend-row">' +
+          '<span class="category-pie-swatch" style="background:' + e.color + '"></span>' +
+          '<span class="category-pie-legend-name">' + escapeHtml(e.name) + '</span>' +
+          '<span class="category-pie-legend-pct">' + pct + '%</span>' +
+          '<span class="category-pie-legend-amount num">' + formatYen(e.amount) + '</span>' +
+        '</div>';
+    }).join('') + '</div></div>';
+  }
+
+  // 予算 card: only shows categories that actually have a budget set, each
+  // with a progress bar and (once spending passes the budget) an explicit
+  // over-budget callout -- never just a silent red bar.
+  function renderBudgetCardHtml(s, names) {
+    const budgets = state.settings.categoryBudgets || {};
+    const budgetedCats = allCategoryOrder().filter(function (id) { return budgets[id] > 0; });
+    if (budgetedCats.length === 0) return '';
+    const rows = budgetedCats.map(function (id) {
+      const spent = s.byCategory[id] || 0;
+      const budget = budgets[id];
+      const pct = Math.min(100, Math.round(spent / budget * 100));
+      const over = spent > budget;
+      return '' +
+        '<div class="budget-row' + (over ? ' budget-row-over' : '') + '">' +
+          '<div class="budget-row-top"><span>' + escapeHtml(categoryDisplayName(id)) + '</span><span class="num">' + formatYen(spent) + ' / ' + formatYen(budget) + '</span></div>' +
+          '<div class="budget-bar"><div class="budget-bar-fill" style="width:' + pct + '%"></div></div>' +
+          (over ? '<div class="budget-over-label">' + formatYen(spent - budget) + ' 超過</div>' : '') +
+        '</div>';
+    }).join('');
+    return '<div class="ledger-card"><div class="ledger-title">予算</div><div class="budget-list">' + rows + '</div></div>';
+  }
+
   function guessCategory(memo, merchantMemory) {
     const trimmed = (memo || '').trim();
     if (!trimmed) return 'other';
@@ -1788,7 +1942,7 @@ import {
 
   function defaultState() {
     return {
-      settings: { personAName: 'A', personBName: 'B', cardClosingDay: 6, customCategories: [] },
+      settings: { personAName: 'A', personBName: 'B', cardClosingDay: 6, customCategories: [], categoryBudgets: {} },
       expenses: [],
       incomePeriods: [],
       settledCycles: {},
@@ -1821,7 +1975,8 @@ import {
           personAName: data.personAName || d.settings.personAName,
           personBName: data.personBName || d.settings.personBName,
           cardClosingDay: data.cardClosingDay || d.settings.cardClosingDay,
-          customCategories: Array.isArray(data.customCategories) ? data.customCategories : []
+          customCategories: Array.isArray(data.customCategories) ? data.customCategories : [],
+          categoryBudgets: (data.categoryBudgets && typeof data.categoryBudgets === 'object') ? data.categoryBudgets : {}
         };
         state.settledCycles = (data.settledCycles && typeof data.settledCycles === 'object') ? data.settledCycles : {};
         state.settledInitialCosts = !!data.settledInitialCosts;
@@ -2083,12 +2238,24 @@ import {
         return '<div class="kv-row"><span style="display:flex; align-items:center; gap:8px;">' + splitDotHtml(t) + '<span>' + escapeHtml(splitLabel(t, names)) + '</span></span><span class="num">' + formatYen(s.bySplitType[t]) + '</span></div>';
       }).join('');
 
-    const categoryBreakdown = allCategoryOrder()
+    const categoryEntries = allCategoryOrder()
       .filter(function (cat) { return s.byCategory[cat] > 0; })
-      .sort(function (a, b) { return s.byCategory[b] - s.byCategory[a]; })
-      .map(function (cat) {
-        return '<div class="kv-row"><span>' + escapeHtml(categoryDisplayName(cat)) + '</span><span class="num">' + formatYen(s.byCategory[cat]) + '</span></div>';
-      }).join('');
+      .map(function (cat) { return { id: cat, name: categoryDisplayName(cat), amount: s.byCategory[cat] }; })
+      .sort(function (a, b) { return b.amount - a.amount; });
+    const maxCategoryAmount = categoryEntries.length ? categoryEntries[0].amount : 0;
+    // A bar under each row (relative to the biggest category) so the
+    // ranked list also reads visually, not just as numbers.
+    const categoryBreakdown = categoryEntries.map(function (e) {
+      const pct = maxCategoryAmount > 0 ? Math.round(e.amount / maxCategoryAmount * 100) : 0;
+      return '' +
+        '<div class="category-bar-row">' +
+          '<div class="kv-row"><span>' + escapeHtml(e.name) + '</span><span class="num">' + formatYen(e.amount) + '</span></div>' +
+          '<div class="category-bar-track"><div class="category-bar-fill" style="width:' + pct + '%"></div></div>' +
+        '</div>';
+    }).join('');
+    const pieEntries = categoryPieEntries(s.byCategory);
+    const pieHtml = pieEntries.length ? categoryPieSvg(pieEntries, s.total) + categoryPieLegendHtml(pieEntries, s.total) : '';
+    const budgetCardHtml = renderBudgetCardHtml(s, names);
 
     const sharedPlan = sharedAccountPlan(s);
     const sharedPlanLines = [];
@@ -2134,6 +2301,13 @@ import {
           (settled ? 'この月の精算済みを取り消す' : 'この月を精算済みにする') +
         '</button>' +
       '</div>' +
+      budgetCardHtml +
+      (pieHtml ?
+        '<div class="ledger-card">' +
+          '<div class="ledger-title">支出の構成</div>' +
+          pieHtml +
+        '</div>'
+        : '') +
       '<div class="ledger-card">' +
         '<div class="ledger-title">内訳（ジャンル別）</div>' +
         (categoryBreakdown || '<div class="empty-inline">この月の支出はありません</div>') +
@@ -2216,6 +2390,39 @@ import {
           '</div>' +
         '</button>';
     }).join('') + '</div>';
+  }
+
+  function openBudgetSheet() {
+    renderBudgetFields();
+    showSheet('budget-sheet-backdrop');
+  }
+
+  function renderBudgetFields() {
+    const container = document.getElementById('budget-fields');
+    const budgets = state.settings.categoryBudgets || {};
+    container.innerHTML = allCategoryOrder().map(function (catId) {
+      const val = budgets[catId] != null ? formatDigitsWithCommas(String(budgets[catId])) : '';
+      return '' +
+        '<div class="field-group">' +
+          '<label class="field-label">' + escapeHtml(categoryDisplayName(catId)) + '</label>' +
+          '<div class="amount-field">' +
+            '<span class="yen-mark">¥</span>' +
+            '<input type="text" inputmode="numeric" class="amount-input budget-input" data-category="' + catId + '" placeholder="0" value="' + escapeHtml(val) + '">' +
+          '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  async function saveBudgets() {
+    const inputs = document.querySelectorAll('#budget-fields .budget-input');
+    const next = {};
+    inputs.forEach(function (el) {
+      const raw = el.value.replace(/[^\d]/g, '');
+      const n = Number(raw);
+      if (raw && n > 0) next[el.dataset.category] = n;
+    });
+    closeSheet('budget-sheet-backdrop');
+    await updateSettings({ categoryBudgets: next });
   }
 
   function renderAll() {
@@ -3529,6 +3736,8 @@ import {
       case 'add-category': openCategorySheet(null); break;
       case 'edit-category': openCategorySheet(target.dataset.id); break;
       case 'add-category-from-expense': openCategorySheet(null, { returnToExpense: true }); break;
+      case 'open-budget-sheet': openBudgetSheet(); break;
+      case 'save-budgets': saveBudgets(); break;
       case 'delete-category': deleteCategory(); break;
       case 'save-category': saveCategory(); break;
       case 'select-category-split-type':
@@ -3653,6 +3862,11 @@ import {
       currentIncomeExtraValues[index][person === 'a' ? 'aAmount' : 'bAmount'] = target.value;
     }
     updateIncomeRatioPreview();
+  });
+
+  document.getElementById('budget-fields').addEventListener('input', function (e) {
+    if (!e.target.classList.contains('budget-input')) return;
+    reformatAmountInput(e.target);
   });
 
   document.getElementById('summary-cycle-select').addEventListener('change', function (e) {
