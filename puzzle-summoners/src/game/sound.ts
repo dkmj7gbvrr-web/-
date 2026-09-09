@@ -199,33 +199,51 @@ export const playReversalSting = (): void => {
 }
 
 /**
- * 開封が始まる直前の「先バレ」演出音。低い地鳴りのような予兆音。
- * 文字では一切ネタバレせず、音の違いだけで格の違いを伝える「音声先読み」（リゼロのスロット演出を意識）。
- * tier='legend'（虹卵が混ざっている）のときだけ、地鳴りの上にきらめく旋律を重ねて別格感を出す
+ * 開封が始まる直前の「先バレ」演出音。パチンコ『リゼロ』の先バレ音「ポキューン」を意識した、
+ * 一瞬で駆け上がって伸びる甲高い電子音。文字では一切ネタバレせず、音の違いだけで格を伝える。
+ * 本家では素の「ポキューン」に対し、キャラボイス付きの先バレは大当たり濃厚とされる。
+ * それを踏まえ、tier='legend'（虹卵が混ざっている）のときだけ素の音に続けてボイスを模した
+ * 旋律を重ね、音だけで「これはボイス付き＝別格」と分かるようにしている
  */
-export const playOmenRumble = (tier: 'high' | 'legend' = 'high'): void => {
+export const playOmenPokyuun = (tier: 'high' | 'legend' = 'high'): void => {
   const ctx = getContext()
   if (!ctx) return
   const now = ctx.currentTime
-  const osc = ctx.createOscillator()
-  const gainNode = ctx.createGain()
-  osc.type = 'sine'
-  osc.frequency.setValueAtTime(48, now)
-  osc.frequency.linearRampToValueAtTime(tier === 'legend' ? 76 : 64, now + 0.9)
-  gainNode.gain.setValueAtTime(0, now)
-  gainNode.gain.linearRampToValueAtTime(0.14, now + 0.2)
-  gainNode.gain.linearRampToValueAtTime(0.1, now + 0.7)
-  gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 1.0)
-  osc.connect(gainNode)
-  gainNode.connect(ctx.destination)
-  osc.start(now)
-  osc.stop(now + 1.05)
-  playNoiseBurst(ctx, now, 0.9, 0.05, 300)
+
+  // 「ポキュ」: 一瞬で駆け上がる甲高いアタック
+  const chirp = ctx.createOscillator()
+  const chirpGain = ctx.createGain()
+  chirp.type = 'triangle'
+  chirp.frequency.setValueAtTime(520, now)
+  chirp.frequency.exponentialRampToValueAtTime(1760, now + 0.09)
+  chirpGain.gain.setValueAtTime(0, now)
+  chirpGain.gain.linearRampToValueAtTime(0.18, now + 0.02)
+  chirpGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16)
+  chirp.connect(chirpGain)
+  chirpGain.connect(ctx.destination)
+  chirp.start(now)
+  chirp.stop(now + 0.18)
+
+  // 「ーン」: 余韻の伸びる鈴のような音
+  const bell = ctx.createOscillator()
+  const bellGain = ctx.createGain()
+  bell.type = 'sine'
+  bell.frequency.setValueAtTime(1760, now + 0.08)
+  bell.frequency.exponentialRampToValueAtTime(1320, now + 0.5)
+  bellGain.gain.setValueAtTime(0, now + 0.08)
+  bellGain.gain.linearRampToValueAtTime(0.13, now + 0.12)
+  bellGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.6)
+  bell.connect(bellGain)
+  bellGain.connect(ctx.destination)
+  bell.start(now + 0.08)
+  bell.stop(now + 0.65)
+
+  playTone(ctx, 2640, now + 0.1, 0.4, 0.05, 'sine')
 
   if (tier === 'legend') {
-    const notes = [880, 1046.5, 1318.5]
-    notes.forEach((freq, i) => {
-      playTone(ctx, freq, now + 0.45 + i * 0.15, 0.55, 0.05, 'sine')
+    const voiceNotes = [988, 1175, 1568]
+    voiceNotes.forEach((freq, i) => {
+      playTone(ctx, freq, now + 0.42 + i * 0.16, 0.5, 0.06, 'triangle')
     })
   }
 }

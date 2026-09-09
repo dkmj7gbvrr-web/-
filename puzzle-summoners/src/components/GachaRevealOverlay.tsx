@@ -9,7 +9,7 @@ import {
   playEggUpgrade,
   playGachaChime,
   playMissThud,
-  playOmenRumble,
+  playOmenPokyuun,
   playReversalSting,
 } from '../game/sound'
 import type { Rarity } from '../game/types'
@@ -61,7 +61,7 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
   // 文字では何も明かさず、音の違い（レジェンド級だけ特別なきらめきが重なる）だけで格を伝える
   useEffect(() => {
     if (!hasBigHitRef.current) return
-    playOmenRumble(omenTierRef.current)
+    playOmenPokyuun(omenTierRef.current)
     const id = window.setTimeout(() => {
       setOmenActive(false)
       setIntroDone(true)
