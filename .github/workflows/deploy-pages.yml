@@ -7,10 +7,12 @@ on:
       - claude/pokefuta-visit-tracker-f4uqq5
       - claude/nanpure-app-dev-u0i5aq
       - claude/test-tube-liquid-game-4trso3
+      - claude/kaibugyo-pachinko-game-2gxf3e
     paths:
       - "pokefuta-visit-tracker/**"
       - "nanpure-app/**"
       - "test-tube-liquid-game/**"
+      - "umi-pachinko-game/**"
       - "docs/**"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
@@ -37,6 +39,7 @@ jobs:
             pokefuta-visit-tracker/package-lock.json
             nanpure-app/package-lock.json
             test-tube-liquid-game/package-lock.json
+            umi-pachinko-game/package-lock.json
 
       - name: Build pokefuta-visit-tracker
         working-directory: pokefuta-visit-tracker
@@ -57,6 +60,13 @@ jobs:
           npm run test
           npm run build
 
+      - name: Build umi-pachinko-game
+        working-directory: umi-pachinko-game
+        run: |
+          npm ci
+          npm run test
+          npm run build
+
       - name: Assemble combined site
         run: |
           mkdir -p site
@@ -65,6 +75,8 @@ jobs:
           cp -r nanpure-app/dist/. site/nanpure-app/
           mkdir -p site/test-tube-liquid-game
           cp -r test-tube-liquid-game/dist/. site/test-tube-liquid-game/
+          mkdir -p site/umi-pachinko-game
+          cp -r umi-pachinko-game/dist/. site/umi-pachinko-game/
           mkdir -p site/warikan-kakeibo
           cp -r docs/. site/warikan-kakeibo/
 
