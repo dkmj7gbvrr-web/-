@@ -964,6 +964,9 @@
           <button class="icon-btn" data-action="import-pdf-trigger" aria-label="明細PDFを読み込む">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9.5 17v-4.5h1.3a1.3 1.3 0 0 1 0 2.6H9.5M13.5 17v-4.5h1.6a1 1 0 0 1 0 4.5h-1.6z"/></svg>
           </button>
+          <button class="icon-btn" data-action="open-template-picker" aria-label="定期支出から追加">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 21v-5h5"/><path d="M12 8v4l3 2"/></svg>
+          </button>
           <button class="icon-btn" data-action="add-expense" aria-label="支出を追加">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
           </button>
@@ -1052,6 +1055,15 @@
       </div>
 
       <div class="settings-section">
+        <div class="section-title">定期支出</div>
+        <div class="field-hint" style="padding-top:0; margin-bottom:12px;">家賃・サブスクなど毎月同じ内容の支出をテンプレートとして登録しておくと、支出タブからワンタップで追加できます。</div>
+        <div id="recurring-template-list"></div>
+        <div class="settings-actions" style="margin-top:10px;">
+          <button class="btn btn-secondary" data-action="open-template-sheet">＋ 定期支出を追加</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
         <div class="section-title">バックアップ</div>
         <div class="field-hint" style="padding-top:0; margin-bottom:12px;">
           入力したデータは自動的に2人の間で共有されます。念のための保存用に、いつでもファイルとして書き出せます。
@@ -1107,7 +1119,7 @@
         <label class="field-label" for="expense-note">備考</label>
         <input type="text" id="expense-note" placeholder="例: 東京都渋谷区" maxlength="120">
       </div>
-      <div class="field-group">
+      <div class="field-group" id="expense-date-field">
         <label class="field-label" for="expense-date">日付</label>
         <input type="date" id="expense-date">
       </div>
@@ -1119,9 +1131,11 @@
         </div>
       </div>
 
-      <div class="section-label">この支出の種類</div>
-      <div class="segmented" id="expense-kind-segmented"></div>
-      <div class="field-hint" id="expense-kind-hint" style="padding-top:6px; margin-bottom:16px;"></div>
+      <div id="expense-kind-field">
+        <div class="section-label">この支出の種類</div>
+        <div class="segmented" id="expense-kind-segmented"></div>
+        <div class="field-hint" id="expense-kind-hint" style="padding-top:6px; margin-bottom:16px;"></div>
+      </div>
 
       <div class="section-label">ジャンル</div>
       <div class="category-picker" id="expense-category-picker"></div>
@@ -1292,6 +1306,16 @@
       </div>
 
       <div class="manual-section">
+        <h3>予算・支出の可視化</h3>
+        <p>設定タブの「予算」からジャンルごとに毎月の予算額を設定すると、集計タブに実績との比較（超過時は赤色で表示）が出ます。集計タブにはこのほか、ジャンル別の支出構成を示す円グラフ、金額順に並ぶジャンル別内訳（バー付き）、直近6サイクル分の支出推移グラフと先月比も表示されます。</p>
+      </div>
+
+      <div class="manual-section">
+        <h3>定期支出</h3>
+        <p>設定タブの「定期支出」から、家賃やサブスクなど毎月同じ内容の支出をテンプレートとして登録できます。支出タブの時計アイコンから選ぶと、日付以外の内容（金額・ジャンル・負担の分け方・立替えた人）が入力済みの状態で支出の追加画面が開くので、日付を確認して保存するだけで登録できます。</p>
+      </div>
+
+      <div class="manual-section">
         <h3>集計・精算</h3>
         <p>集計タブで、締め日ごとの請求サイクルの負担額・精算額を確認できます。精算が終わったサイクルは「精算済み」にできます。</p>
       </div>
@@ -1374,6 +1398,20 @@
     </div>
     <div class="import-sheet-footer">
       <button class="btn btn-primary" data-action="commit-import" id="import-commit-btn">追加する</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet-backdrop" id="template-picker-sheet-backdrop" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="template-picker-title">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <button class="sheet-btn" data-action="close-sheet" data-sheet="template-picker">キャンセル</button>
+      <div class="sheet-title" id="template-picker-title">定期支出から追加</div>
+      <span style="width:52px;"></span>
+    </div>
+    <div class="sheet-body">
+      <div id="template-picker-list"></div>
     </div>
   </div>
 </div>
@@ -1788,6 +1826,16 @@ import {
   function findCustomCategory(id) {
     return customCategoryList().find(function (c) { return c.id === id; }) || null;
   }
+
+  // 定期支出 (recurring expense templates): saved presets for rent,
+  // subscriptions, etc. -- everything an expense needs except a date,
+  // which is chosen fresh each time the template is applied.
+  function recurringTemplates() {
+    return (state.settings && Array.isArray(state.settings.recurringTemplates)) ? state.settings.recurringTemplates : [];
+  }
+  function findRecurringTemplate(id) {
+    return recurringTemplates().find(function (t) { return t.id === id; }) || null;
+  }
   // Built-ins first (その他 held back to the end), then custom categories in
   // the order they were created, then その他 -- so その他 always reads as
   // the final catch-all rather than sitting in the middle of the list.
@@ -2019,7 +2067,7 @@ import {
 
   function defaultState() {
     return {
-      settings: { personAName: 'A', personBName: 'B', cardClosingDay: 6, customCategories: [], categoryBudgets: {} },
+      settings: { personAName: 'A', personBName: 'B', cardClosingDay: 6, customCategories: [], categoryBudgets: {}, recurringTemplates: [] },
       expenses: [],
       incomePeriods: [],
       settledCycles: {},
@@ -2053,7 +2101,8 @@ import {
           personBName: data.personBName || d.settings.personBName,
           cardClosingDay: data.cardClosingDay || d.settings.cardClosingDay,
           customCategories: Array.isArray(data.customCategories) ? data.customCategories : [],
-          categoryBudgets: (data.categoryBudgets && typeof data.categoryBudgets === 'object') ? data.categoryBudgets : {}
+          categoryBudgets: (data.categoryBudgets && typeof data.categoryBudgets === 'object') ? data.categoryBudgets : {},
+          recurringTemplates: Array.isArray(data.recurringTemplates) ? data.recurringTemplates : []
         };
         state.settledCycles = (data.settledCycles && typeof data.settledCycles === 'object') ? data.settledCycles : {};
         state.settledInitialCosts = !!data.settledInitialCosts;
@@ -2452,6 +2501,7 @@ import {
     document.getElementById('setting-closing-day').value = state.settings.cardClosingDay;
     document.getElementById('settings-code-value').textContent = currentCode || '';
     renderCustomCategoryList();
+    renderRecurringTemplateList();
   }
 
   function renderCustomCategoryList() {
@@ -2471,6 +2521,74 @@ import {
           '</div>' +
         '</button>';
     }).join('') + '</div>';
+  }
+
+  function renderRecurringTemplateList() {
+    const names = currentNames();
+    const container = document.getElementById('recurring-template-list');
+    const list = recurringTemplates();
+    if (list.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+    container.innerHTML = '<div class="ledger">' + list.map(function (t) {
+      return '' +
+        '<button class="row" data-action="edit-template" data-id="' + t.id + '">' +
+          '<div class="main">' +
+            '<div class="title">' + escapeHtml(t.memo || splitShort(t.splitType)) + '</div>' +
+            '<div class="meta">' +
+              splitDotHtml(t.splitType) +
+              '<span>' + escapeHtml(splitLabel(t.splitType, names)) + '</span><span>・</span>' +
+              '<span>立替: ' + escapeHtml(paidByLabel(t.paidBy, names)) + '</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="amount">' + formatYen(t.amount) + '</div>' +
+        '</button>';
+    }).join('') + '</div>';
+  }
+
+  function openTemplatePicker() {
+    renderTemplatePickerList();
+    showSheet('template-picker-sheet-backdrop');
+  }
+
+  function renderTemplatePickerList() {
+    const names = currentNames();
+    const container = document.getElementById('template-picker-list');
+    const list = recurringTemplates();
+    if (list.length === 0) {
+      container.innerHTML = emptyState('tray', '定期支出がありません', '設定タブの「定期支出」から、家賃やサブスクなどを登録できます');
+      return;
+    }
+    container.innerHTML = '<div class="ledger">' + list.map(function (t) {
+      return '' +
+        '<button class="row" data-action="apply-template" data-id="' + t.id + '">' +
+          '<div class="main">' +
+            '<div class="title">' + escapeHtml(t.memo || splitShort(t.splitType)) + '</div>' +
+            '<div class="meta">' +
+              splitDotHtml(t.splitType) +
+              '<span>' + escapeHtml(splitLabel(t.splitType, names)) + '</span><span>・</span>' +
+              categoryChipHtml(t.category) +
+            '</div>' +
+          '</div>' +
+          '<div class="amount">' + formatYen(t.amount) + '</div>' +
+        '</button>';
+    }).join('') + '</div>';
+  }
+
+  // Pre-fills a brand-new expense from a saved template (today's date,
+  // everything else copied) -- opens the normal expense sheet so the date
+  // (or anything else) can still be adjusted before saving, rather than
+  // silently committing on a single tap.
+  function applyTemplateToNewExpense(id) {
+    const t = findRecurringTemplate(id);
+    if (!t) return;
+    closeSheet('template-picker-sheet-backdrop');
+    resetExpenseSheetMode();
+    editingExpenseId = null;
+    editingPendingImportIndex = null;
+    populateExpenseSheetFields(Object.assign({}, t, { date: toDateInputValue(new Date()) }), false);
+    showSheet('expense-sheet-backdrop');
   }
 
   function openBudgetSheet() {
@@ -2527,6 +2645,8 @@ import {
   let editingExpenseId = null;
   let editingIncomeId = null;
   let editingPendingImportIndex = null;
+  let templateMode = false;
+  let editingTemplateId = null;
   let currentSplitType = 'equal';
   let currentCustomPercent = 50;
   let customRatioMode = 'percent';
@@ -2883,7 +3003,16 @@ import {
     document.getElementById('income-ratio-select').value = String(Math.round(raw));
   }
 
+  function resetExpenseSheetMode() {
+    templateMode = false;
+    editingTemplateId = null;
+    document.getElementById('expense-date-field').hidden = false;
+    document.getElementById('expense-kind-field').hidden = false;
+    document.getElementById('expense-delete-btn').textContent = 'この支出を削除';
+  }
+
   function openExpenseSheet(id) {
+    resetExpenseSheetMode();
     editingExpenseId = id || null;
     editingPendingImportIndex = null;
     const e = id ? state.expenses.find(function (x) { return x.id === id; }) : null;
@@ -2892,9 +3021,25 @@ import {
   }
 
   function openExpenseSheetForPendingImport(index) {
+    resetExpenseSheetMode();
     editingExpenseId = null;
     editingPendingImportIndex = index;
     populateExpenseSheetFields(pendingImportItems[index], true);
+    showSheet('expense-sheet-backdrop');
+  }
+
+  function openTemplateSheet(id) {
+    resetExpenseSheetMode();
+    editingExpenseId = null;
+    editingPendingImportIndex = null;
+    templateMode = true;
+    editingTemplateId = id || null;
+    const t = id ? findRecurringTemplate(id) : null;
+    populateExpenseSheetFields(t, !!t);
+    document.getElementById('expense-sheet-title').textContent = t ? '定期支出を編集' : '定期支出を追加';
+    document.getElementById('expense-date-field').hidden = true;
+    document.getElementById('expense-kind-field').hidden = true;
+    document.getElementById('expense-delete-btn').textContent = 'この定期支出を削除';
     showSheet('expense-sheet-backdrop');
   }
 
@@ -2902,7 +3047,7 @@ import {
     document.getElementById('expense-sheet-title').textContent = showDeleteButton ? '支出を編集' : '支出を追加';
     document.getElementById('expense-memo').value = e ? e.memo : '';
     document.getElementById('expense-note').value = e && e.note ? e.note : '';
-    document.getElementById('expense-date').value = e ? e.date : toDateInputValue(new Date());
+    document.getElementById('expense-date').value = (e && e.date) ? e.date : toDateInputValue(new Date());
     document.getElementById('expense-amount').value = e ? formatDigitsWithCommas(String(e.amount)) : '';
     document.getElementById('expense-delete-btn').hidden = !showDeleteButton;
 
@@ -2930,14 +3075,33 @@ import {
     updateCustomRatioVisibility();
   }
 
+  async function saveRecurringTemplate(fields) {
+    const list = recurringTemplates().slice();
+    if (editingTemplateId) {
+      const idx = list.findIndex(function (t) { return t.id === editingTemplateId; });
+      if (idx !== -1) list[idx] = Object.assign({ id: editingTemplateId }, fields);
+      else list.push(Object.assign({ id: editingTemplateId }, fields));
+    } else {
+      list.push(Object.assign({ id: uid() }, fields));
+    }
+    closeSheet('expense-sheet-backdrop');
+    await updateSettings({ recurringTemplates: list });
+  }
+
   async function saveExpense() {
     const amountRaw = document.getElementById('expense-amount').value.replace(/[^\d]/g, '');
     const amount = Number(amountRaw);
     if (!amountRaw || !Number.isFinite(amount) || amount <= 0) { toast('金額を入力してください'); return; }
-    const date = document.getElementById('expense-date').value || toDateInputValue(new Date());
     const memo = document.getElementById('expense-memo').value.trim();
     const note = document.getElementById('expense-note').value.trim();
     const customAPercent = currentSplitType === 'customRatio' ? currentCustomPercent : null;
+
+    if (templateMode) {
+      await saveRecurringTemplate({ memo: memo, note: note, amount: amount, splitType: currentSplitType, customAPercent: customAPercent, paidBy: currentPaidBy, category: currentCategory });
+      return;
+    }
+
+    const date = document.getElementById('expense-date').value || toDateInputValue(new Date());
     const payload = { date: date, amount: amount, memo: memo, note: note, splitType: currentSplitType, customAPercent: customAPercent, paidBy: currentPaidBy, category: currentCategory, isInitialCost: currentIsInitialCost };
 
     if (editingPendingImportIndex !== null) {
@@ -2963,6 +3127,14 @@ import {
   }
 
   async function deleteExpense() {
+    if (templateMode) {
+      if (!editingTemplateId) { closeSheet('expense-sheet-backdrop'); return; }
+      if (!confirm('この定期支出を削除しますか？')) return;
+      const list = recurringTemplates().filter(function (t) { return t.id !== editingTemplateId; });
+      closeSheet('expense-sheet-backdrop');
+      await updateSettings({ recurringTemplates: list });
+      return;
+    }
     if (editingPendingImportIndex !== null) {
       pendingImportItems.splice(editingPendingImportIndex, 1);
       closeSheet('expense-sheet-backdrop');
@@ -3819,6 +3991,10 @@ import {
       case 'add-category-from-expense': openCategorySheet(null, { returnToExpense: true }); break;
       case 'open-budget-sheet': openBudgetSheet(); break;
       case 'save-budgets': saveBudgets(); break;
+      case 'open-template-sheet': openTemplateSheet(null); break;
+      case 'edit-template': openTemplateSheet(target.dataset.id); break;
+      case 'open-template-picker': openTemplatePicker(); break;
+      case 'apply-template': applyTemplateToNewExpense(target.dataset.id); break;
       case 'delete-category': deleteCategory(); break;
       case 'save-category': saveCategory(); break;
       case 'select-category-split-type':
