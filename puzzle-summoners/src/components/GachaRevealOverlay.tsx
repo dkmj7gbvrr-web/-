@@ -22,11 +22,13 @@ interface GachaRevealOverlayProps {
   readonly onClose: () => void
 }
 
-const SHAKE_MS = 320
+// 期待度が高いほど、その卵にフォーカスする時間そのものを長くする
+// （10連が「ポンポン」流れ落ちるだけにならないよう、1個1個に注目させる間を作る）
+const SHAKE_MS_BY_TIER: Record<TellTier, number> = { low: 260, mid: 380, high: 480, legend: 620 }
+const SETTLE_MS_BY_TIER: Record<TellTier, number> = { low: 300, mid: 440, high: 580, legend: 780 }
 const MISS_MS = 420
 const REVERSAL_MS = 480
 const UPGRADE_MS = 700
-const AUTO_ADVANCE_MS = 320
 const OMEN_MS = 950
 
 type CrackPhase = 'shake' | 'miss' | 'reversal' | 'upgrade' | null
@@ -95,7 +97,7 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
 
     setActiveIndex(index)
     setPhase('shake')
-    await sleep(SHAKE_MS)
+    await sleep(SHAKE_MS_BY_TIER[tellTier])
     if (cancelled()) return
 
     if (isHypeReach) {
@@ -131,12 +133,11 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
 
   useEffect(() => {
     if (isDone || activeIndex !== null || !introDone) return
-    const id = window.setTimeout(
-      () => {
-        void startCrack(revealedCount)
-      },
-      revealedCount === 0 ? 450 : AUTO_ADVANCE_MS,
-    )
+    // 直前に見せた卵の期待度が高いほど、次に進むまでの「間」も長くして焦らさない
+    const settleDelay = revealedCount === 0 ? 450 : SETTLE_MS_BY_TIER[tellTiers[revealedCount - 1]]
+    const id = window.setTimeout(() => {
+      void startCrack(revealedCount)
+    }, settleDelay)
     advanceTimeoutRef.current = id
     return () => window.clearTimeout(id)
     // startCrackはこのレンダーのrevealedCount/pullsに紐づくクロージャなので依存配列に含める必要はない
@@ -194,7 +195,10 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
         </div>
       )}
 
-      <div className="gacha-reveal-grid" onClick={(event) => event.stopPropagation()}>
+      <div
+        className={`gacha-reveal-grid${activeIndex !== null ? ' is-focusing' : ''}`}
+        onClick={(event) => event.stopPropagation()}
+      >
         {pulls.map((pull, index) => {
           const revealed = index < revealedCount
           const isActive = index === activeIndex
@@ -203,14 +207,16 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
           if (revealed) {
             return (
               <div key={index} className="gacha-reveal-slot" style={{ animationDelay: `${Math.min(index, 9) * 70}ms` }}>
-                <div
-                  className={`gacha-reveal-card${pull.monster.rarity >= 5 ? ' gacha-reveal-card--burst' : ''}`}
-                  style={withCssVar('--burst-color', RARITY_STAR_COLOR[pull.monster.rarity])}
-                >
-                  <MonsterCard
-                    def={pull.monster}
-                    badge={pull.pityTriggered ? '天井' : pull.monster.rarity >= 5 ? 'PICKUP' : undefined}
-                  />
+                <div className="gacha-focus-frame">
+                  <div
+                    className={`gacha-reveal-card${pull.monster.rarity >= 5 ? ' gacha-reveal-card--burst' : ''}`}
+                    style={withCssVar('--burst-color', RARITY_STAR_COLOR[pull.monster.rarity])}
+                  >
+                    <MonsterCard
+                      def={pull.monster}
+                      badge={pull.pityTriggered ? '天井' : pull.monster.rarity >= 5 ? 'PICKUP' : undefined}
+                    />
+                  </div>
                 </div>
               </div>
             )
@@ -234,24 +240,37 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
               ? `gacha-hold-lamp gacha-hold-lamp--locked gacha-hold-lamp--${phase === 'miss' ? 'low' : tellTier}`
               : `gacha-hold-lamp gacha-hold-lamp--cycling`
 
+          const frameClass = [
+            'gacha-focus-frame',
+            isActive ? 'is-focus-active' : '',
+            isActive ? `is-focus-tier-${tellTier}` : '',
+          ]
+            .filter(Boolean)
+            .join(' ')
+
           return (
             <div key={index} className="gacha-reveal-slot" style={{ animationDelay: `${Math.min(index, 9) * 70}ms` }}>
-              <span className={holdLampClass} style={{ animationDelay: `${(index % 7) * 137}ms` }} />
-              <button
-                type="button"
-                className={eggClass}
-                onClick={handleTap}
-                aria-label={`タップして${egg.label}を割る`}
-                title={egg.label}
-                style={{ ...withCssVar('--egg-gradient', egg.gradient), ...withCssVar('--egg-glow', egg.glow) }}
-              />
-              {isActive && phase === 'shake' && TELL_LABEL[tellTier] && (
-                <span className={`gacha-expect-text gacha-expect-text--${tellTier}`}>{TELL_LABEL[tellTier]}</span>
-              )}
-              {isActive && phase === 'miss' && <span className="gacha-expect-text gacha-expect-text--low">…あれ？</span>}
-              {isActive && phase === 'reversal' && (
-                <span className="gacha-expect-text gacha-expect-text--legend">まさかの…！！</span>
-              )}
+              <div className={frameClass}>
+                {isActive && <span className="gacha-focus-aura" />}
+                <span className={holdLampClass} style={{ animationDelay: `${(index % 7) * 137}ms` }} />
+                <button
+                  type="button"
+                  className={eggClass}
+                  onClick={handleTap}
+                  aria-label={`タップして${egg.label}を割る`}
+                  title={egg.label}
+                  style={{ ...withCssVar('--egg-gradient', egg.gradient), ...withCssVar('--egg-glow', egg.glow) }}
+                />
+                {isActive && phase === 'shake' && TELL_LABEL[tellTier] && (
+                  <span className={`gacha-expect-text gacha-expect-text--${tellTier}`}>{TELL_LABEL[tellTier]}</span>
+                )}
+                {isActive && phase === 'miss' && (
+                  <span className="gacha-expect-text gacha-expect-text--low">…あれ？</span>
+                )}
+                {isActive && phase === 'reversal' && (
+                  <span className="gacha-expect-text gacha-expect-text--legend">まさかの…！！</span>
+                )}
+              </div>
             </div>
           )
         })}
