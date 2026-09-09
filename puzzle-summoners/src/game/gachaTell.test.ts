@@ -9,7 +9,7 @@ describe('rollTellTier', () => {
   it('rngが0を返すとき各レアリティの最初の候補になる', () => {
     expect(rollTellTier(() => 0, 1)).toBe('low')
     expect(rollTellTier(() => 0, 5)).toBe('mid')
-    expect(rollTellTier(() => 0, 6)).toBe('high')
+    expect(rollTellTier(() => 0, 6)).toBe('mid')
   })
 
   it('rngが1未満の最大値に近いとき各レアリティの最後の候補になる', () => {
@@ -28,7 +28,8 @@ describe('rollTellTier', () => {
     const rng = mulberry32(2)
     const seen = new Set<string>()
     for (let i = 0; i < 2000; i++) seen.add(rollTellTier(rng, 6))
-    expect(seen.has('high')).toBe(true)
+    expect(seen.has('mid')).toBe(true)
+    expect(seen.has('legend')).toBe(true)
   })
 
   it('どのレアリティでも必ず何らかのTellTierを返す', () => {

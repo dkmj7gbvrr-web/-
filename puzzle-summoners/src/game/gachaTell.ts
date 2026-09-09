@@ -45,8 +45,9 @@ const TELL_WEIGHTS: Record<Rarity, readonly (readonly [TellTier, number])[]> = {
     ['legend', 0.15],
   ],
   6: [
+    ['mid', 0.05],
     ['high', 0.15],
-    ['legend', 0.85],
+    ['legend', 0.8],
   ],
 }
 
