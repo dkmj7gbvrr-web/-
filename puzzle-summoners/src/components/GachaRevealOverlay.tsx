@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { withCssVar } from '../game/cssVar'
+import { TELL_LABEL, compareTellTier, rollTellTier } from '../game/gachaTell'
+import type { TellTier } from '../game/gachaTell'
 import type { PullRecord } from '../game/gacha'
-import { EGG_TIER_THEME, EXPECTATION_LABEL, RARITY_STAR_COLOR, expectationOf, initialEggTier } from '../game/orbTheme'
-import type { EggTier, Expectation } from '../game/orbTheme'
+import { EGG_TIER_THEME, RARITY_STAR_COLOR, initialEggTier } from '../game/orbTheme'
+import type { EggTier } from '../game/orbTheme'
+import { mulberry32, randomSeed } from '../game/rng'
 import {
   playBigWinFanfare,
   playEggCrack,
@@ -12,7 +15,6 @@ import {
   playOmenPokyuun,
   playReversalSting,
 } from '../game/sound'
-import type { Rarity } from '../game/types'
 import { MonsterCard } from './MonsterCard'
 
 interface GachaRevealOverlayProps {
@@ -26,23 +28,32 @@ const REVERSAL_MS = 480
 const UPGRADE_MS = 700
 const AUTO_ADVANCE_MS = 320
 const OMEN_MS = 950
-const BIG_WIN_LABEL: Partial<Record<Rarity, string>> = {
-  5: '激レア確定！！',
-  6: 'LEGEND!!!',
-}
 
 type CrackPhase = 'shake' | 'miss' | 'reversal' | 'upgrade' | null
 
 interface BigWinBanner {
   readonly id: number
-  readonly rarity: Rarity
+  readonly tellTier: TellTier
+  readonly pityTriggered: boolean
+}
+
+const bannerLabel = (banner: BigWinBanner): string => {
+  if (banner.pityTriggered) return '天井到達！5★以上確定！！'
+  return banner.tellTier === 'legend' ? 'LEGEND…！？' : '激アツ…！？'
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) => {
-  const hasBigHitRef = useRef(pulls.some((p) => p.monster.rarity >= 5))
-  const omenTierRef = useRef<'high' | 'legend'>(pulls.some((p) => p.monster.rarity === 6) ? 'legend' : 'high')
+  // 「見せかけの期待度」を演出専用の乱数で決める。本家パチンコの信頼度と同じく、
+  // ここで高い期待度が出ても実際に高レアが出るとは限らないし、逆に低い期待度のまま
+  // 高レアが出ることもある（実際の抽選結果=pulls自体には一切影響しない）
+  const [tellTiers] = useState<readonly TellTier[]>(() => {
+    const rng = mulberry32(randomSeed())
+    return pulls.map((p) => rollTellTier(rng, p.monster.rarity))
+  })
+  const maxTellTierRef = useRef(tellTiers.reduce<TellTier>((max, t) => (compareTellTier(t, max) > 0 ? t : max), 'low'))
+  const hasBigHitRef = useRef(compareTellTier(maxTellTierRef.current, 'high') >= 0)
 
   const [revealedCount, setRevealedCount] = useState(0)
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
@@ -57,11 +68,11 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
 
   const isDone = revealedCount >= pulls.length
 
-  // 「先バレ」演出：レア以上を含む結果のときだけ、開封の最初に一度だけ予兆を挟む。
-  // 文字では何も明かさず、音の違い（レジェンド級だけ特別なきらめきが重なる）だけで格を伝える
+  // 「先バレ」演出：見せかけの期待度がhigh以上のときだけ、開封の最初に一度だけ予兆を挟む。
+  // これも見せかけなので、実際には並程度の結果に終わることもある
   useEffect(() => {
     if (!hasBigHitRef.current) return
-    playOmenPokyuun(omenTierRef.current)
+    playOmenPokyuun(maxTellTierRef.current === 'legend' ? 'legend' : 'high')
     const id = window.setTimeout(() => {
       setOmenActive(false)
       setIntroDone(true)
@@ -77,14 +88,19 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
     const cancelled = () => sequenceTokenRef.current !== myToken
 
     const finalRarity = pulls[index].monster.rarity
+    const tellTier = tellTiers[index]
+    // 天井（pityTriggered）は演出のガセとは違い、本当に5★以上が保証された事実なので、
+    // 見せかけの期待度roll次第に関わらず必ずリーチ演出を通す
+    const isHypeReach = compareTellTier(tellTier, 'high') >= 0 || pulls[index].pityTriggered
 
     setActiveIndex(index)
     setPhase('shake')
     await sleep(SHAKE_MS)
     if (cancelled()) return
 
-    if (finalRarity >= 5) {
-      // 「外れたと思ったらあたり」：一度しょぼんと落胆させてから逆転で盛り上げる
+    if (isHypeReach) {
+      // 「外れたと思ったらあたり」：一度しょぼんと落胆させてから逆転で盛り上げる。
+      // ここで煽った期待度は演出上のものなので、この後の卵割りが並の結果に終わることもある
       setPhase('miss')
       playMissThud()
       await sleep(MISS_MS)
@@ -92,11 +108,8 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
 
       setPhase('reversal')
       playReversalSting()
-      // 「確定」バナーはまだ誰が出たか分からないこの逆転の瞬間に出す。
-      // 実際にどのモンスターかはこのあとの卵割りで初めて明かされる、という順番にして
-      // 「もう見えてるのに今更確定も何もない」とならないようにしている
-      playBigWinFanfare(finalRarity)
-      setBigWin({ id: myToken, rarity: finalRarity })
+      playBigWinFanfare(tellTier === 'legend' ? 6 : 5)
+      setBigWin({ id: myToken, tellTier, pityTriggered: pulls[index].pityTriggered })
       await sleep(REVERSAL_MS)
       if (cancelled()) return
     }
@@ -173,8 +186,11 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
       )}
 
       {bigWin && (
-        <div key={bigWin.id} className={`gacha-bigwin-banner gacha-bigwin-banner--tier${bigWin.rarity}`}>
-          {BIG_WIN_LABEL[bigWin.rarity]}
+        <div
+          key={bigWin.id}
+          className={`gacha-bigwin-banner gacha-bigwin-banner--tier${bigWin.tellTier === 'legend' ? 6 : 5}`}
+        >
+          {bannerLabel(bigWin)}
         </div>
       )}
 
@@ -182,7 +198,7 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
         {pulls.map((pull, index) => {
           const revealed = index < revealedCount
           const isActive = index === activeIndex
-          const expectation: Expectation = expectationOf(pull.monster.rarity)
+          const tellTier = tellTiers[index]
 
           if (revealed) {
             return (
@@ -215,7 +231,7 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
 
           const holdLampClass =
             isActive && (phase === 'shake' || phase === 'miss' || phase === 'reversal')
-              ? `gacha-hold-lamp gacha-hold-lamp--locked gacha-hold-lamp--${phase === 'miss' ? 'low' : expectation}`
+              ? `gacha-hold-lamp gacha-hold-lamp--locked gacha-hold-lamp--${phase === 'miss' ? 'low' : tellTier}`
               : `gacha-hold-lamp gacha-hold-lamp--cycling`
 
           return (
@@ -229,10 +245,8 @@ export const GachaRevealOverlay = ({ pulls, onClose }: GachaRevealOverlayProps) 
                 title={egg.label}
                 style={{ ...withCssVar('--egg-gradient', egg.gradient), ...withCssVar('--egg-glow', egg.glow) }}
               />
-              {isActive && phase === 'shake' && EXPECTATION_LABEL[expectation] && (
-                <span className={`gacha-expect-text gacha-expect-text--${expectation}`}>
-                  {EXPECTATION_LABEL[expectation]}
-                </span>
+              {isActive && phase === 'shake' && TELL_LABEL[tellTier] && (
+                <span className={`gacha-expect-text gacha-expect-text--${tellTier}`}>{TELL_LABEL[tellTier]}</span>
               )}
               {isActive && phase === 'miss' && <span className="gacha-expect-text gacha-expect-text--low">…あれ？</span>}
               {isActive && phase === 'reversal' && (
