@@ -3128,7 +3128,7 @@ import {
     categoryManuallySet = !!e;
     currentSplitType = e ? e.splitType : defaultSplitTypeForCategory(currentCategory);
     currentCustomPercent = (e && e.customAPercent != null) ? e.customAPercent : 50;
-    currentPaidBy = e ? e.paidBy : 'a';
+    currentPaidBy = e ? e.paidBy : 'shared';
     currentIsInitialCost = !!(e && e.isInitialCost);
     splitTypeManuallySet = !!e;
     // Amount-input mode is the default everywhere -- a fresh 任意の割合
@@ -3804,7 +3804,7 @@ import {
   }
 
   let pendingImportItems = [];
-  let importDefaultPaidBy = 'a';
+  let importDefaultPaidBy = 'shared';
   // Bumped on every new import; row-image renders check this before applying
   // so a slow render from an import the user has since replaced (or closed)
   // can't clobber a newer pendingImportItems array.
