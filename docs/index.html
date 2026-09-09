@@ -41,6 +41,7 @@
     --cat-5: #e87ba4;
     --cat-6: #008300;
     --cat-other: #898781;
+    --delta-good: #006300;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -67,6 +68,7 @@
       --cat-5: #d55181;
       --cat-6: #008300;
       --cat-other: #898781;
+      --delta-good: #0ca30c;
     }
   }
   :root[data-theme="dark"] {
@@ -93,6 +95,7 @@
     --cat-5: #d55181;
     --cat-6: #008300;
     --cat-other: #898781;
+    --delta-good: #0ca30c;
   }
 
   * { box-sizing: border-box; }
@@ -381,6 +384,19 @@
   .category-pie-legend-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .category-pie-legend-pct { color: var(--ink-muted); font-size: 12px; width: 38px; flex: none; text-align: right; }
   .category-pie-legend-amount { flex: none; }
+
+  .mom-delta { font-size: 12px; font-weight: 700; }
+  .mom-delta.mom-up { color: var(--red); }
+  .mom-delta.mom-down { color: var(--delta-good); }
+
+  .trend-chart { display: flex; align-items: flex-end; gap: 8px; padding: 8px 16px 16px; height: 150px; }
+  .trend-bar-col { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; height: 100%; }
+  .trend-bar-value { font-size: 10.5px; color: var(--ink-muted); margin-bottom: 4px; white-space: nowrap; }
+  .trend-bar-track { flex: 1; width: 100%; display: flex; align-items: flex-end; background: var(--surface-2); border-radius: 5px 5px 0 0; overflow: hidden; }
+  .trend-bar-fill { width: 100%; background: var(--accent); border-radius: 5px 5px 0 0; min-height: 2px; }
+  .trend-bar-label { font-size: 11px; color: var(--ink-muted); margin-top: 6px; }
+  .trend-bar-current .trend-bar-fill { background: var(--split-customRatio); }
+  .trend-bar-current .trend-bar-label { color: var(--ink); font-weight: 700; }
 
   .stamp {
     position: absolute;
@@ -1853,6 +1869,67 @@ import {
     }).join('') + '</div></div>';
   }
 
+  // Compact label for narrow trend-chart bars: "6万" instead of "¥60,000".
+  function formatYenCompact(n) {
+    if (n >= 10000) {
+      const man = Math.round(n / 1000) / 10;
+      return man + '万';
+    }
+    return String(Math.round(n));
+  }
+
+  // Percent change vs. the cycle immediately before this one (by calendar
+  // month, not just "previous in the list" -- a gap month with no expenses
+  // correctly means no comparison rather than comparing across the gap).
+  function monthOverMonthDelta(groups, cycle) {
+    const prevYm = addMonths(cycle.ym.year, cycle.ym.month, -1);
+    const prevGroup = groups.find(function (g) { return g.cycle.ym.year === prevYm.year && g.cycle.ym.month === prevYm.month; });
+    if (!prevGroup) return null;
+    const currentTotal = settlement(state.expenses, cycle, state.incomePeriods, state.settings.cardClosingDay).total;
+    const prevTotal = settlement(state.expenses, prevGroup.cycle, state.incomePeriods, state.settings.cardClosingDay).total;
+    if (prevTotal <= 0) return null;
+    return { pct: Math.round((currentTotal - prevTotal) / prevTotal * 100) };
+  }
+
+  // Bar chart of total household spending across the most recent cycles
+  // (oldest to newest, left to right), highlighting whichever cycle is
+  // currently selected in the picker above.
+  function renderTrendChartHtml(groups, currentCycle, momDelta) {
+    const maxMonths = 6;
+    const recent = groups.slice(0, maxMonths).slice().reverse();
+    if (recent.length === 0) return '';
+    const totals = recent.map(function (g) {
+      return settlement(state.expenses, g.cycle, state.incomePeriods, state.settings.cardClosingDay).total;
+    });
+    const maxTotal = Math.max.apply(null, totals.concat([1]));
+    const currentKey = cycleKey(currentCycle.ym);
+    const bars = recent.map(function (g, i) {
+      const total = totals[i];
+      const pct = Math.round(total / maxTotal * 100);
+      const isCurrent = cycleKey(g.cycle.ym) === currentKey;
+      // The cycle's display label may name a different month than its
+      // internal ym (see the majority-of-days cycle labeling) -- pull the
+      // short "◯月" straight from the label so the bar matches what the
+      // cycle picker above actually calls it.
+      const labelMatch = g.cycle.label.match(/(\d+)月/);
+      const shortLabel = labelMatch ? labelMatch[1] + '月' : g.cycle.ym.month + '月';
+      return '' +
+        '<div class="trend-bar-col' + (isCurrent ? ' trend-bar-current' : '') + '">' +
+          '<div class="trend-bar-value">' + formatYenCompact(total) + '</div>' +
+          '<div class="trend-bar-track"><div class="trend-bar-fill" style="height:' + pct + '%"></div></div>' +
+          '<div class="trend-bar-label">' + shortLabel + '</div>' +
+        '</div>';
+    }).join('');
+    const momHtml = momDelta ?
+      '<span class="mom-delta ' + (momDelta.pct > 0 ? 'mom-up' : (momDelta.pct < 0 ? 'mom-down' : '')) + '">先月比 ' + (momDelta.pct > 0 ? '+' : '') + momDelta.pct + '%</span>'
+      : '';
+    return '' +
+      '<div class="ledger-card">' +
+        '<div class="ledger-title" style="display:flex; justify-content:space-between; align-items:center;"><span>月次推移</span>' + momHtml + '</div>' +
+        '<div class="trend-chart">' + bars + '</div>' +
+      '</div>';
+  }
+
   // 予算 card: only shows categories that actually have a budget set, each
   // with a progress bar and (once spending passes the budget) an explicit
   // over-budget callout -- never just a silent red bar.
@@ -2233,6 +2310,9 @@ import {
 
     document.getElementById('summary-range').textContent = formatFullDate(cycle.start) + ' 〜 ' + formatFullDate(cycle.end);
 
+    const momDelta = monthOverMonthDelta(groups, cycle);
+    const trendChartHtml = renderTrendChartHtml(groups, cycle, momDelta);
+
     const breakdown = SPLIT_TYPES.filter(function (t) { return s.bySplitType[t] > 0; })
       .map(function (t) {
         return '<div class="kv-row"><span style="display:flex; align-items:center; gap:8px;">' + splitDotHtml(t) + '<span>' + escapeHtml(splitLabel(t, names)) + '</span></span><span class="num">' + formatYen(s.bySplitType[t]) + '</span></div>';
@@ -2273,6 +2353,7 @@ import {
         '<div class="kv-row"><span>' + escapeHtml(names.b) + '</span><span class="num">' + formatYen(s.burdenB) + '</span></div>' +
         '<div class="kv-row total"><span>合計</span><span class="num">' + formatYen(s.total) + '</span></div>' +
       '</div>' +
+      trendChartHtml +
       '<div class="ledger-card">' +
         '<div class="ledger-title">実際の立替額</div>' +
         '<div class="kv-row"><span>' + escapeHtml(names.a) + '</span><span class="num">' + formatYen(s.paidByA) + '</span></div>' +
