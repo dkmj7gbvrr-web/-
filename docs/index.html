@@ -1394,12 +1394,12 @@
 
       <div class="manual-section">
         <h3>予算・支出の可視化</h3>
-        <p>設定タブの「予算」からジャンルごとに毎月の予算額を設定すると、集計タブに実績との比較（超過時は赤色で表示）が出ます。集計タブにはこのほか、ジャンル別の支出構成を示す円グラフ、金額順に並ぶジャンル別内訳、直近6サイクル分の支出推移グラフと先月比も表示されます。ジャンル別内訳は各行をタップすると、そのジャンルの支出が金額の多い順に一覧展開されます。</p>
+        <p>集計タブの「予算」カードから、ジャンルごとに毎月の予算額を設定できます（設定タブの「予算」からも同じ画面を開けます）。設定すると実績との比較（超過時は赤色で表示）が出ます。集計タブにはこのほか、ジャンル別の支出構成を示す円グラフ、金額順に並ぶジャンル別内訳、直近6サイクル分の支出推移グラフと先月比も表示されます。ジャンル別内訳は各行をタップすると、そのジャンルの支出が金額の多い順に一覧展開されます。</p>
       </div>
 
       <div class="manual-section">
         <h3>特別費フラグ</h3>
-        <p>旅行など「その月だけ跳ねた」支出は、支出の追加画面で「特別費」にすると、集計タブの月次推移・先月比の対象から除外されます（精算・予算・内訳など他の集計には引き続き反映されます）。「旅行」ジャンルは新規作成時に自動で特別費になります。設定タブでジャンルを新しく作るときも、そのジャンルを新規作成時に特別費にするかどうかを選べます。</p>
+        <p>旅行など「その月だけ跳ねた」支出は、支出の追加画面で「特別費」にすると、集計タブの月次推移・先月比の対象から除外されます（精算・予算など他の集計には引き続き反映されます）。「旅行」ジャンルは新規作成時に自動で特別費になります。設定タブでジャンルを新しく作るときも、そのジャンルを新規作成時に特別費にするかどうかを選べます。「支出の構成」「内訳（ジャンル別）」カードには「全部／通常／特別費」の切り替えがあり、特別費だけ・通常だけの支出構成を見比べられます。</p>
       </div>
 
       <div class="manual-section">
@@ -2095,11 +2095,19 @@ import {
 
   // 予算 card: only shows categories that actually have a budget set, each
   // with a progress bar and (once spending passes the budget) an explicit
-  // over-budget callout -- never just a silent red bar.
+  // over-budget callout -- never just a silent red bar. Still always
+  // renders the card itself (with a setup prompt) when nothing is
+  // configured yet -- a silently-vanishing card reads as "the feature is
+  // gone", not "go set it up in 設定".
   function renderBudgetCardHtml(s, names) {
     const budgets = state.settings.categoryBudgets || {};
     const budgetedCats = allCategoryOrder().filter(function (id) { return budgets[id] > 0; });
-    if (budgetedCats.length === 0) return '';
+    if (budgetedCats.length === 0) {
+      return '<div class="ledger-card"><div class="ledger-title">予算</div>' +
+        '<div class="empty-inline">まだ予算が設定されていません</div>' +
+        '<div class="settings-actions" style="padding:0 16px 16px;"><button type="button" class="btn btn-secondary" data-action="open-budget-sheet">予算を設定</button></div>' +
+        '</div>';
+    }
     const rows = budgetedCats.map(function (id) {
       const spent = s.byCategory[id] || 0;
       const budget = budgets[id];
@@ -2350,6 +2358,22 @@ import {
   // collapse everything else; harmless if it references a category not
   // present in the currently selected cycle.
   let expandedCategoryIds = {};
+  // 支出の構成 / 内訳（ジャンル別）を「全部」「通常」「特別費」のどれで見るか --
+  // 特別費フラグが月次推移以外の何にも効かないと分析に使えないので、この
+  // 2枚のカードはここでフィルタした集合から作り直す。'all' で完全に既存の
+  // 挙動と一致する（特別費が一件もなければ何を選んでも同じ結果になる）。
+  let categoryViewFilter = 'all';
+  function applyCategoryViewFilter(expenses) {
+    if (categoryViewFilter === 'special') return expenses.filter(function (e) { return !!e.isSpecial; });
+    if (categoryViewFilter === 'normal') return expenses.filter(function (e) { return !e.isSpecial; });
+    return expenses;
+  }
+  function categoryViewSegmentedHtml() {
+    const opts = [['all', '全部'], ['normal', '通常'], ['special', '特別費']];
+    return '<div class="segmented">' + opts.map(function (o) {
+      return '<button type="button" class="segment' + (categoryViewFilter === o[0] ? ' selected' : '') + '" data-action="select-category-view" data-value="' + o[0] + '">' + o[1] + '</button>';
+    }).join('') + '</div>';
+  }
 
   // Both the 精算 tab and the 集計 tab show one billing cycle at a time,
   // kept in sync via the shared summarySelectedKey -- this resolves which
@@ -2643,9 +2667,22 @@ import {
     const trendChartHtml = renderTrendChartHtml(groups, cycle, momDelta);
 
     const cycleExpenses = expensesInCycle(state.expenses, cycle);
+    // 支出の構成／内訳（ジャンル別）はどちらも、選択中の categoryViewFilter
+    // （全部／通常／特別費）で絞った集合から作り直す -- s.byCategory/s.total
+    // (精算・予算用のフル集計) とは別に、ここだけの表示用の集計を持つ。
+    const viewExpenses = applyCategoryViewFilter(cycleExpenses);
+    const viewByCategory = {};
+    let viewTotal = 0;
+    viewExpenses.forEach(function (e) {
+      const cat = isKnownCategory(e.category) ? e.category : 'other';
+      viewByCategory[cat] = (viewByCategory[cat] || 0) + e.amount;
+      viewTotal += e.amount;
+    });
+    const viewSuffix = categoryViewFilter === 'normal' ? '（通常）' : categoryViewFilter === 'special' ? '（特別費）' : '';
+
     const categoryEntries = allCategoryOrder()
-      .filter(function (cat) { return s.byCategory[cat] > 0; })
-      .map(function (cat) { return { id: cat, name: categoryDisplayName(cat), amount: s.byCategory[cat] }; })
+      .filter(function (cat) { return viewByCategory[cat] > 0; })
+      .map(function (cat) { return { id: cat, name: categoryDisplayName(cat), amount: viewByCategory[cat] }; })
       .sort(function (a, b) { return b.amount - a.amount; });
     const maxCategoryAmount = categoryEntries.length ? categoryEntries[0].amount : 0;
     // A bar under each row (relative to the biggest category) so the
@@ -2655,7 +2692,7 @@ import {
       const pct = maxCategoryAmount > 0 ? Math.round(e.amount / maxCategoryAmount * 100) : 0;
       const expanded = !!expandedCategoryIds[e.id];
       const items = expanded ?
-        cycleExpenses
+        viewExpenses
           .filter(function (exp) { return (isKnownCategory(exp.category) ? exp.category : 'other') === e.id; })
           .sort(function (a, b) { return b.amount - a.amount; })
         : [];
@@ -2668,23 +2705,26 @@ import {
           (expanded ? '<div class="category-expense-list">' + items.map(expenseRowHtml).join('') + '</div>' : '') +
         '</div>';
     }).join('');
-    const pieEntries = categoryPieEntries(s.byCategory);
-    const pieHtml = pieEntries.length ? categoryPieSvg(pieEntries, s.total) + categoryPieLegendHtml(pieEntries, s.total) : '';
+    const pieEntries = categoryPieEntries(viewByCategory);
+    const pieHtml = pieEntries.length ? categoryPieSvg(pieEntries, viewTotal) + categoryPieLegendHtml(pieEntries, viewTotal) : '';
     const budgetCardHtml = renderBudgetCardHtml(s, names);
+    const emptyBreakdownMessage = cycleExpenses.length === 0 ? 'この月の支出はありません'
+      : categoryViewFilter === 'special' ? '特別費に該当する支出はありません'
+      : categoryViewFilter === 'normal' ? '通常の支出はありません（すべて特別費）'
+      : 'この月の支出はありません';
 
     const body = document.getElementById('summary-body');
     body.innerHTML = '' +
       trendChartHtml +
       budgetCardHtml +
-      (pieHtml ?
-        '<div class="ledger-card">' +
-          '<div class="ledger-title">支出の構成</div>' +
-          pieHtml +
-        '</div>'
-        : '') +
       '<div class="ledger-card">' +
-        '<div class="ledger-title">内訳（ジャンル別）</div>' +
-        (categoryBreakdown || '<div class="empty-inline">この月の支出はありません</div>') +
+        '<div class="ledger-title">支出の構成' + viewSuffix + '</div>' +
+        '<div style="padding:0 16px 12px;">' + categoryViewSegmentedHtml() + '</div>' +
+        (pieHtml || '<div class="empty-inline">' + escapeHtml(emptyBreakdownMessage) + '</div>') +
+      '</div>' +
+      '<div class="ledger-card">' +
+        '<div class="ledger-title">内訳（ジャンル別）' + viewSuffix + '</div>' +
+        (categoryBreakdown || '<div class="empty-inline">' + escapeHtml(emptyBreakdownMessage) + '</div>') +
       '</div>';
   }
 
@@ -4298,6 +4338,10 @@ import {
       case 'toggle-settled': toggleSettled(target.dataset.key); break;
       case 'toggle-category-breakdown':
         expandedCategoryIds[target.dataset.category] = !expandedCategoryIds[target.dataset.category];
+        renderSummary();
+        break;
+      case 'select-category-view':
+        categoryViewFilter = target.dataset.value;
         renderSummary();
         break;
       case 'toggle-initial-cost-settled': toggleInitialCostSettled(); break;
