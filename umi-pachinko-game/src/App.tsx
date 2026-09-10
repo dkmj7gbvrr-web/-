@@ -1,6 +1,7 @@
 import './App.css'
 import { Board } from './components/Board'
 import { Controls } from './components/Controls'
+import { HoldQueue } from './components/HoldQueue'
 import { ReelDisplay } from './components/ReelDisplay'
 import { StatusPanel } from './components/StatusPanel'
 import { usePachinkoGame } from './hooks/usePachinkoGame'
@@ -32,6 +33,7 @@ function App() {
       <main className="app-main">
         <div className="board-column">
           <ReelDisplay reel={state.reel} />
+          <HoldQueue holds={state.holds} />
           <div className="board-frame">
             <Board ballsRef={ballsRef} pinsRef={pinsRef} pocketsRef={pocketsRef} stateRef={stateRef} />
           </div>

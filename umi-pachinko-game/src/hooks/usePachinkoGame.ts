@@ -164,6 +164,31 @@ export function usePachinkoGame() {
     prevBonusPhase.current = state.bonus.phase
   }, [state.bonus.phase])
 
+  // 保留が新しく積まれたらチャイムを鳴らす
+  const prevHoldCount = useRef(state.holds.length)
+  useEffect(() => {
+    if (state.holds.length > prevHoldCount.current) {
+      sound.playHoldChime()
+    }
+    prevHoldCount.current = state.holds.length
+  }, [state.holds.length])
+
+  // リーチ (前後2つの図柄が揃った瞬間) に煽り音を鳴らす
+  const prevStoppedCount = useRef(state.reel.stoppedCount)
+  useEffect(() => {
+    const outcome = state.reel.outcome
+    const justReachedReach =
+      state.reel.spinning &&
+      prevStoppedCount.current < 2 &&
+      state.reel.stoppedCount >= 2 &&
+      !!outcome &&
+      outcome.reachTier !== 'none'
+    if (justReachedReach && outcome) {
+      sound.playReach(outcome.reachTier as 'normal' | 'super' | 'premium')
+    }
+    prevStoppedCount.current = state.reel.stoppedCount
+  }, [state.reel.stoppedCount, state.reel.spinning, state.reel.outcome])
+
   // ハンドルを握りっぱなし (オート連射) の間、一定間隔で発射する
   useEffect(() => {
     if (!autoFire) return

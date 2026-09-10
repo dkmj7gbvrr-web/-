@@ -1,12 +1,5 @@
-import {
-  ODDS,
-  TIME_SHORT_STARTS_ON_NORMAL_WIN,
-  drawJackpotSymbol,
-  drawRoundCount,
-  isJackpot,
-  isKakuhenSymbol,
-} from './odds'
-import type { BonusState, GameMode, GameState, ReelState, ReelSymbol, Rng } from './types'
+import { MAX_HOLDS, ODDS, TIME_SHORT_STARTS_ON_NORMAL_WIN, rollStartOutcome } from './odds'
+import type { BonusState, GameState, HoldEntry, ReachTier, ReelState, Rng, StartOutcome } from './types'
 
 export const STARTING_BALL_COUNT = 500
 export const PRIZE_POCKET_PAYOUT = 4
@@ -18,6 +11,14 @@ export const BONUS_OPENING_MS = 1600
 export const BONUS_FINISHED_MS = 1600
 export const REEL_SPIN_NORMAL_MS = 2600
 export const REEL_SPIN_TIME_SHORT_MS = 900
+
+/** リーチ演出の格による変動時間の延長。格が上がるほど「待たされる」実感を強める。 */
+export const REACH_EXTENSION_MS: Record<ReachTier, number> = {
+  none: 0,
+  normal: 900,
+  super: 1900,
+  premium: 3200,
+}
 
 const MAX_LOG_LENGTH = 30
 
@@ -40,8 +41,7 @@ export function createInitialReel(): ReelState {
     stoppedCount: 0,
     elapsedMs: 0,
     durationMs: REEL_SPIN_NORMAL_MS,
-    result: null,
-    isJackpot: false,
+    outcome: null,
   }
 }
 
@@ -63,7 +63,7 @@ export function createInitialState(): GameState {
     timeShortRemaining: 0,
     reel: createInitialReel(),
     bonus: createInitialBonus(),
-    pendingBonus: null,
+    holds: [],
     stats: {
       ballCount: STARTING_BALL_COUNT,
       totalLaunched: 0,
@@ -79,6 +79,35 @@ function isBonusActive(state: GameState): boolean {
   return state.bonus.phase !== 'idle' && state.bonus.phase !== 'finished'
 }
 
+/** 時短中・確変中 (timeShortRemaining は Infinity) のどちらでも変動を速くする。 */
+function hasSpeedBoost(timeShortRemaining: number): boolean {
+  return timeShortRemaining > 0
+}
+
+function startSpin(outcome: StartOutcome, timeShortActive: boolean): ReelState {
+  const baseDuration = timeShortActive ? REEL_SPIN_TIME_SHORT_MS : REEL_SPIN_NORMAL_MS
+  return {
+    spinning: true,
+    stoppedCount: 0,
+    elapsedMs: 0,
+    durationMs: baseDuration + REACH_EXTENSION_MS[outcome.reachTier],
+    outcome,
+  }
+}
+
+/** 保留の先頭を取り出して次の変動を始める。保留が無ければ何もしない (リール停止のまま)。 */
+function shiftHoldIntoSpin(state: GameState): GameState {
+  if (state.holds.length === 0) return state
+  const [next, ...rest] = state.holds
+  const timeShortActive = hasSpeedBoost(state.timeShortRemaining)
+  const nextState: GameState = {
+    ...state,
+    holds: rest,
+    reel: startSpin(next, timeShortActive),
+  }
+  return pushLog(nextState, `保留を消化して変動開始 (残り保留 ${rest.length})`)
+}
+
 function reduceLaunch(state: GameState): GameState {
   if (state.stats.ballCount <= 0) return state
   return {
@@ -92,10 +121,12 @@ function reduceLaunch(state: GameState): GameState {
 }
 
 function reduceBallEnteredStart(state: GameState, rng: Rng): GameState {
-  // 大当たり中・抽選中は始動口に入っても新しい抽選は始まらない (実機同様、保留は無いシンプル仕様)
-  if (isBonusActive(state) || state.reel.spinning) return state
+  // 大当たり中は電動チューリップが閉じるため入賞しない (実機同様、物理層でも玉を素通りさせている)
+  if (isBonusActive(state)) return state
 
   const totalStarts = state.stats.totalStarts + 1
+  const timeShortActiveBeforeThisStart = hasSpeedBoost(state.timeShortRemaining)
+
   let timeShortRemaining = state.timeShortRemaining
   let timeShortJustEnded = false
   if (Number.isFinite(timeShortRemaining) && timeShortRemaining > 0) {
@@ -103,46 +134,27 @@ function reduceBallEnteredStart(state: GameState, rng: Rng): GameState {
     if (timeShortRemaining === 0) timeShortJustEnded = true
   }
 
-  const won = isJackpot(state.mode, rng)
-  let pendingBonus: GameState['pendingBonus'] = null
-  let result: ReelState['result']
-
-  if (won) {
-    const symbol = drawJackpotSymbol(rng) as ReelSymbol
-    const nextMode: GameMode = isKakuhenSymbol(symbol) ? 'kakuhen' : 'normal'
-    const totalRounds = drawRoundCount(rng)
-    pendingBonus = { totalRounds, nextMode }
-    result = [symbol, symbol, symbol]
-  } else {
-    // ハズレ図柄: 3つ揃わないよう先頭2つと異なる値を選ぶ
-    const a = Math.floor(rng() * 10) as ReelSymbol
-    let b = Math.floor(rng() * 10) as ReelSymbol
-    if (b === a) b = ((b + 1) % 10) as ReelSymbol
-    let c = Math.floor(rng() * 10) as ReelSymbol
-    if (c === a) c = ((c + 5) % 10) as ReelSymbol
-    result = [a, b, c]
-  }
-
-  const durationMs = Number.isFinite(state.timeShortRemaining) && state.timeShortRemaining > 0
-    ? REEL_SPIN_TIME_SHORT_MS
-    : REEL_SPIN_NORMAL_MS
+  const outcome = rollStartOutcome(state.mode, rng)
 
   let nextState: GameState = {
     ...state,
     timeShortRemaining,
-    pendingBonus,
     stats: { ...state.stats, totalStarts },
-    reel: {
-      spinning: true,
-      stoppedCount: 0,
-      elapsedMs: 0,
-      durationMs,
-      result,
-      isJackpot: won,
-    },
   }
 
-  nextState = pushLog(nextState, `始動口に入賞 (通算 ${totalStarts} 回転)`)
+  if (state.reel.spinning) {
+    if (nextState.holds.length < MAX_HOLDS) {
+      const hold: HoldEntry = { id: totalStarts, ...outcome }
+      nextState = { ...nextState, holds: [...nextState.holds, hold] }
+      nextState = pushLog(nextState, `始動口に入賞 (保留 ${nextState.holds.length}/${MAX_HOLDS})`)
+    } else {
+      nextState = pushLog(nextState, '保留がいっぱいのため、抽選されずに玉が落ちました。')
+    }
+  } else {
+    nextState = { ...nextState, reel: startSpin(outcome, timeShortActiveBeforeThisStart) }
+    nextState = pushLog(nextState, `始動口に入賞 (通算 ${totalStarts} 回転)`)
+  }
+
   if (timeShortJustEnded) {
     nextState = pushLog(nextState, '時短が終了し、通常の抽選確率に戻りました。')
   }
@@ -178,7 +190,7 @@ function reduceBallEnteredAttacker(state: GameState): GameState {
 }
 
 function tickReel(state: GameState, dtMs: number): GameState {
-  if (!state.reel.spinning) return state
+  if (!state.reel.spinning || !state.reel.outcome) return state
   const elapsedMs = state.reel.elapsedMs + dtMs
   const duration = state.reel.durationMs
   const stopThresholds = [duration * 0.4, duration * 0.7, duration]
@@ -189,34 +201,34 @@ function tickReel(state: GameState, dtMs: number): GameState {
   }
 
   // 演出終了。結果を確定する。
-  const won = state.reel.isJackpot
+  const outcome = state.reel.outcome
   let nextState: GameState = {
     ...state,
     reel: { ...state.reel, elapsedMs, stoppedCount: 3, spinning: false },
   }
 
-  if (won && state.pendingBonus) {
-    const { totalRounds, nextMode } = state.pendingBonus
+  if (outcome.isJackpot) {
     nextState = {
       ...nextState,
-      pendingBonus: null,
       stats: { ...nextState.stats, totalJackpots: nextState.stats.totalJackpots + 1 },
       bonus: {
         phase: 'opening',
         roundIndex: 1,
-        totalRounds,
+        totalRounds: outcome.totalRounds,
         capturedThisRound: 0,
         capturedTotal: 0,
         phaseElapsedMs: 0,
-        nextMode,
+        nextMode: outcome.nextMode,
       },
     }
     nextState = pushLog(
       nextState,
-      `大当たり！ ${totalRounds}ラウンド (${nextMode === 'kakuhen' ? '確率変動' : '通常'})`,
+      `大当たり！ ${outcome.totalRounds}ラウンド (${outcome.nextMode === 'kakuhen' ? '確率変動' : '通常'})`,
     )
-  } else if (!state.reel.result || state.reel.result[0] !== state.reel.result[1]) {
-    nextState = pushLog(nextState, 'ハズレ')
+    // 大当たり中は保留を消化しない (ラウンド終了後に持ち越す)
+  } else {
+    nextState = pushLog(nextState, outcome.reachTier !== 'none' ? 'リーチ外れ' : 'ハズレ')
+    nextState = shiftHoldIntoSpin(nextState)
   }
 
   return nextState
@@ -303,6 +315,8 @@ function finalizeBonusIfDone(state: GameState): GameState {
       ? `確率変動突入 (連チャン ${kakuhenChain} 回目) 次回まで確率アップ！`
       : `時短突入 (残り ${TIME_SHORT_STARTS_ON_NORMAL_WIN} 回転)`,
   )
+  // ラウンド中に貯まった保留があれば、営業再開と同時に消化を始める
+  nextState = shiftHoldIntoSpin(nextState)
   return nextState
 }
 
