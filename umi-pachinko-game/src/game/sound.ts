@@ -66,3 +66,23 @@ export function playJackpotFanfare(): void {
   const notes = [523.25, 659.25, 783.99, 1046.5]
   notes.forEach((freq, i) => tone(freq, i * 0.13, 0.28, 'triangle', 0.22))
 }
+
+/** 保留が1つ積まれた時の短いチャイム。 */
+export function playHoldChime(): void {
+  tone(950, 0, 0.05, 'sine', 0.1)
+}
+
+/** リーチ開始時の煽り音。格が上がるほど音数を増やし派手にする。 */
+export function playReach(tier: 'normal' | 'super' | 'premium'): void {
+  if (tier === 'normal') {
+    tone(392, 0, 0.3, 'triangle', 0.16)
+    return
+  }
+  if (tier === 'super') {
+    tone(392, 0, 0.18, 'sawtooth', 0.18)
+    tone(587.33, 0.16, 0.35, 'sawtooth', 0.2)
+    return
+  }
+  // premium
+  ;[392, 493.88, 587.33, 783.99].forEach((freq, i) => tone(freq, i * 0.1, 0.4, 'sawtooth', 0.22))
+}

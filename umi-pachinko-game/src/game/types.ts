@@ -19,15 +19,36 @@ export interface Ball {
 
 export type ReelSymbol = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 
+/** 保留球の色による期待度演出 (先読み)。実際の結果と完全には一致しない (ガセ・隠れ大当たりあり)。 */
+export type TellTier = 'white' | 'blue' | 'green' | 'red' | 'rainbow'
+
+/** リーチ演出の格。ノーマル/スーパー/プレミアと格が上がるほど大当たり期待度が高い。 */
+export type ReachTier = 'none' | 'normal' | 'super' | 'premium'
+
+/** 始動口に入賞した瞬間に確定する抽選結果一式。保留中でも変わらない。 */
+export interface StartOutcome {
+  isJackpot: boolean
+  result: [ReelSymbol, ReelSymbol, ReelSymbol]
+  reachTier: ReachTier
+  tell: TellTier
+  /** 大当たり時のみ意味を持つ (ハズレ時は 'normal' / 0 が入る) */
+  nextMode: GameMode
+  totalRounds: number
+}
+
+/** 保留 (まだ変動を開始していない始動口入賞)。先読み演出用に tell 色を保持する。 */
+export interface HoldEntry extends StartOutcome {
+  id: number
+}
+
 export interface ReelState {
   spinning: boolean
   /** 停止済みのリール数 (0-3)。左→右→中の順に停止する。 */
   stoppedCount: number
   elapsedMs: number
   durationMs: number
-  /** 抽選で事前に決まっている結果。停止演出が終わると公開される。 */
-  result: [ReelSymbol, ReelSymbol, ReelSymbol] | null
-  isJackpot: boolean
+  /** 現在変動中の抽選結果。変動していない間は null。 */
+  outcome: StartOutcome | null
 }
 
 export type BonusPhase = 'idle' | 'opening' | 'attackerOpen' | 'roundInterval' | 'finished'
@@ -57,8 +78,8 @@ export interface GameState {
   timeShortRemaining: number
   reel: ReelState
   bonus: BonusState
-  /** 抽選時点で大当たりが確定した際、リール演出が終わるまで保持しておく結果 */
-  pendingBonus: { totalRounds: number; nextMode: GameMode } | null
+  /** 保留 (最大 MAX_HOLDS 個)。先頭が次に変動を始める保留。 */
+  holds: HoldEntry[]
   stats: GameStats
   log: string[]
 }

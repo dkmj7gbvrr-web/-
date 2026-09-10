@@ -57,6 +57,13 @@
 
 /* ---------- リール表示 ---------- */
 
+.reel-display-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
 .reel-display {
   display: flex;
   gap: 6px;
@@ -64,6 +71,58 @@
   padding: 8px 12px;
   border-radius: 10px;
   box-shadow: inset 0 0 0 2px #0b3a52;
+  transition: box-shadow 0.2s ease;
+}
+
+.reel-display--reach-normal {
+  box-shadow: inset 0 0 0 2px #ffd15c;
+}
+
+.reel-display--reach-super {
+  box-shadow: inset 0 0 0 3px #ff7a3c;
+  animation: reach-shake 0.35s ease-in-out infinite;
+}
+
+.reel-display--reach-premium {
+  box-shadow: inset 0 0 0 3px #ff5cf0;
+  animation: reach-shake 0.22s ease-in-out infinite;
+}
+
+@keyframes reach-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-2px);
+  }
+  75% {
+    transform: translateX(2px);
+  }
+}
+
+.reach-banner {
+  position: absolute;
+  top: -28px;
+  font-weight: 800;
+  font-size: 13px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+  color: #402c00;
+  background: #ffd15c;
+  box-shadow: var(--shadow);
+}
+
+.reach-banner--super {
+  background: linear-gradient(90deg, #ff7a3c, #ffd15c);
+  color: #3a1400;
+}
+
+.reach-banner--premium {
+  background: linear-gradient(90deg, #ff5cf0, #7fd6ff, #ffd15c);
+  color: #2a0033;
+  animation: reach-shake 0.22s ease-in-out infinite;
 }
 
 .reel-slot {
@@ -94,6 +153,61 @@
   background: #7a5a12;
   color: #fff3cf;
   box-shadow: 0 0 12px rgba(255, 209, 92, 0.7);
+}
+
+/* ---------- 保留 (先読み) ---------- */
+
+.hold-queue {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hold-queue__label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.hold-queue__slots {
+  display: flex;
+  gap: 6px;
+}
+
+.hold-ball {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ccc;
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.15);
+}
+
+.hold-ball--empty {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--border);
+}
+
+.hold-ball--white {
+  background: #f2f2f2;
+}
+
+.hold-ball--blue {
+  background: #4fc3e8;
+  box-shadow: 0 0 6px rgba(79, 195, 232, 0.8);
+}
+
+.hold-ball--green {
+  background: #4ade80;
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.8);
+}
+
+.hold-ball--red {
+  background: #ff5c5c;
+  box-shadow: 0 0 8px rgba(255, 92, 92, 0.9);
+}
+
+.hold-ball--rainbow {
+  background: conic-gradient(from 0deg, #ff5c5c, #ffd15c, #4ade80, #4fc3e8, #ff5cf0, #ff5c5c);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
 }
 
 /* ---------- コントロール ---------- */
