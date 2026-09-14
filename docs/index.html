@@ -1068,6 +1068,7 @@
         <div class="label">収入データがありません</div>
         <div class="income-status-hint">「収入割合で負担する費用」を使うには、収入の期間を登録してください</div>
       </div>
+      <div class="ledger-card" id="joint-savings-card"></div>
       <div id="income-list"></div>
     </section>
 
@@ -1324,6 +1325,39 @@
   </div>
 </div>
 
+<div class="sheet-backdrop" id="savings-plan-sheet-backdrop" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="savings-plan-sheet-title">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <button class="sheet-btn" data-action="close-sheet" data-sheet="savings-plan">キャンセル</button>
+      <div class="sheet-title" id="savings-plan-sheet-title">積立の設定</div>
+      <button class="sheet-btn sheet-btn-primary" data-action="save-savings-plan">保存</button>
+    </div>
+    <div class="sheet-body">
+      <div class="field-group">
+        <label class="field-label" for="savings-plan-start-month">開始年月</label>
+        <input type="month" id="savings-plan-start-month">
+      </div>
+      <div class="field-group">
+        <label class="field-label" id="savings-plan-a-label">Aさんの月額</label>
+        <div class="amount-field">
+          <span class="yen-mark">¥</span>
+          <input type="text" inputmode="numeric" id="savings-plan-a-amount" class="amount-input" placeholder="0">
+        </div>
+      </div>
+      <div class="field-group">
+        <label class="field-label" id="savings-plan-b-label">Bさんの月額</label>
+        <div class="amount-field">
+          <span class="yen-mark">¥</span>
+          <input type="text" inputmode="numeric" id="savings-plan-b-amount" class="amount-input" placeholder="0">
+        </div>
+      </div>
+      <div class="field-hint" style="padding-top:0;">共有口座に毎月積み立てる金額です。開始年月以降の精算タブの送金額に、この金額が織り込まれます。</div>
+      <button class="btn btn-danger-ghost" id="savings-plan-delete-btn" data-action="delete-savings-plan" hidden>積立をやめる</button>
+    </div>
+  </div>
+</div>
+
 <div class="sheet-backdrop" id="manual-sheet-backdrop" hidden>
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="manual-sheet-title">
     <div class="sheet-handle"></div>
@@ -1392,6 +1426,11 @@
           <li>まとめて入力：期間全体の合計額だけを入力します</li>
           <li>月ごとに入力：月ごとの金額を入力します。各行の年月は自由に変更でき、賞与などの臨時収入欄（最大3件）も追加できます</li>
         </ul>
+      </div>
+
+      <div class="manual-section">
+        <h3>共有口座への積立</h3>
+        <p>収入タブの「共有口座への積立」から、毎月一定額を共有口座に積み立てる設定ができます。開始年月とふたりそれぞれの月額を入力すると、開始年月以降の精算タブの送金額にこの金額が織り込まれ、共有カードの精算プラン（積立だけの場合は「共有口座への入金プラン」）に内訳と、開始年月からの積立累計額が表示されます。「積立をやめる」でいつでも設定を解除できます。</p>
       </div>
 
       <div class="manual-section">
@@ -1781,23 +1820,28 @@ import {
     return summarizeExpenses(target, incomePeriods, closingDay);
   }
 
-  // Turns a shared-card expense's burden into a concrete transfer plan for a
-  // joint account that pays that card's bill: the person owed money in the
+  // Turns a shared-card expense's burden (plus, optionally, each person's
+  // own fixed monthly 積立/savings contribution into the same joint
+  // account) into a concrete transfer plan: the person owed money in the
   // ordinary (non-shared) settlement above (the "creditor") gets their own
   // joint-account contribution folded into what the other person ("debtor")
   // sends them -- so the debtor pays their own share plus whatever of the
   // creditor's share the settlement amount can absorb, directly into the
   // joint account, and only the leftover (if any) goes to the creditor
   // directly. This minimizes how many transfers either person has to make.
-  // Returns null when there's no shared-card spending in the cycle.
-  function sharedAccountPlan(s) {
-    if (s.paidByShared <= 0) return null;
+  // savingsA/savingsB default to 0 -- the 初期費用 bucket calls this with
+  // no savings args at all, since 積立 is a monthly-cycle-only concept.
+  // Returns null when there's nothing at all to send to the joint account.
+  function sharedAccountPlan(s, savingsA, savingsB) {
+    savingsA = savingsA || 0;
+    savingsB = savingsB || 0;
+    const ownShare = { a: s.sharedBurdenA + savingsA, b: s.sharedBurdenB + savingsB };
+    if (ownShare.a <= 0 && ownShare.b <= 0) return null;
     const netAmt = s.settle ? s.settle.amount : 0;
     const debtor = s.settle ? s.settle.payer : 'a';
     const creditor = s.settle ? s.settle.receiver : 'b';
-    const sharedBurden = { a: s.sharedBurdenA, b: s.sharedBurdenB };
-    const debtorOwnShare = sharedBurden[debtor];
-    const creditorOwnShare = sharedBurden[creditor];
+    const debtorOwnShare = ownShare[debtor];
+    const creditorOwnShare = ownShare[creditor];
     const redirected = Math.min(creditorOwnShare, netAmt);
     return {
       debtor: debtor,
@@ -1817,6 +1861,34 @@ import {
     if (!sharedPlan) return s.settle;
     if (sharedPlan.debtorToCreditor <= 0) return null;
     return { payer: sharedPlan.debtor, receiver: sharedPlan.creditor, amount: sharedPlan.debtorToCreditor };
+  }
+
+  // 共有口座への積立 (joint savings): a flat monthly yen amount per person,
+  // active from a configured start year-month onward indefinitely (no end
+  // date -- change or clear the plan to stop it). Unlike categoryBudgets,
+  // this needs a start month because "累計" (cumulative contributed so
+  // far) is only meaningful with one.
+  function monthsBetweenInclusive(startYear, startMonth, endYear, endMonth) {
+    const n = (endYear * 12 + endMonth) - (startYear * 12 + startMonth) + 1;
+    return Math.max(0, n);
+  }
+  // A cycle's display label can name a different month than its internal
+  // ym (majority-of-days labeling, e.g. Aug7-Sep6 reads as "8月" though it
+  // technically closes in September) -- use the LABEL's year/month here,
+  // not ym, so "start = 2026年8月" lines up with the "2026年8月締め分"
+  // option the user actually picked, instead of being off by one.
+  function cycleDisplayYearMonth(cycle) {
+    const m = cycle.label.match(/(\d+)年(\d+)月/);
+    return m ? { year: Number(m[1]), month: Number(m[2]) } : cycle.ym;
+  }
+  function jointSavingsForCycle(cycle) {
+    const p = state.settings.jointSavingsPlan;
+    if (!p || (!(p.aAmount > 0) && !(p.bAmount > 0))) return null;
+    const ym = cycleDisplayYearMonth(cycle);
+    const months = monthsBetweenInclusive(p.startYear, p.startMonth, ym.year, ym.month);
+    if (months <= 0) return null;
+    const aAmount = p.aAmount || 0, bAmount = p.bAmount || 0;
+    return { aThisMonth: aAmount, bThisMonth: bAmount, aCumulative: aAmount * months, bCumulative: bAmount * months, months: months };
   }
 
   const SPLIT_TYPES = ['incomeRatio', 'equal', 'aOnly', 'bOnly', 'customRatio'];
@@ -2224,7 +2296,7 @@ import {
 
   function defaultState() {
     return {
-      settings: { personAName: 'A', personBName: 'B', cardClosingDay: 6, customCategories: [], categoryBudgets: {}, recurringTemplates: [] },
+      settings: { personAName: 'A', personBName: 'B', cardClosingDay: 6, customCategories: [], categoryBudgets: {}, recurringTemplates: [], jointSavingsPlan: null },
       expenses: [],
       incomePeriods: [],
       settledCycles: {},
@@ -2259,7 +2331,8 @@ import {
           cardClosingDay: data.cardClosingDay || d.settings.cardClosingDay,
           customCategories: Array.isArray(data.customCategories) ? data.customCategories : [],
           categoryBudgets: (data.categoryBudgets && typeof data.categoryBudgets === 'object') ? data.categoryBudgets : {},
-          recurringTemplates: Array.isArray(data.recurringTemplates) ? data.recurringTemplates : []
+          recurringTemplates: Array.isArray(data.recurringTemplates) ? data.recurringTemplates : [],
+          jointSavingsPlan: (data.jointSavingsPlan && typeof data.jointSavingsPlan === 'object') ? data.jointSavingsPlan : null
         };
         state.settledCycles = (data.settledCycles && typeof data.settledCycles === 'object') ? data.settledCycles : {};
         state.settledInitialCosts = !!data.settledInitialCosts;
@@ -2629,13 +2702,29 @@ import {
         return '<div class="kv-row"><span style="display:flex; align-items:center; gap:8px;">' + splitDotHtml(t) + '<span>' + escapeHtml(splitLabel(t, names)) + '</span></span><span class="num">' + formatYen(s.bySplitType[t]) + '</span></div>';
       }).join('');
 
-    const sharedPlan = sharedAccountPlan(s);
+    const savings = jointSavingsForCycle(cycle);
+    const savingsA = savings ? savings.aThisMonth : 0;
+    const savingsB = savings ? savings.bThisMonth : 0;
+    const sharedPlan = sharedAccountPlan(s, savingsA, savingsB);
     const sharedPlanLines = [];
     if (sharedPlan) {
-      if (sharedPlan.debtorToJoint > 0) sharedPlanLines.push({ from: sharedPlan.debtor, toLabel: '共有口座', amount: sharedPlan.debtorToJoint });
+      if (sharedPlan.debtorToJoint > 0) {
+        sharedPlanLines.push({
+          from: sharedPlan.debtor, toLabel: '共有口座', amount: sharedPlan.debtorToJoint,
+          sharedPart: sharedPlan.debtor === 'a' ? s.sharedBurdenA : s.sharedBurdenB,
+          savingsPart: sharedPlan.debtor === 'a' ? savingsA : savingsB
+        });
+      }
       if (sharedPlan.debtorToCreditor > 0) sharedPlanLines.push({ from: sharedPlan.debtor, to: sharedPlan.creditor, amount: sharedPlan.debtorToCreditor });
-      if (sharedPlan.creditorToJoint > 0) sharedPlanLines.push({ from: sharedPlan.creditor, toLabel: '共有口座', amount: sharedPlan.creditorToJoint });
+      if (sharedPlan.creditorToJoint > 0) {
+        sharedPlanLines.push({
+          from: sharedPlan.creditor, toLabel: '共有口座', amount: sharedPlan.creditorToJoint,
+          sharedPart: sharedPlan.creditor === 'a' ? s.sharedBurdenA : s.sharedBurdenB,
+          savingsPart: sharedPlan.creditor === 'a' ? savingsA : savingsB
+        });
+      }
     }
+    const jointPlanTitle = s.paidByShared > 0 ? '共有カードの精算プラン' : '共有口座への入金プラン';
 
     const body = document.getElementById('settle-body');
     body.innerHTML = '' +
@@ -2653,14 +2742,20 @@ import {
       '</div>' +
       (sharedPlan ?
         '<div class="ledger-card">' +
-          '<div class="ledger-title">共有カードの精算プラン</div>' +
-          '<div class="field-hint" style="padding-top:0; margin-bottom:10px;">グロス：共有分も含めた本来の負担額。ネット：共有口座への入金とAB間の精算を1つにまとめた場合の送金額です。</div>' +
+          '<div class="ledger-title">' + jointPlanTitle + '</div>' +
+          '<div class="field-hint" style="padding-top:0; margin-bottom:10px;">グロス：共有分も含めた本来の負担額。ネット：共有口座への入金（積立を含む）とAB間の精算を1つにまとめた場合の送金額です。</div>' +
           '<div class="kv-row"><span>' + escapeHtml(names.a) + '（グロス）</span><span class="num">' + formatYen(s.burdenA) + '</span></div>' +
           '<div class="kv-row"><span>' + escapeHtml(names.b) + '（グロス）</span><span class="num">' + formatYen(s.burdenB) + '</span></div>' +
           sharedPlanLines.map(function (l) {
             const toText = l.toLabel ? l.toLabel : escapeHtml(paidByLabel(l.to, names));
-            return '<div class="kv-row"><span>' + escapeHtml(paidByLabel(l.from, names)) + ' → ' + toText + '（ネット）</span><span class="num">' + formatYen(l.amount) + '</span></div>';
+            const breakdownHtml = (l.toLabel && (l.sharedPart > 0 || l.savingsPart > 0)) ?
+              '<div class="field-hint" style="padding:0 0 10px; margin-top:-4px;">内訳：共有カード分 ' + formatYen(l.sharedPart) + '／積立 ' + formatYen(l.savingsPart) + '</div>' : '';
+            return '<div class="kv-row"><span>' + escapeHtml(paidByLabel(l.from, names)) + ' → ' + toText + '（ネット）</span><span class="num">' + formatYen(l.amount) + '</span></div>' + breakdownHtml;
           }).join('') +
+          (savings ?
+            '<div class="kv-row"><span>' + escapeHtml(names.a) + 'の積立累計（今回まで）</span><span class="num">' + formatYen(savings.aCumulative) + '</span></div>' +
+            '<div class="kv-row"><span>' + escapeHtml(names.b) + 'の積立累計（今回まで）</span><span class="num">' + formatYen(savings.bCumulative) + '</span></div>'
+            : '') +
         '</div>'
         : '') +
       '<div class="settlement-card">' +
@@ -2760,6 +2855,7 @@ import {
     const names = currentNames();
     const currentPeriod = findIncomePeriod(currentYM, state.incomePeriods);
     document.getElementById('income-tab-badge').hidden = !!currentPeriod;
+    renderJointSavingsCard();
 
     const statusEl = document.getElementById('income-status-card');
     if (currentPeriod) {
@@ -2895,6 +2991,59 @@ import {
     editingPendingImportIndex = null;
     populateExpenseSheetFields(Object.assign({}, t, { date: toDateInputValue(new Date()) }), false);
     showSheet('expense-sheet-backdrop');
+  }
+
+  function renderJointSavingsCard() {
+    const container = document.getElementById('joint-savings-card');
+    const p = state.settings.jointSavingsPlan;
+    const names = currentNames();
+    const active = !!(p && (p.aAmount > 0 || p.bAmount > 0));
+    if (!active) {
+      container.innerHTML =
+        '<div class="ledger-title">共有口座への積立</div>' +
+        '<div class="empty-inline">毎月一定額を共有口座に積み立てる設定ができます</div>' +
+        '<div class="settings-actions" style="padding:0 16px 16px;"><button type="button" class="btn btn-secondary" data-action="open-savings-plan-sheet">積立を設定</button></div>';
+      return;
+    }
+    container.innerHTML =
+      '<div class="ledger-title">共有口座への積立</div>' +
+      '<div class="kv-row"><span>' + escapeHtml(names.a) + '（月額）</span><span class="num">' + formatYen(p.aAmount || 0) + '</span></div>' +
+      '<div class="kv-row"><span>' + escapeHtml(names.b) + '（月額）</span><span class="num">' + formatYen(p.bAmount || 0) + '</span></div>' +
+      '<div class="field-hint" style="padding-top:0;">' + p.startYear + '年' + p.startMonth + '月から積立中。精算タブの送金額に織り込まれます。</div>' +
+      '<div class="settings-actions" style="padding:0 16px 16px;"><button type="button" class="btn btn-secondary" data-action="open-savings-plan-sheet">編集する</button></div>';
+  }
+
+  function openSavingsPlanSheet() {
+    const p = state.settings.jointSavingsPlan;
+    const names = currentNames();
+    document.getElementById('savings-plan-a-label').textContent = names.a + 'さんの月額';
+    document.getElementById('savings-plan-b-label').textContent = names.b + 'さんの月額';
+    const now = new Date();
+    const startYear = p ? p.startYear : now.getFullYear();
+    const startMonth = p ? p.startMonth : now.getMonth() + 1;
+    document.getElementById('savings-plan-start-month').value = startYear + '-' + String(startMonth).padStart(2, '0');
+    document.getElementById('savings-plan-a-amount').value = p && p.aAmount ? formatDigitsWithCommas(String(p.aAmount)) : '';
+    document.getElementById('savings-plan-b-amount').value = p && p.bAmount ? formatDigitsWithCommas(String(p.bAmount)) : '';
+    document.getElementById('savings-plan-delete-btn').hidden = !p;
+    showSheet('savings-plan-sheet-backdrop');
+  }
+
+  async function saveSavingsPlan() {
+    const monthValue = document.getElementById('savings-plan-start-month').value;
+    if (!monthValue) { toast('開始年月を入力してください'); return; }
+    const parts = monthValue.split('-');
+    const startYear = Number(parts[0]), startMonth = Number(parts[1]);
+    const aAmount = Number(document.getElementById('savings-plan-a-amount').value.replace(/[^\d]/g, '')) || 0;
+    const bAmount = Number(document.getElementById('savings-plan-b-amount').value.replace(/[^\d]/g, '')) || 0;
+    if (aAmount <= 0 && bAmount <= 0) { toast('どちらかの月額を入力してください'); return; }
+    closeSheet('savings-plan-sheet-backdrop');
+    await updateSettings({ jointSavingsPlan: { startYear: startYear, startMonth: startMonth, aAmount: aAmount, bAmount: bAmount } });
+  }
+
+  async function deleteSavingsPlan() {
+    if (!confirm('積立の設定をやめますか？')) return;
+    closeSheet('savings-plan-sheet-backdrop');
+    await updateSettings({ jointSavingsPlan: null });
   }
 
   function openBudgetSheet() {
@@ -4357,6 +4506,9 @@ import {
       case 'add-category-from-expense': openCategorySheet(null, { returnToExpense: true }); break;
       case 'open-budget-sheet': openBudgetSheet(); break;
       case 'save-budgets': saveBudgets(); break;
+      case 'open-savings-plan-sheet': openSavingsPlanSheet(); break;
+      case 'save-savings-plan': saveSavingsPlan(); break;
+      case 'delete-savings-plan': deleteSavingsPlan(); break;
       case 'open-template-sheet': openTemplateSheet(null); break;
       case 'edit-template': openTemplateSheet(target.dataset.id); break;
       case 'open-template-picker': openTemplatePicker(); break;
@@ -4422,7 +4574,7 @@ import {
 
   document.getElementById('expense-memo').addEventListener('input', maybeAutoGuessCategory);
 
-  ['expense-amount', 'income-lump-a', 'income-lump-b'].forEach(function (id) {
+  ['expense-amount', 'income-lump-a', 'income-lump-b', 'savings-plan-a-amount', 'savings-plan-b-amount'].forEach(function (id) {
     document.getElementById(id).addEventListener('input', function (e) {
       reformatAmountInput(e.target);
     });
