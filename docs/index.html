@@ -1215,7 +1215,9 @@
 
         <div id="custom-ratio-percent-fields">
           <div class="custom-ratio-label" id="expense-custom-ratio-label"></div>
-          <input type="range" id="expense-custom-slider" min="0" max="100" step="1" value="50">
+          <div class="field-group">
+            <select id="expense-custom-percent-select"></select>
+          </div>
         </div>
 
         <div id="custom-ratio-amount-fields" hidden>
@@ -3040,6 +3042,16 @@ import {
     document.getElementById('custom-amount-b').value = formatDigitsWithCommas(String(yen.b));
   }
 
+  function populateExpenseCustomPercentSelectOptions() {
+    const select = document.getElementById('expense-custom-percent-select');
+    if (select.options.length) return;
+    let html = '';
+    for (let p = 0; p <= 100; p++) {
+      html += '<option value="' + p + '">' + p + '% ／ ' + (100 - p) + '%</option>';
+    }
+    select.innerHTML = html;
+  }
+
   function updateCustomRatioVisibility() {
     const wrap = document.getElementById('expense-custom-ratio');
     wrap.hidden = currentSplitType !== 'customRatio';
@@ -3050,12 +3062,15 @@ import {
     document.getElementById('custom-ratio-amount-fields').hidden = customRatioMode !== 'amount';
 
     if (customRatioMode === 'percent') {
-      // Match the slider's granularity to the label's own rounding (whole
-      // percent) -- a stored ratio like 76.92% previously snapped the
-      // slider thumb to the nearest 5% mark (75%) while the label still
-      // read "77%", making an untouched, already-saved custom split look
-      // like it had been reset to a coarser value on reopen.
-      document.getElementById('expense-custom-slider').value = Math.round(currentCustomPercent);
+      // Match the dropdown's granularity to the label's own rounding (whole
+      // percent) -- a stored ratio like 76.92% previously snapped a slider
+      // thumb to the nearest 5% mark (75%) while the label still read
+      // "77%", making an untouched, already-saved custom split look like
+      // it had been reset to a coarser value on reopen. A 1%-step dropdown
+      // (same pattern as 収入割合's select) sidesteps that entirely, and is
+      // far easier to hit an exact value on than dragging a thumb.
+      populateExpenseCustomPercentSelectOptions();
+      document.getElementById('expense-custom-percent-select').value = String(Math.round(currentCustomPercent));
       updateCustomRatioLabel();
     } else {
       syncCustomAmountFieldsFromPercent();
@@ -4400,7 +4415,7 @@ import {
     if (e.key === 'Enter') joinHousehold(e.target.value);
   });
 
-  document.getElementById('expense-custom-slider').addEventListener('input', function (e) {
+  document.getElementById('expense-custom-percent-select').addEventListener('change', function (e) {
     currentCustomPercent = Number(e.target.value);
     updateCustomRatioLabel();
   });
