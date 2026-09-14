@@ -1394,7 +1394,7 @@
 
       <div class="manual-section">
         <h3>予算・支出の可視化</h3>
-        <p>集計タブの「予算」カードから、ジャンルごとに毎月の予算額を設定できます（設定タブの「予算」からも同じ画面を開けます）。設定すると実績との比較（超過時は赤色で表示）が出ます。集計タブにはこのほか、ジャンル別の支出構成を示す円グラフ、金額順に並ぶジャンル別内訳、直近6サイクル分の支出推移グラフと先月比も表示されます。ジャンル別内訳は各行をタップすると、そのジャンルの支出が金額の多い順に一覧展開されます。</p>
+        <p>集計タブの「予算」カードから、ジャンルごとに毎月の予算額を設定できます（設定タブの「予算」からも同じ画面を開けます）。設定すると実績との比較（超過時は赤色で表示）が出ます。集計タブにはこのほか、ジャンル別の支出構成を示す円グラフ、金額順に並ぶジャンル別内訳、直近6サイクル分の支出推移グラフと先月比も表示されます。ジャンル別内訳は各行をタップすると、そのジャンルの支出が金額の多い順に一覧展開されます。月次推移は既定では家計全体の合計ですが、上のプルダウンから特定のジャンルを選ぶと、そのジャンルだけの支出推移・先月比に切り替えられます（この場合は特別費も含めた実際の金額で表示されます）。</p>
       </div>
 
       <div class="manual-section">
@@ -1749,15 +1749,25 @@ import {
     return Object.assign({ cycle: cycle }, summarizeExpenses(target, incomePeriods, closingDay));
   }
 
-  // Total spending for a cycle, excluding 特別費 (旅行 etc.) -- used only by
-  // the trend chart / 先月比, so a one-off spike doesn't make an otherwise
-  // ordinary month look like a swing in either direction. Everything else
-  // (settlement, budgets, the pie chart, the category breakdown) still
-  // counts every yen, since those need to reflect real money owed and real
-  // spending, not a "typical month" view.
-  function cycleTrendTotal(expenses, cycle) {
-    return expensesInCycle(expenses, cycle)
-      .filter(function (e) { return !e.isSpecial; })
+  // Spending for a cycle, used only by the trend chart / 先月比.
+  //
+  // - No category (合計): excludes 特別費 (旅行 etc.), so a one-off spike
+  //   doesn't make an otherwise ordinary month look like a swing in either
+  //   direction. Everything else (settlement, budgets, the pie chart, the
+  //   category breakdown) still counts every yen -- those need to reflect
+  //   real money owed and real spending, not a "typical month" view.
+  // - A specific category: the whole point of narrowing to one category is
+  //   to see ITS real trend, so nothing in it is excluded -- hiding a
+  //   category's own 特別費 items (e.g. 旅行 itself, which defaults to
+  //   特別費) would make that category's trend look like a flat 0 every
+  //   month despite real spending existing.
+  function cycleCategoryTrendTotal(expenses, cycle, category) {
+    const inCycle = expensesInCycle(expenses, cycle);
+    if (!category) {
+      return inCycle.filter(function (e) { return !e.isSpecial; }).reduce(function (sum, e) { return sum + e.amount; }, 0);
+    }
+    return inCycle
+      .filter(function (e) { return (isKnownCategory(e.category) ? e.category : 'other') === category; })
       .reduce(function (sum, e) { return sum + e.amount; }, 0);
   }
 
@@ -2044,21 +2054,24 @@ import {
     const prevYm = addMonths(cycle.ym.year, cycle.ym.month, -1);
     const prevGroup = groups.find(function (g) { return g.cycle.ym.year === prevYm.year && g.cycle.ym.month === prevYm.month; });
     if (!prevGroup) return null;
-    const currentTotal = cycleTrendTotal(state.expenses, cycle);
-    const prevTotal = cycleTrendTotal(state.expenses, prevGroup.cycle);
+    const currentTotal = cycleCategoryTrendTotal(state.expenses, cycle, trendCategoryFilter);
+    const prevTotal = cycleCategoryTrendTotal(state.expenses, prevGroup.cycle, trendCategoryFilter);
     if (prevTotal <= 0) return null;
     return { pct: Math.round((currentTotal - prevTotal) / prevTotal * 100) };
   }
 
-  // Bar chart of total household spending across the most recent cycles
-  // (oldest to newest, left to right), highlighting whichever cycle is
-  // currently selected in the picker above.
+  // Bar chart of spending across the most recent cycles (oldest to newest,
+  // left to right), highlighting whichever cycle is currently selected in
+  // the picker above. Defaults to the whole household's total, but a
+  // dropdown lets it narrow to one ジャンル's trend instead (does that
+  // category's spending keep climbing, e.g.), independent of the cycle
+  // picker above it.
   function renderTrendChartHtml(groups, currentCycle, momDelta) {
     const maxMonths = 6;
     const recent = groups.slice(0, maxMonths).slice().reverse();
     if (recent.length === 0) return '';
     const totals = recent.map(function (g) {
-      return cycleTrendTotal(state.expenses, g.cycle);
+      return cycleCategoryTrendTotal(state.expenses, g.cycle, trendCategoryFilter);
     });
     const maxTotal = Math.max.apply(null, totals.concat([1]));
     const currentKey = cycleKey(currentCycle.ym);
@@ -2082,12 +2095,19 @@ import {
     const momHtml = momDelta ?
       '<span class="mom-delta ' + (momDelta.pct > 0 ? 'mom-up' : (momDelta.pct < 0 ? 'mom-down' : '')) + '">先月比 ' + (momDelta.pct > 0 ? '+' : '') + momDelta.pct + '%</span>'
       : '';
-    const hasAnySpecial = recent.some(function (g) {
+    // The 特別費-excluded "typical month" adjustment only applies to 合計
+    // (see cycleCategoryTrendTotal) -- irrelevant, and would be misleading,
+    // once a specific category is selected.
+    const hasAnySpecial = !trendCategoryFilter && recent.some(function (g) {
       return expensesInCycle(state.expenses, g.cycle).some(function (e) { return e.isSpecial; });
     });
+    const categoryOptionsHtml = '<option value="">合計</option>' + allCategoryOrder().map(function (cat) {
+      return '<option value="' + cat + '"' + (trendCategoryFilter === cat ? ' selected' : '') + '>' + escapeHtml(categoryDisplayName(cat)) + '</option>';
+    }).join('');
     return '' +
       '<div class="ledger-card">' +
         '<div class="ledger-title" style="display:flex; justify-content:space-between; align-items:center;"><span>月次推移</span>' + momHtml + '</div>' +
+        '<div style="padding:0 16px 12px;"><select class="cycle-select" id="trend-category-select">' + categoryOptionsHtml + '</select></div>' +
         '<div class="trend-chart">' + bars + '</div>' +
         (hasAnySpecial ? '<div class="field-hint" style="padding-top:0; margin:-4px 16px 12px;">特別費（旅行など）は含みません</div>' : '') +
       '</div>';
@@ -2358,6 +2378,10 @@ import {
   // collapse everything else; harmless if it references a category not
   // present in the currently selected cycle.
   let expandedCategoryIds = {};
+  // 月次推移／先月比で見る対象 -- '' (既定) は合計（特別費を除く）、それ以外は
+  // その1ジャンルだけの推移（このときは特別費も含む。理由は
+  // cycleCategoryTrendTotal のコメントを参照）。
+  let trendCategoryFilter = '';
   // 支出の構成 / 内訳（ジャンル別）を「全部」「通常」「特別費」のどれで見るか --
   // 特別費フラグが月次推移以外の何にも効かないと分析に使えないので、この
   // 2枚のカードはここでフィルタした集合から作り直す。'all' で完全に既存の
@@ -4476,6 +4500,17 @@ import {
   document.getElementById('settle-cycle-select').addEventListener('change', function (e) {
     summarySelectedKey = e.target.value;
     renderSettle();
+    renderSummary();
+  });
+
+  // #trend-category-select lives inside #summary-body, which is fully
+  // replaced on every renderSummary() call -- a direct listener on the
+  // element would be lost the moment it re-renders, so this delegates on
+  // document instead (bubbling 'change' events reach it regardless of
+  // how many times the select underneath has been recreated).
+  document.addEventListener('change', function (e) {
+    if (e.target.id !== 'trend-category-select') return;
+    trendCategoryFilter = e.target.value;
     renderSummary();
   });
 
