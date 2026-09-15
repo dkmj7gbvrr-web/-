@@ -1430,7 +1430,7 @@
 
       <div class="manual-section">
         <h3>共有口座への積立</h3>
-        <p>収入タブの「共有口座への積立」から、毎月一定額を共有口座に積み立てる設定ができます。開始年月とふたりそれぞれの月額を入力すると、開始年月以降の精算タブの送金額にこの金額が織り込まれ、共有カードの精算プラン（積立だけの場合は「共有口座への入金プラン」）に内訳が表示されます。開始年月からの積立残高（合計・ふたりそれぞれの累計）は集計タブの「共有口座の積立残高」カードで確認できます。「積立をやめる」でいつでも設定を解除できます。</p>
+        <p>収入タブの「共有口座への積立」から、毎月一定額を共有口座に積み立てる設定ができます。開始年月とふたりそれぞれの月額を入力すると、開始年月以降の精算タブの送金額にこの金額が織り込まれ、共有カードの精算プラン（積立だけの場合は「共有口座への入金プラン」）に内訳が表示されます。集計タブの「共有口座の積立残高」カードでは、開始年月からの積立残高（合計・ふたりそれぞれの累計）を確認できます。この残高は「精算済み」にした月の分だけ反映され、精算前の月はまだ含まれません。「積立をやめる」でいつでも設定を解除できます。</p>
       </div>
 
       <div class="manual-section">
@@ -1891,6 +1891,28 @@ import {
     return { aThisMonth: aAmount, bThisMonth: bAmount, aCumulative: aAmount * months, bCumulative: bAmount * months, months: months };
   }
 
+  // The actual running balance of the joint savings pot: unlike
+  // jointSavingsForCycle() above (which just tells you what's DUE this
+  // cycle, settled or not), this only counts months that have actually
+  // been marked 精算済み -- money that hasn't been transferred yet isn't
+  // really "in" the account. Independent of whichever cycle happens to be
+  // selected in either tab's picker; it's a running total, not a per-cycle
+  // figure.
+  function jointSavingsBalance() {
+    const p = state.settings.jointSavingsPlan;
+    if (!p || (!(p.aAmount > 0) && !(p.bAmount > 0))) return null;
+    const startKey = p.startYear * 12 + p.startMonth;
+    let aCumulative = 0, bCumulative = 0;
+    groupExpensesByCycle().forEach(function (g) {
+      if (!state.settledCycles[cycleKey(g.cycle.ym)]) return;
+      const ym = cycleDisplayYearMonth(g.cycle);
+      if (ym.year * 12 + ym.month < startKey) return;
+      aCumulative += p.aAmount || 0;
+      bCumulative += p.bAmount || 0;
+    });
+    return { aCumulative: aCumulative, bCumulative: bCumulative };
+  }
+
   const SPLIT_TYPES = ['incomeRatio', 'equal', 'aOnly', 'bOnly', 'customRatio'];
 
   function splitLabel(type, names) {
@@ -2224,18 +2246,25 @@ import {
   // いるか" stays visible. Lives in 集計 (tracking over time), not 精算
   // (this cycle's money movements) -- the per-cycle 送金額 breakdown
   // stays on the settlement card there.
-  function renderJointSavingsBalanceCardHtml(cycle, names) {
-    const savings = jointSavingsForCycle(cycle);
+  // 共有口座の積立残高: how much has actually built up in the joint
+  // savings pot -- 残高 (the combined household total) as the headline
+  // figure, with each person's own cumulative contribution broken out
+  // underneath so "誰がいくら出しているか" stays visible. Only counts
+  // months actually marked 精算済み (see jointSavingsBalance()), so it
+  // lags behind what's merely DUE -- that per-cycle 送金額 breakdown
+  // stays on 精算's settlement card, unaffected by settled state.
+  function renderJointSavingsBalanceCardHtml(names) {
+    const savings = jointSavingsBalance();
     if (!savings) return '';
     const total = savings.aCumulative + savings.bCumulative;
     const p = state.settings.jointSavingsPlan;
     return '' +
       '<div class="ledger-card">' +
         '<div class="ledger-title">共有口座の積立残高</div>' +
-        '<div class="kv-row total"><span>残高（今回まで）</span><span class="num">' + formatYen(total) + '</span></div>' +
+        '<div class="kv-row total"><span>残高</span><span class="num">' + formatYen(total) + '</span></div>' +
         '<div class="kv-row"><span>' + escapeHtml(names.a) + 'の積立累計（月' + formatYen(p.aAmount || 0) + '）</span><span class="num">' + formatYen(savings.aCumulative) + '</span></div>' +
         '<div class="kv-row"><span>' + escapeHtml(names.b) + 'の積立累計（月' + formatYen(p.bAmount || 0) + '）</span><span class="num">' + formatYen(savings.bCumulative) + '</span></div>' +
-        '<div class="field-hint" style="padding-top:0;">' + p.startYear + '年' + p.startMonth + '月から積立中。設定は収入タブから変更できます。</div>' +
+        '<div class="field-hint" style="padding-top:0;">' + p.startYear + '年' + p.startMonth + '月から積立中。精算済みの月の分だけ反映されます（未精算の月はまだ含まれません）。設定は収入タブから変更できます。</div>' +
       '</div>';
   }
 
@@ -2847,7 +2876,7 @@ import {
     const pieEntries = categoryPieEntries(viewByCategory);
     const pieHtml = pieEntries.length ? categoryPieSvg(pieEntries, viewTotal) + categoryPieLegendHtml(pieEntries, viewTotal) : '';
     const budgetCardHtml = renderBudgetCardHtml(s, names);
-    const jointSavingsCardHtml = renderJointSavingsBalanceCardHtml(cycle, names);
+    const jointSavingsCardHtml = renderJointSavingsBalanceCardHtml(names);
     const emptyBreakdownMessage = cycleExpenses.length === 0 ? 'この月の支出はありません'
       : categoryViewFilter === 'special' ? '特別費に該当する支出はありません'
       : categoryViewFilter === 'normal' ? '通常の支出はありません（すべて特別費）'
