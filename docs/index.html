@@ -1430,7 +1430,7 @@
 
       <div class="manual-section">
         <h3>共有口座への積立</h3>
-        <p>収入タブの「共有口座への積立」から、毎月一定額を共有口座に積み立てる設定ができます。開始年月とふたりそれぞれの月額を入力すると、開始年月以降の精算タブの送金額にこの金額が織り込まれ、共有カードの精算プラン（積立だけの場合は「共有口座への入金プラン」）に内訳と、開始年月からの積立累計額が表示されます。「積立をやめる」でいつでも設定を解除できます。</p>
+        <p>収入タブの「共有口座への積立」から、毎月一定額を共有口座に積み立てる設定ができます。開始年月とふたりそれぞれの月額を入力すると、開始年月以降の精算タブの送金額にこの金額が織り込まれ、共有カードの精算プラン（積立だけの場合は「共有口座への入金プラン」）に内訳が表示されます。開始年月からの積立残高（合計・ふたりそれぞれの累計）は集計タブの「共有口座の積立残高」カードで確認できます。「積立をやめる」でいつでも設定を解除できます。</p>
       </div>
 
       <div class="manual-section">
@@ -2217,6 +2217,28 @@ import {
     return '<div class="ledger-card"><div class="ledger-title">予算</div><div class="budget-list">' + rows + '</div></div>';
   }
 
+  // 共有口座の積立残高: how much has actually built up in the joint
+  // savings pot as of the currently viewed cycle -- 残高 (the combined
+  // household total) as the headline figure, with each person's own
+  // cumulative contribution broken out underneath so "誰がいくら出して
+  // いるか" stays visible. Lives in 集計 (tracking over time), not 精算
+  // (this cycle's money movements) -- the per-cycle 送金額 breakdown
+  // stays on the settlement card there.
+  function renderJointSavingsBalanceCardHtml(cycle, names) {
+    const savings = jointSavingsForCycle(cycle);
+    if (!savings) return '';
+    const total = savings.aCumulative + savings.bCumulative;
+    const p = state.settings.jointSavingsPlan;
+    return '' +
+      '<div class="ledger-card">' +
+        '<div class="ledger-title">共有口座の積立残高</div>' +
+        '<div class="kv-row total"><span>残高（今回まで）</span><span class="num">' + formatYen(total) + '</span></div>' +
+        '<div class="kv-row"><span>' + escapeHtml(names.a) + 'の積立累計（月' + formatYen(p.aAmount || 0) + '）</span><span class="num">' + formatYen(savings.aCumulative) + '</span></div>' +
+        '<div class="kv-row"><span>' + escapeHtml(names.b) + 'の積立累計（月' + formatYen(p.bAmount || 0) + '）</span><span class="num">' + formatYen(savings.bCumulative) + '</span></div>' +
+        '<div class="field-hint" style="padding-top:0;">' + p.startYear + '年' + p.startMonth + '月から積立中。設定は収入タブから変更できます。</div>' +
+      '</div>';
+  }
+
   function guessCategory(memo, merchantMemory) {
     const trimmed = (memo || '').trim();
     if (!trimmed) return 'other';
@@ -2752,10 +2774,6 @@ import {
               '<div class="field-hint" style="padding:0 0 10px; margin-top:-4px;">内訳：共有カード分 ' + formatYen(l.sharedPart) + '／積立 ' + formatYen(l.savingsPart) + '</div>' : '';
             return '<div class="kv-row"><span>' + escapeHtml(paidByLabel(l.from, names)) + ' → ' + toText + '（ネット）</span><span class="num">' + formatYen(l.amount) + '</span></div>' + breakdownHtml;
           }).join('') +
-          (savings ?
-            '<div class="kv-row"><span>' + escapeHtml(names.a) + 'の積立累計（今回まで）</span><span class="num">' + formatYen(savings.aCumulative) + '</span></div>' +
-            '<div class="kv-row"><span>' + escapeHtml(names.b) + 'の積立累計（今回まで）</span><span class="num">' + formatYen(savings.bCumulative) + '</span></div>'
-            : '') +
         '</div>'
         : '') +
       '<div class="settlement-card">' +
@@ -2829,6 +2847,7 @@ import {
     const pieEntries = categoryPieEntries(viewByCategory);
     const pieHtml = pieEntries.length ? categoryPieSvg(pieEntries, viewTotal) + categoryPieLegendHtml(pieEntries, viewTotal) : '';
     const budgetCardHtml = renderBudgetCardHtml(s, names);
+    const jointSavingsCardHtml = renderJointSavingsBalanceCardHtml(cycle, names);
     const emptyBreakdownMessage = cycleExpenses.length === 0 ? 'この月の支出はありません'
       : categoryViewFilter === 'special' ? '特別費に該当する支出はありません'
       : categoryViewFilter === 'normal' ? '通常の支出はありません（すべて特別費）'
@@ -2838,6 +2857,7 @@ import {
     body.innerHTML = '' +
       trendChartHtml +
       budgetCardHtml +
+      jointSavingsCardHtml +
       '<div class="ledger-card">' +
         '<div class="ledger-title">支出の構成' + viewSuffix + '</div>' +
         '<div style="padding:0 16px 12px;">' + categoryViewSegmentedHtml() + '</div>' +
