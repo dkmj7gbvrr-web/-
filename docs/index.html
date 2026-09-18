@@ -1352,7 +1352,7 @@
           <input type="text" inputmode="numeric" id="savings-plan-b-amount" class="amount-input" placeholder="0">
         </div>
       </div>
-      <div class="field-hint" style="padding-top:0;">共有口座に毎月積み立てる金額です。開始年月以降の精算タブの送金額に、この金額が織り込まれます。</div>
+      <div class="field-hint" style="padding-top:0;">積立専用の共有口座に毎月積み立てる金額です。開始年月以降、精算タブに共有カードの精算とは別枠の入金額として表示されます。</div>
       <button class="btn btn-danger-ghost" id="savings-plan-delete-btn" data-action="delete-savings-plan" hidden>積立をやめる</button>
     </div>
   </div>
@@ -1395,7 +1395,7 @@
 
       <div class="manual-section">
         <h3>実際に立て替えた人</h3>
-        <p>「A」「B」に加えて「共有」（共有カードでの支払い）を選べます。共有カードの支出は、精算タブで通常の負担額（グロス）と、共有口座への実際の精算額（ネット）の両方が表示されます。</p>
+        <p>「A」「B」に加えて「共有」（共有カードでの支払い）を選べます。共有カードの支出は、精算タブで通常の負担額（グロス）と、共有カード用口座への実際の精算額（ネット）の両方が表示されます。</p>
       </div>
 
       <div class="manual-section">
@@ -1430,7 +1430,7 @@
 
       <div class="manual-section">
         <h3>共有口座への積立</h3>
-        <p>収入タブの「共有口座への積立」から、毎月一定額を共有口座に積み立てる設定ができます。開始年月とふたりそれぞれの月額を入力すると、開始年月以降の精算タブの送金額にこの金額が織り込まれ、共有カードの精算プラン（積立だけの場合は「共有口座への入金プラン」）に内訳が表示されます。集計タブの「共有口座の積立残高」カードでは、開始年月からの積立残高（合計・ふたりそれぞれの累計）を確認できます。この残高は「精算済み」にした月の分だけ反映され、精算前の月はまだ含まれません。「積立をやめる」でいつでも設定を解除できます。</p>
+        <p>収入タブの「共有口座への積立」から、毎月一定額を積立専用の共有口座に積み立てる設定ができます。開始年月とふたりそれぞれの月額を入力すると、開始年月以降の精算タブに「共有口座への積立」として毎月の入金額が表示されます。これは共有カード用口座への精算プランとは別枠の、積立専用口座への入金として扱われるため、共有カードの精算額そのものには影響しません。集計タブの「共有口座の積立残高」カードでは、開始年月からの積立残高（合計・ふたりそれぞれの累計）を確認できます。この残高は「精算済み」にした月の分だけ反映され、精算前の月はまだ含まれません。「積立をやめる」でいつでも設定を解除できます。</p>
       </div>
 
       <div class="manual-section">
@@ -1820,22 +1820,20 @@ import {
     return summarizeExpenses(target, incomePeriods, closingDay);
   }
 
-  // Turns a shared-card expense's burden (plus, optionally, each person's
-  // own fixed monthly 積立/savings contribution into the same joint
-  // account) into a concrete transfer plan: the person owed money in the
-  // ordinary (non-shared) settlement above (the "creditor") gets their own
-  // joint-account contribution folded into what the other person ("debtor")
-  // sends them -- so the debtor pays their own share plus whatever of the
-  // creditor's share the settlement amount can absorb, directly into the
-  // joint account, and only the leftover (if any) goes to the creditor
-  // directly. This minimizes how many transfers either person has to make.
-  // savingsA/savingsB default to 0 -- the 初期費用 bucket calls this with
-  // no savings args at all, since 積立 is a monthly-cycle-only concept.
-  // Returns null when there's nothing at all to send to the joint account.
-  function sharedAccountPlan(s, savingsA, savingsB) {
-    savingsA = savingsA || 0;
-    savingsB = savingsB || 0;
-    const ownShare = { a: s.sharedBurdenA + savingsA, b: s.sharedBurdenB + savingsB };
+  // Turns a shared-card expense's burden into a concrete transfer plan for
+  // the 共有カード用口座 (the account the card bill gets paid from) -- a
+  // SEPARATE account from the 積立専用の共有口座 (see jointSavingsForCycle
+  // below), so the two are never netted together: the person owed money in
+  // the ordinary (non-shared) settlement above (the "creditor") gets their
+  // own joint-account contribution folded into what the other person
+  // ("debtor") sends them -- so the debtor pays their own share plus
+  // whatever of the creditor's share the settlement amount can absorb,
+  // directly into the joint account, and only the leftover (if any) goes to
+  // the creditor directly. This minimizes how many transfers either person
+  // has to make. Returns null when there's nothing at all to send to the
+  // joint account.
+  function sharedAccountPlan(s) {
+    const ownShare = { a: s.sharedBurdenA, b: s.sharedBurdenB };
     if (ownShare.a <= 0 && ownShare.b <= 0) return null;
     const netAmt = s.settle ? s.settle.amount : 0;
     const debtor = s.settle ? s.settle.payer : 'a';
@@ -2688,9 +2686,9 @@ import {
     const sharedPlan = sharedAccountPlan(s);
     const sharedPlanLines = [];
     if (sharedPlan) {
-      if (sharedPlan.debtorToJoint > 0) sharedPlanLines.push({ from: sharedPlan.debtor, toLabel: '共有口座', amount: sharedPlan.debtorToJoint });
+      if (sharedPlan.debtorToJoint > 0) sharedPlanLines.push({ from: sharedPlan.debtor, toLabel: '共有カード用口座', amount: sharedPlan.debtorToJoint });
       if (sharedPlan.debtorToCreditor > 0) sharedPlanLines.push({ from: sharedPlan.debtor, to: sharedPlan.creditor, amount: sharedPlan.debtorToCreditor });
-      if (sharedPlan.creditorToJoint > 0) sharedPlanLines.push({ from: sharedPlan.creditor, toLabel: '共有口座', amount: sharedPlan.creditorToJoint });
+      if (sharedPlan.creditorToJoint > 0) sharedPlanLines.push({ from: sharedPlan.creditor, toLabel: '共有カード用口座', amount: sharedPlan.creditorToJoint });
     }
 
     const visibleItems = expenseFilterActive() ? items.filter(expenseMatchesFilter) : items;
@@ -2717,7 +2715,7 @@ import {
       (sharedPlan ?
         '<div class="ledger-card">' +
           '<div class="ledger-title">共有カードの精算プラン</div>' +
-          '<div class="field-hint" style="padding-top:0; margin-bottom:10px;">グロス：共有分も含めた本来の負担額。ネット：共有口座への入金とAB間の精算を1つにまとめた場合の送金額です。</div>' +
+          '<div class="field-hint" style="padding-top:0; margin-bottom:10px;">グロス：共有分も含めた本来の負担額。ネット：共有カード用口座への入金とAB間の精算を1つにまとめた場合の送金額です。</div>' +
           '<div class="kv-row"><span>' + escapeHtml(names.a) + '（グロス）</span><span class="num">' + formatYen(s.burdenA) + '</span></div>' +
           '<div class="kv-row"><span>' + escapeHtml(names.b) + '（グロス）</span><span class="num">' + formatYen(s.burdenB) + '</span></div>' +
           sharedPlanLines.map(function (l) {
@@ -2753,29 +2751,23 @@ import {
         return '<div class="kv-row"><span style="display:flex; align-items:center; gap:8px;">' + splitDotHtml(t) + '<span>' + escapeHtml(splitLabel(t, names)) + '</span></span><span class="num">' + formatYen(s.bySplitType[t]) + '</span></div>';
       }).join('');
 
-    const savings = jointSavingsForCycle(cycle);
-    const savingsA = savings ? savings.aThisMonth : 0;
-    const savingsB = savings ? savings.bThisMonth : 0;
-    const sharedPlan = sharedAccountPlan(s, savingsA, savingsB);
+    const sharedPlan = sharedAccountPlan(s);
     const sharedPlanLines = [];
     if (sharedPlan) {
-      if (sharedPlan.debtorToJoint > 0) {
-        sharedPlanLines.push({
-          from: sharedPlan.debtor, toLabel: '共有口座', amount: sharedPlan.debtorToJoint,
-          sharedPart: sharedPlan.debtor === 'a' ? s.sharedBurdenA : s.sharedBurdenB,
-          savingsPart: sharedPlan.debtor === 'a' ? savingsA : savingsB
-        });
-      }
+      if (sharedPlan.debtorToJoint > 0) sharedPlanLines.push({ from: sharedPlan.debtor, toLabel: '共有カード用口座', amount: sharedPlan.debtorToJoint });
       if (sharedPlan.debtorToCreditor > 0) sharedPlanLines.push({ from: sharedPlan.debtor, to: sharedPlan.creditor, amount: sharedPlan.debtorToCreditor });
-      if (sharedPlan.creditorToJoint > 0) {
-        sharedPlanLines.push({
-          from: sharedPlan.creditor, toLabel: '共有口座', amount: sharedPlan.creditorToJoint,
-          sharedPart: sharedPlan.creditor === 'a' ? s.sharedBurdenA : s.sharedBurdenB,
-          savingsPart: sharedPlan.creditor === 'a' ? savingsA : savingsB
-        });
-      }
+      if (sharedPlan.creditorToJoint > 0) sharedPlanLines.push({ from: sharedPlan.creditor, toLabel: '共有カード用口座', amount: sharedPlan.creditorToJoint });
     }
-    const jointPlanTitle = s.paidByShared > 0 ? '共有カードの精算プラン' : '共有口座への入金プラン';
+
+    // 積立専用の共有口座への入金は、共有カード用口座の精算プランとは別の
+    // 口座が宛先なので、送金額を一切ネットしない -- ふたりそれぞれの設定
+    // 月額を、そのまま別枠の送金として並べるだけ。
+    const savings = jointSavingsForCycle(cycle);
+    const savingsLines = [];
+    if (savings) {
+      if (savings.aThisMonth > 0) savingsLines.push({ person: 'a', amount: savings.aThisMonth });
+      if (savings.bThisMonth > 0) savingsLines.push({ person: 'b', amount: savings.bThisMonth });
+    }
 
     const body = document.getElementById('settle-body');
     body.innerHTML = '' +
@@ -2793,15 +2785,22 @@ import {
       '</div>' +
       (sharedPlan ?
         '<div class="ledger-card">' +
-          '<div class="ledger-title">' + jointPlanTitle + '</div>' +
-          '<div class="field-hint" style="padding-top:0; margin-bottom:10px;">グロス：共有分も含めた本来の負担額。ネット：共有口座への入金（積立を含む）とAB間の精算を1つにまとめた場合の送金額です。</div>' +
+          '<div class="ledger-title">共有カードの精算プラン</div>' +
+          '<div class="field-hint" style="padding-top:0; margin-bottom:10px;">グロス：共有分も含めた本来の負担額。ネット：共有カード用口座への入金とAB間の精算を1つにまとめた場合の送金額です。</div>' +
           '<div class="kv-row"><span>' + escapeHtml(names.a) + '（グロス）</span><span class="num">' + formatYen(s.burdenA) + '</span></div>' +
           '<div class="kv-row"><span>' + escapeHtml(names.b) + '（グロス）</span><span class="num">' + formatYen(s.burdenB) + '</span></div>' +
           sharedPlanLines.map(function (l) {
             const toText = l.toLabel ? l.toLabel : escapeHtml(paidByLabel(l.to, names));
-            const breakdownHtml = (l.toLabel && (l.sharedPart > 0 || l.savingsPart > 0)) ?
-              '<div class="field-hint" style="padding:0 0 10px; margin-top:-4px;">内訳：共有カード分 ' + formatYen(l.sharedPart) + '／積立 ' + formatYen(l.savingsPart) + '</div>' : '';
-            return '<div class="kv-row"><span>' + escapeHtml(paidByLabel(l.from, names)) + ' → ' + toText + '（ネット）</span><span class="num">' + formatYen(l.amount) + '</span></div>' + breakdownHtml;
+            return '<div class="kv-row"><span>' + escapeHtml(paidByLabel(l.from, names)) + ' → ' + toText + '（ネット）</span><span class="num">' + formatYen(l.amount) + '</span></div>';
+          }).join('') +
+        '</div>'
+        : '') +
+      (savingsLines.length ?
+        '<div class="ledger-card">' +
+          '<div class="ledger-title">共有口座への積立</div>' +
+          '<div class="field-hint" style="padding-top:0; margin-bottom:10px;">共有カード用口座とは別の、積立専用の共有口座への入金額です（上の精算プランとはネットされません）。</div>' +
+          savingsLines.map(function (l) {
+            return '<div class="kv-row"><span>' + escapeHtml(l.person === 'a' ? names.a : names.b) + ' → 共有口座（積立用）</span><span class="num">' + formatYen(l.amount) + '</span></div>';
           }).join('') +
         '</div>'
         : '') +
@@ -3058,7 +3057,7 @@ import {
       '<div class="ledger-title">共有口座への積立</div>' +
       '<div class="kv-row"><span>' + escapeHtml(names.a) + '（月額）</span><span class="num">' + formatYen(p.aAmount || 0) + '</span></div>' +
       '<div class="kv-row"><span>' + escapeHtml(names.b) + '（月額）</span><span class="num">' + formatYen(p.bAmount || 0) + '</span></div>' +
-      '<div class="field-hint" style="padding-top:0;">' + p.startYear + '年' + p.startMonth + '月から積立中。精算タブの送金額に織り込まれます。</div>' +
+      '<div class="field-hint" style="padding-top:0;">' + p.startYear + '年' + p.startMonth + '月から積立中。精算タブに共有カードの精算とは別枠の送金額として表示されます。</div>' +
       '<div class="settings-actions" style="padding:0 16px 16px;"><button type="button" class="btn btn-secondary" data-action="open-savings-plan-sheet">編集する</button></div>';
   }
 
