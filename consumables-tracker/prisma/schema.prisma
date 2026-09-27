@@ -32,6 +32,9 @@ model User {
 
   updatedItems Item[]         @relation("ItemLastUpdatedBy")
   historyEntries StatusHistoryEntry[]
+
+  updatedReplacementItems   ReplacementItem[]      @relation("ReplacementItemLastUpdatedBy")
+  replacementHistoryEntries ReplacementLogEntry[]
 }
 
 /// カテゴリは固定enumにせず自由入力の文字列にしている(「あったら良い機能」の
@@ -69,4 +72,36 @@ model StatusHistoryEntry {
   user User? @relation(fields: [userId], references: [id])
 
   @@index([itemId, createdAt])
+}
+
+/// 浄水器のカートリッジなど「残量」ではなく「日数」で交換タイミングを
+/// 管理する定期交換品。次回交換予定日は保存せず、lastReplacedAt +
+/// intervalDays から都度計算する(常に導出値であり、齟齬が起きない)。
+model ReplacementItem {
+  id             String   @id @default(cuid())
+  name           String
+  /// 交換目安の日数(例: 90日ごと)
+  intervalDays   Int
+  lastReplacedAt DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  lastUpdatedById String?
+  lastUpdatedBy   User?   @relation("ReplacementItemLastUpdatedBy", fields: [lastUpdatedById], references: [id])
+
+  history ReplacementLogEntry[]
+}
+
+/// 交換した記録。押すたびに1行追記し、ReplacementItem.lastReplacedAtを
+/// 最新の交換日で上書きする。
+model ReplacementLogEntry {
+  id         String   @id @default(cuid())
+  itemId     String
+  userId     String?
+  replacedAt DateTime @default(now())
+
+  item ReplacementItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  user User?           @relation(fields: [userId], references: [id])
+
+  @@index([itemId, replacedAt])
 }

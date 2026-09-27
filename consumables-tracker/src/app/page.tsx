@@ -27,11 +27,16 @@ export default async function HomePage({
           <h1 className="text-lg font-bold">消耗品トラッカー</h1>
           <p className="text-xs text-slate-400">{me.name}としてログイン中</p>
         </div>
-        <form action={switchUser}>
-          <button type="submit" className="rounded-lg px-2 py-1 text-xs text-slate-400 active:bg-slate-100">
-            人を切り替える
-          </button>
-        </form>
+        <div className="flex items-center gap-1">
+          <Link href="/replacements" className="rounded-lg px-2 py-1 text-xs text-slate-400 active:bg-slate-100">
+            定期交換品
+          </Link>
+          <form action={switchUser}>
+            <button type="submit" className="rounded-lg px-2 py-1 text-xs text-slate-400 active:bg-slate-100">
+              人を切り替える
+            </button>
+          </form>
+        </div>
       </header>
 
       <ShoppingList items={shoppingItems} />
