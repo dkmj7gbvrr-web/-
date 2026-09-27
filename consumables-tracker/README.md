@@ -11,6 +11,7 @@
 - **誰が更新したかの記録** — 「誰ですか」画面で名前を選ぶ/入力するとその人として認識され、各品目に最終更新者と更新日時が表示されます。厳密なパスワード認証は行いません。
 - **カテゴリごとのフィルタ表示**。
 - **品目ごとの更新履歴**（いつ誰が残量を変えたか、直近20件）。
+- **定期交換品の管理**（浄水器カートリッジなど） — 残量ではなく「前回交換日＋交換目安の日数」で次回の交換時期を管理します。次回目安日を過ぎると赤、7日以内に迫ると黄色で表示され、一覧から「交換した」を押すだけで前回交換日が今日に更新されます。
 
 ## 使い方（利用者向け）
 
@@ -32,12 +33,23 @@ loginCode?                    category (自由入力の文字列)        userId?
 createdAt                     status (MANY/NORMAL/LOW/OUT)       fromStatus?
                                lastUpdatedById -> User?           toStatus
                                createdAt / updatedAt              createdAt
+
+ReplacementItem                          ReplacementLogEntry
+--------------------                     --------------------
+id                                       id
+name                                     itemId    -> ReplacementItem
+intervalDays (交換目安の日数)             userId?   -> User
+lastReplacedAt (前回交換日)               replacedAt
+lastUpdatedById -> User?
+createdAt / updatedAt
 ```
 
 - **User** — 表示名のみ。メール・パスワードは持たない。Cookie(`ct_uid`)に保存したユーザーIDで本人を識別する。
 - **Item** — 品目本体。`status`が残量の現在値。カテゴリは固定enumにせず自由入力の文字列にしており、「洗剤・紙類・調味料・日用品」などはあくまで入力時のサジェスト候補。
 - **StatusHistoryEntry** — 残量が変わるたびに1行追記される変更履歴（品目編集画面の「更新履歴」に表示）。
 - 買い物リストは独立したテーブルを持たない。`Item.status`が`LOW`/`OUT`のものを毎回抽出して表示し、「買った」は`status`を`MANY`に戻すだけ。
+- **ReplacementItem** — 浄水器カートリッジなど、日数で交換時期を管理する品目。次回交換予定日は列として持たず、`lastReplacedAt + intervalDays`から毎回計算する（`src/lib/replacement.ts`）。一覧の「交換した」ボタンは`lastReplacedAt`を今日の日付に更新するだけ。
+- **ReplacementLogEntry** — 交換した記録。押すたびに1行追記される（編集画面の「交換履歴」に表示）。
 
 詳細は [`prisma/schema.prisma`](./prisma/schema.prisma) を参照してください。
 
@@ -104,8 +116,11 @@ src/
     page.tsx                 品目一覧＋買い物リスト（メイン画面）
     items/new                品目の追加
     items/[id]/edit          品目の編集・削除・更新履歴
-  actions/    Server Actions（本人確認・品目のCRUD・残量更新）
-  lib/        DBクライアント、残量ステータスの表示定義、バリデーションなど
+    replacements             定期交換品の一覧
+    replacements/new         定期交換品の追加
+    replacements/[id]/edit   定期交換品の編集・削除・交換履歴
+  actions/    Server Actions（本人確認・品目のCRUD・残量更新・定期交換品のCRUD）
+  lib/        DBクライアント、残量/交換時期ステータスの表示定義、バリデーションなど
   components/ 一覧カード・買い物リスト・カテゴリフィルタなどのUI部品
 prisma/schema.prisma        データ定義
 ```
