@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { listItems, listCategories } from "@/actions/items";
+import { listReplacementItems } from "@/actions/replacementItems";
 import { switchUser } from "@/actions/identity";
 import { isShoppingNeeded } from "@/lib/status";
 import { ItemCard } from "@/components/ItemCard";
 import { ShoppingList } from "@/components/ShoppingList";
 import { CategoryFilter } from "@/components/CategoryFilter";
+import { ReplacementBanner } from "@/components/ReplacementBanner";
 
 export default async function HomePage({
   searchParams,
@@ -15,7 +17,11 @@ export default async function HomePage({
   const me = await requireUser();
   const { category } = await searchParams;
 
-  const [items, categories] = await Promise.all([listItems(), listCategories()]);
+  const [items, categories, replacementItems] = await Promise.all([
+    listItems(),
+    listCategories(),
+    listReplacementItems(),
+  ]);
 
   const shoppingItems = items.filter((item) => isShoppingNeeded(item.status));
   const visibleItems = category ? items.filter((item) => item.category === category) : items;
@@ -27,17 +33,14 @@ export default async function HomePage({
           <h1 className="text-lg font-bold">消耗品トラッカー</h1>
           <p className="text-xs text-slate-400">{me.name}としてログイン中</p>
         </div>
-        <div className="flex items-center gap-1">
-          <Link href="/replacements" className="rounded-lg px-2 py-1 text-xs text-slate-400 active:bg-slate-100">
-            定期交換品
-          </Link>
-          <form action={switchUser}>
-            <button type="submit" className="rounded-lg px-2 py-1 text-xs text-slate-400 active:bg-slate-100">
-              人を切り替える
-            </button>
-          </form>
-        </div>
+        <form action={switchUser}>
+          <button type="submit" className="rounded-lg px-2 py-1 text-xs text-slate-400 active:bg-slate-100">
+            人を切り替える
+          </button>
+        </form>
       </header>
+
+      <ReplacementBanner items={replacementItems} />
 
       <ShoppingList items={shoppingItems} />
 
