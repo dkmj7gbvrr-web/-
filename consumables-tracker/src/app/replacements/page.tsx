@@ -14,8 +14,11 @@ export default async function ReplacementsPage() {
           <h1 className="text-lg font-bold">定期交換品</h1>
           <p className="text-xs text-slate-400">浄水器カートリッジなど、日数で交換時期を管理します</p>
         </div>
-        <Link href="/" className="shrink-0 rounded-lg px-2 py-1 text-xs text-slate-400 active:bg-slate-100">
-          消耗品一覧へ
+        <Link
+          href="/"
+          className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600 active:bg-slate-100"
+        >
+          ← 消耗品一覧
         </Link>
       </header>
 
