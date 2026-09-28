@@ -210,6 +210,18 @@
     color: var(--ink-muted);
     font-weight: 600;
   }
+  .cycle-header-toggle {
+    width: 100%;
+    background: none;
+    border: none;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  .cycle-header-spacer { flex: 1; }
+  .cycle-header-total { font-size: 13px; color: var(--ink-muted); font-weight: 600; }
   .chip {
     font-size: 11px;
     padding: 2px 8px;
@@ -1419,7 +1431,7 @@
 
       <div class="manual-section">
         <h3>支出の検索・絞り込み</h3>
-        <p>支出タブ右上の虫めがねアイコンから、メモ・備考のキーワード検索や、ジャンル・支払った人での絞り込みができます。条件を指定している間はアイコンに印が付きます。同じパネルの「年月へジャンプ」から、締め日ベースでグループ化された支出一覧の中から特定の年月を選ぶと、その月の一覧まですぐスクロールできます（絞り込み中でも自動で解除してジャンプします）。</p>
+        <p>支出一覧は締め日ベースの年月ごとにグループ化されています。各月の見出しをタップすると、その月の支出一覧を開閉できます（既定では一番新しい月だけが開いています）。見出しにはその月の合計金額も表示されます。支出タブ右上の虫めがねアイコンから、メモ・備考のキーワード検索や、ジャンル・支払った人での絞り込みもできます。条件を指定している間はアイコンに印が付きます。同じパネルの「年月へジャンプ」から特定の年月を選ぶと、その月の一覧まで自動的に開いてスクロールします（絞り込み中でも自動で解除してジャンプします）。</p>
       </div>
 
       <div class="manual-section">
@@ -2509,6 +2521,18 @@ import {
   // collapse everything else; harmless if it references a category not
   // present in the currently selected cycle.
   let expandedCategoryIds = {};
+  // 支出タブの年月グループごとの開閉状態、キーは cycleKey(). 明示的に
+  // 触ったことのない月は「一番新しい月（先頭）だけ既定で開く」という
+  // ルールにしたいので、ここには「ユーザーが触った月」だけを持たせ、
+  // 未登録の月は isExpenseCycleExpanded() 側でデフォルトを判断する。
+  // 検索・絞り込み中は全部強制的に開いた扱いにする（絞り込んだ結果が
+  // 閉じた月の下に埋もれて見えなくなるのを防ぐため）。
+  let expandedExpenseCycles = {};
+  function isExpenseCycleExpanded(key, index, filtering) {
+    if (filtering) return true;
+    if (Object.prototype.hasOwnProperty.call(expandedExpenseCycles, key)) return !!expandedExpenseCycles[key];
+    return index === 0;
+  }
   // 月次推移／先月比で見る対象 -- '' (既定) は合計（特別費を除く）、それ以外は
   // その1ジャンルだけの推移（このときは特別費も含む。理由は
   // cycleCategoryTrendTotal のコメントを参照）。
@@ -2653,14 +2677,20 @@ import {
 
   function jumpToExpenseCycle(key) {
     if (!key) return;
+    let needsRerender = false;
     if (expenseFilterActive()) {
       expenseFilterQuery = '';
       expenseFilterCategory = '';
       expenseFilterPaidBy = '';
       document.getElementById('expense-search-input').value = '';
       populateExpenseFilterSelects();
-      renderExpenses();
+      needsRerender = true;
     }
+    if (expandedExpenseCycles[key] !== true) {
+      expandedExpenseCycles[key] = true;
+      needsRerender = true;
+    }
+    if (needsRerender) renderExpenses();
     const el = document.getElementById('cycle-group-' + key);
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -2693,16 +2723,21 @@ import {
       if (filtering && visibleGroups.length === 0) {
         container.innerHTML = emptyState('tray', '条件に合う支出がありません', '検索・絞り込みの条件を変えてみてください');
       } else {
-        container.innerHTML = visibleGroups.map(function (g) {
+        container.innerHTML = visibleGroups.map(function (g, index) {
           const key = cycleKey(g.cycle.ym);
           const settled = !!state.settledCycles[key];
+          const expanded = isExpenseCycleExpanded(key, index, filtering);
+          const total = g.items.reduce(function (sum, e) { return sum + e.amount; }, 0);
           return '' +
             '<div class="cycle-group" id="cycle-group-' + key + '">' +
-              '<div class="cycle-header">' +
+              '<button type="button" class="cycle-header cycle-header-toggle" data-action="toggle-expense-cycle" data-key="' + key + '" aria-expanded="' + expanded + '">' +
                 '<span class="label">' + escapeHtml(g.cycle.label) + '</span>' +
                 (settled ? '<span class="chip chip-settled">精算済み</span>' : '') +
-              '</div>' +
-              '<div class="ledger">' + g.items.map(expenseRowHtml).join('') + '</div>' +
+                '<span class="cycle-header-spacer"></span>' +
+                '<span class="cycle-header-total">' + formatYen(total) + '</span>' +
+                '<svg class="category-chevron' + (expanded ? ' expanded' : '') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>' +
+              '</button>' +
+              (expanded ? '<div class="ledger">' + g.items.map(expenseRowHtml).join('') + '</div>' : '') +
             '</div>';
         }).join('');
       }
@@ -4630,6 +4665,10 @@ import {
       case 'toggle-category-breakdown':
         expandedCategoryIds[target.dataset.category] = !expandedCategoryIds[target.dataset.category];
         renderSummary();
+        break;
+      case 'toggle-expense-cycle':
+        expandedExpenseCycles[target.dataset.key] = target.getAttribute('aria-expanded') !== 'true';
+        renderExpenses();
         break;
       case 'select-category-view':
         categoryViewFilter = target.dataset.value;
