@@ -1034,6 +1034,9 @@
           <select id="expense-filter-paidby"></select>
           <button type="button" class="btn btn-ghost" data-action="clear-expense-filter" style="width:auto; flex:none; padding:8px 12px; font-size:12.5px;">クリア</button>
         </div>
+        <div class="expense-filter-row">
+          <select id="expense-jump-select"></select>
+        </div>
       </div>
       <div id="expenses-list"></div>
       <div id="initial-cost-section"></div>
@@ -1416,7 +1419,7 @@
 
       <div class="manual-section">
         <h3>支出の検索・絞り込み</h3>
-        <p>支出タブ右上の虫めがねアイコンから、メモ・備考のキーワード検索や、ジャンル・支払った人での絞り込みができます。条件を指定している間はアイコンに印が付きます。</p>
+        <p>支出タブ右上の虫めがねアイコンから、メモ・備考のキーワード検索や、ジャンル・支払った人での絞り込みができます。条件を指定している間はアイコンに印が付きます。同じパネルの「年月へジャンプ」から、締め日ベースでグループ化された支出一覧の中から特定の年月を選ぶと、その月の一覧まですぐスクロールできます（絞り込み中でも自動で解除してジャンプします）。</p>
       </div>
 
       <div class="manual-section">
@@ -2613,7 +2616,10 @@ import {
   function toggleExpenseSearch() {
     expenseSearchVisible = !expenseSearchVisible;
     document.getElementById('expense-search-bar').hidden = !expenseSearchVisible;
-    if (expenseSearchVisible) populateExpenseFilterSelects();
+    if (expenseSearchVisible) {
+      populateExpenseFilterSelects();
+      populateExpenseJumpSelect();
+    }
   }
 
   function populateExpenseFilterSelects() {
@@ -2628,6 +2634,35 @@ import {
       PAID_BY_OPTIONS.map(function (p) {
         return '<option value="' + p + '"' + (expenseFilterPaidBy === p ? ' selected' : '') + '>' + escapeHtml(paidByLabel(p, names)) + '</option>';
       }).join('');
+  }
+
+  // 〇年〇月を選ぶとすぐその月の支出一覧までスクロールするジャンプ機能。
+  // groupExpensesByCycle() は実際に支出がある月だけを返すので、この
+  // セレクトの選択肢と #cycle-group-<key> の実在は常に一致する -- ただし
+  // 検索・絞り込みが有効だと、その月の支出が全部フィルタで隠れて要素ごと
+  // 消えている場合があるので、ジャンプ時はフィルタを解除してから探す。
+  function populateExpenseJumpSelect() {
+    const select = document.getElementById('expense-jump-select');
+    const groups = groupExpensesByCycle();
+    select.innerHTML = '<option value="">年月へジャンプ...</option>' +
+      groups.map(function (g) {
+        const key = cycleKey(g.cycle.ym);
+        return '<option value="' + key + '">' + escapeHtml(g.cycle.label) + '</option>';
+      }).join('');
+  }
+
+  function jumpToExpenseCycle(key) {
+    if (!key) return;
+    if (expenseFilterActive()) {
+      expenseFilterQuery = '';
+      expenseFilterCategory = '';
+      expenseFilterPaidBy = '';
+      document.getElementById('expense-search-input').value = '';
+      populateExpenseFilterSelects();
+      renderExpenses();
+    }
+    const el = document.getElementById('cycle-group-' + key);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function updateExpenseFilterBadge() {
@@ -2645,6 +2680,7 @@ import {
 
   function renderExpenses() {
     updateExpenseFilterBadge();
+    if (expenseSearchVisible) populateExpenseJumpSelect();
     const container = document.getElementById('expenses-list');
     const groups = groupExpensesByCycle();
     if (groups.length === 0) {
@@ -2661,7 +2697,7 @@ import {
           const key = cycleKey(g.cycle.ym);
           const settled = !!state.settledCycles[key];
           return '' +
-            '<div class="cycle-group">' +
+            '<div class="cycle-group" id="cycle-group-' + key + '">' +
               '<div class="cycle-header">' +
                 '<span class="label">' + escapeHtml(g.cycle.label) + '</span>' +
                 (settled ? '<span class="chip chip-settled">精算済み</span>' : '') +
@@ -4756,6 +4792,11 @@ import {
   document.getElementById('expense-filter-paidby').addEventListener('change', function (e) {
     expenseFilterPaidBy = e.target.value;
     renderExpenses();
+  });
+  document.getElementById('expense-jump-select').addEventListener('change', function (e) {
+    const key = e.target.value;
+    e.target.value = '';
+    jumpToExpenseCycle(key);
   });
 
   document.getElementById('setting-name-a').addEventListener('change', function (e) {
