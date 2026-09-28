@@ -2533,6 +2533,9 @@ import {
     if (Object.prototype.hasOwnProperty.call(expandedExpenseCycles, key)) return !!expandedExpenseCycles[key];
     return index === 0;
   }
+  // 初期費用セクションも同じ開閉トグルにする -- 月ごとのグループとは別に
+  // ただ1つだけの塊なので、真偽値1つで足りる。既定は開いた状態。
+  let initialCostExpanded = true;
   // 月次推移／先月比で見る対象 -- '' (既定) は合計（特別費を除く）、それ以外は
   // その1ジャンルだけの推移（このときは特別費も含む。理由は
   // cycleCategoryTrendTotal のコメントを参照）。
@@ -2766,14 +2769,20 @@ import {
       if (sharedPlan.creditorToJoint > 0) sharedPlanLines.push({ from: sharedPlan.creditor, toLabel: '共有カード用口座', amount: sharedPlan.creditorToJoint });
     }
 
-    const visibleItems = expenseFilterActive() ? items.filter(expenseMatchesFilter) : items;
+    const filtering = expenseFilterActive();
+    const visibleItems = filtering ? items.filter(expenseMatchesFilter) : items;
+    const expanded = filtering || initialCostExpanded;
+    const visibleTotal = visibleItems.reduce(function (sum, e) { return sum + e.amount; }, 0);
     container.innerHTML = '' +
       '<div class="cycle-group">' +
-        '<div class="cycle-header">' +
+        '<button type="button" class="cycle-header cycle-header-toggle" data-action="toggle-initial-cost-group" aria-expanded="' + expanded + '">' +
           '<span class="label">初期費用（住宅・家電など）</span>' +
           (settled ? '<span class="chip chip-settled">精算済み</span>' : '') +
-        '</div>' +
-        '<div class="ledger">' + (visibleItems.length ? visibleItems.map(expenseRowHtml).join('') : '<div class="empty-inline">条件に合う支出がありません</div>') + '</div>' +
+          '<span class="cycle-header-spacer"></span>' +
+          '<span class="cycle-header-total">' + formatYen(visibleTotal) + '</span>' +
+          '<svg class="category-chevron' + (expanded ? ' expanded' : '') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>' +
+        '</button>' +
+        (expanded ? '<div class="ledger">' + (visibleItems.length ? visibleItems.map(expenseRowHtml).join('') : '<div class="empty-inline">条件に合う支出がありません</div>') + '</div>' : '') +
       '</div>' +
       '<div class="ledger-card">' +
         '<div class="ledger-title">負担額（本来支払うべき金額）</div>' +
@@ -4669,6 +4678,10 @@ import {
       case 'toggle-expense-cycle':
         expandedExpenseCycles[target.dataset.key] = target.getAttribute('aria-expanded') !== 'true';
         renderExpenses();
+        break;
+      case 'toggle-initial-cost-group':
+        initialCostExpanded = target.getAttribute('aria-expanded') !== 'true';
+        renderInitialCostSection();
         break;
       case 'select-category-view':
         categoryViewFilter = target.dataset.value;
