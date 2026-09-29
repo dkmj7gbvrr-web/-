@@ -1415,7 +1415,7 @@
 
       <div class="manual-section">
         <h3>初期費用（住宅・家電など）</h3>
-        <p>支出を追加する画面で「この支出の種類」を「初期費用」にすると、月ごとの締めサイクルとは完全に切り離した別枠で管理されます。支出タブの一覧の下に専用のセクションが現れ、負担額・立替額・精算額もそこだけで別集計されます。見出しをタップすると、支出の一覧に加えて負担額・立替額・精算プランなどの内訳もまとめて開閉できます。精算が終わったら「この初期費用を精算済みにする」で記録できます。</p>
+        <p>支出を追加する画面で「この支出の種類」を「初期費用」にすると、月ごとの締めサイクルとは完全に切り離した別枠で管理されます。支出タブの一覧の下に専用のセクションが現れ、負担額・立替額・精算額もそこだけで別集計されます。見出しをタップすると、支出の一覧に加えて負担額・立替額・精算プランなどの内訳もまとめて開閉できます。共有カード用口座への振り込みとAB間の精算は、それぞれ別々に「完了にする」で記録できます（積立の概念は初期費用にはありません）。</p>
       </div>
 
       <div class="manual-section">
@@ -1445,7 +1445,7 @@
 
       <div class="manual-section">
         <h3>共有口座への積立</h3>
-        <p>収入タブの「共有口座への積立」から、毎月一定額を積立専用の共有口座に積み立てる設定ができます。開始年月とふたりそれぞれの月額を入力すると、開始年月以降の精算タブに「共有口座への積立」として毎月の入金額が表示されます。これは共有カード用口座への精算プランとは別枠の、積立専用口座への入金として扱われるため、共有カードの精算額そのものには影響しません。集計タブの「共有口座の積立残高」カードでは、開始年月からの積立残高（合計・ふたりそれぞれの累計）を確認できます。この残高は「精算済み」にした月の分だけ反映され、精算前の月はまだ含まれません。「積立をやめる」でいつでも設定を解除できます。</p>
+        <p>収入タブの「共有口座への積立」から、毎月一定額を積立専用の共有口座に積み立てる設定ができます。開始年月とふたりそれぞれの月額を入力すると、開始年月以降の精算タブに「共有口座への積立」として毎月の入金額が表示されます。これは共有カード用口座への精算プランとは別枠の、積立専用口座への入金として扱われるため、共有カードの精算額そのものには影響しません。集計タブの「共有口座の積立残高」カードでは、開始年月からの積立残高（合計・ふたりそれぞれの累計）を確認できます。この残高は積立を「完了にする」にした月の分だけ反映され、まだ完了にしていない月はまだ含まれません。「積立をやめる」でいつでも設定を解除できます。</p>
       </div>
 
       <div class="manual-section">
@@ -1465,7 +1465,7 @@
 
       <div class="manual-section">
         <h3>精算</h3>
-        <p>精算タブで、締め日ごとの請求サイクルの負担額・実際の立替額・精算額を確認できます。精算が終わったサイクルは「精算済み」にできます。家計簿としての予算・可視化機能は集計タブにまとまっています。</p>
+        <p>精算タブで、締め日ごとの請求サイクルの負担額・実際の立替額・精算額を確認できます。「共有カード用口座への振り込み」「共有口座への積立」「AB間の精算」は、それぞれ該当するカードの「完了にする」ボタンで独立に記録でき、すべて完了すると支出タブの見出しに「精算済み」の印が付きます。家計簿としての予算・可視化機能は集計タブにまとまっています。</p>
       </div>
 
       <div class="manual-section">
@@ -1904,20 +1904,71 @@ import {
     return { aThisMonth: aAmount, bThisMonth: bAmount, aCumulative: aAmount * months, bCumulative: bAmount * months, months: months };
   }
 
+  // 精算の完了状態は「共有カード用口座への振り込み」「共有口座への積立」
+  // 「AB間の精算」の3つを独立に管理する。過去データは単一の真偽値
+  // (true = 全部完了、false/未設定 = 全部未完了) だったので、その形の
+  // まま読み込んだ場合はここで3つとも同じ値に展開する。
+  function cycleSettleFlags(key) {
+    const v = state.settledCycles[key];
+    if (v === true) return { shared: true, savings: true, direct: true };
+    if (v && typeof v === 'object') return { shared: !!v.shared, savings: !!v.savings, direct: !!v.direct };
+    return { shared: false, savings: false, direct: false };
+  }
+  async function toggleSettledLeg(key, leg) {
+    const flags = cycleSettleFlags(key);
+    flags[leg] = !flags[leg];
+    const nextSettledCycles = Object.assign({}, state.settledCycles);
+    nextSettledCycles[key] = flags;
+    await updateSettings({ settledCycles: nextSettledCycles });
+  }
+  // 初期費用には積立の概念が無い(jointSavingsForCycle は月次サイクル限定)
+  // ので、共有カード用口座への振り込みとAB間の精算の2つだけを管理する。
+  function initialCostSettleFlags() {
+    const v = state.settledInitialCosts;
+    if (v === true) return { shared: true, direct: true };
+    if (v && typeof v === 'object') return { shared: !!v.shared, direct: !!v.direct };
+    return { shared: false, direct: false };
+  }
+  async function toggleInitialCostSettledLeg(leg) {
+    const flags = initialCostSettleFlags();
+    flags[leg] = !flags[leg];
+    await updateSettings({ settledInitialCosts: flags });
+  }
+  // どの3つが「その月に実際に該当するか」(例: 共有カード支出が無ければ
+  // shared は対象外) を踏まえた上で、対象になっている項目が全部完了して
+  // いるかどうかを判定する。対象外の項目は「完了扱い」として無視する。
+  function cycleLegApplicability(sharedPlan, savings, direct) {
+    return {
+      shared: !!sharedPlan,
+      savings: !!(savings && ((savings.aThisMonth > 0) || (savings.bThisMonth > 0))),
+      direct: !!(direct && direct.amount > 0)
+    };
+  }
+  function isCycleFullySettled(cycle) {
+    const key = cycleKey(cycle.ym);
+    const s = settlement(state.expenses, cycle, state.incomePeriods, state.settings.cardClosingDay);
+    const sharedPlan = sharedAccountPlan(s);
+    const savings = jointSavingsForCycle(cycle);
+    const direct = effectiveSettle(s, sharedPlan);
+    const applicable = cycleLegApplicability(sharedPlan, savings, direct);
+    const flags = cycleSettleFlags(key);
+    return (!applicable.shared || flags.shared) && (!applicable.savings || flags.savings) && (!applicable.direct || flags.direct);
+  }
+
   // The actual running balance of the joint savings pot: unlike
   // jointSavingsForCycle() above (which just tells you what's DUE this
-  // cycle, settled or not), this only counts months that have actually
-  // been marked 精算済み -- money that hasn't been transferred yet isn't
-  // really "in" the account. Independent of whichever cycle happens to be
-  // selected in either tab's picker; it's a running total, not a per-cycle
-  // figure.
+  // cycle, settled or not), this only counts months whose 積立 leg has
+  // actually been marked complete -- money that hasn't been transferred
+  // yet isn't really "in" the account. Independent of whichever cycle
+  // happens to be selected in either tab's picker; it's a running total,
+  // not a per-cycle figure.
   function jointSavingsBalance() {
     const p = state.settings.jointSavingsPlan;
     if (!p || (!(p.aAmount > 0) && !(p.bAmount > 0))) return null;
     const startKey = p.startYear * 12 + p.startMonth;
     let aCumulative = 0, bCumulative = 0;
     groupExpensesByCycle().forEach(function (g) {
-      if (!state.settledCycles[cycleKey(g.cycle.ym)]) return;
+      if (!cycleSettleFlags(cycleKey(g.cycle.ym)).savings) return;
       const ym = cycleDisplayYearMonth(g.cycle);
       if (ym.year * 12 + ym.month < startKey) return;
       aCumulative += p.aAmount || 0;
@@ -2267,9 +2318,10 @@ import {
   // savings pot -- 残高 (the combined household total) as the headline
   // figure, with each person's own cumulative contribution broken out
   // underneath so "誰がいくら出しているか" stays visible. Only counts
-  // months actually marked 精算済み (see jointSavingsBalance()), so it
-  // lags behind what's merely DUE -- that per-cycle 送金額 breakdown
-  // stays on 精算's settlement card, unaffected by settled state.
+  // months whose 積立 leg has actually been marked complete (see
+  // jointSavingsBalance()), so it lags behind what's merely DUE -- that
+  // per-cycle 送金額 breakdown stays on 精算's own card, unaffected by
+  // completion state.
   function renderJointSavingsBalanceCardHtml(names) {
     const savings = jointSavingsBalance();
     if (!savings) return '';
@@ -2281,7 +2333,7 @@ import {
         '<div class="kv-row total"><span>残高</span><span class="num">' + formatYen(total) + '</span></div>' +
         '<div class="kv-row"><span>' + escapeHtml(names.a) + 'の積立累計（月' + formatYen(p.aAmount || 0) + '）</span><span class="num">' + formatYen(savings.aCumulative) + '</span></div>' +
         '<div class="kv-row"><span>' + escapeHtml(names.b) + 'の積立累計（月' + formatYen(p.bAmount || 0) + '）</span><span class="num">' + formatYen(savings.bCumulative) + '</span></div>' +
-        '<div class="field-hint" style="padding-top:0;">' + p.startYear + '年' + p.startMonth + '月から積立中。精算済みの月の分だけ反映されます（未精算の月はまだ含まれません）。設定は収入タブから変更できます。</div>' +
+        '<div class="field-hint" style="padding-top:0;">' + p.startYear + '年' + p.startMonth + '月から積立中。積立を「完了にする」にした月の分だけ反映されます（まだ完了にしていない月は含まれません）。設定は収入タブから変更できます。</div>' +
       '</div>';
   }
 
@@ -2403,7 +2455,7 @@ import {
           jointSavingsPlan: (data.jointSavingsPlan && typeof data.jointSavingsPlan === 'object') ? data.jointSavingsPlan : null
         };
         state.settledCycles = (data.settledCycles && typeof data.settledCycles === 'object') ? data.settledCycles : {};
-        state.settledInitialCosts = !!data.settledInitialCosts;
+        state.settledInitialCosts = (data.settledInitialCosts && typeof data.settledInitialCosts === 'object') ? data.settledInitialCosts : !!data.settledInitialCosts;
       }
       renderAll();
     }, function () { toast('設定の同期に失敗しました。通信環境を確認してください'); }));
@@ -2573,8 +2625,7 @@ import {
     const s = settlement(state.expenses, cycle, state.incomePeriods, state.settings.cardClosingDay);
     const names = currentNames();
     const key = cycleKey(cycle.ym);
-    const settled = !!state.settledCycles[key];
-    return { groups: groups, cycles: cycles, cycle: cycle, s: s, names: names, key: key, settled: settled };
+    return { groups: groups, cycles: cycles, cycle: cycle, s: s, names: names, key: key };
   }
 
   function populateCycleSelect(selectEl, cycles, key) {
@@ -2728,7 +2779,7 @@ import {
       } else {
         container.innerHTML = visibleGroups.map(function (g, index) {
           const key = cycleKey(g.cycle.ym);
-          const settled = !!state.settledCycles[key];
+          const settled = isCycleFullySettled(g.cycle);
           const expanded = isExpenseCycleExpanded(key, index, filtering);
           const total = g.items.reduce(function (sum, e) { return sum + e.amount; }, 0);
           return '' +
@@ -2760,8 +2811,12 @@ import {
 
     const s = initialCostSummary(state.expenses, state.incomePeriods, state.settings.cardClosingDay);
     const names = currentNames();
-    const settled = !!state.settledInitialCosts;
     const sharedPlan = sharedAccountPlan(s);
+    const direct = effectiveSettle(s, sharedPlan);
+    const flags = initialCostSettleFlags();
+    const applicableShared = !!sharedPlan;
+    const applicableDirect = !!(direct && direct.amount > 0);
+    const fullySettled = (!applicableShared || flags.shared) && (!applicableDirect || flags.direct);
     const sharedPlanLines = [];
     if (sharedPlan) {
       if (sharedPlan.debtorToJoint > 0) sharedPlanLines.push({ from: sharedPlan.debtor, toLabel: '共有カード用口座', amount: sharedPlan.debtorToJoint });
@@ -2777,7 +2832,7 @@ import {
       '<div class="cycle-group">' +
         '<button type="button" class="cycle-header cycle-header-toggle" data-action="toggle-initial-cost-group" aria-expanded="' + expanded + '">' +
           '<span class="label">初期費用（住宅・家電など）</span>' +
-          (settled ? '<span class="chip chip-settled">精算済み</span>' : '') +
+          (fullySettled ? '<span class="chip chip-settled">精算済み</span>' : '') +
           '<span class="cycle-header-spacer"></span>' +
           '<span class="cycle-header-total">' + formatYen(visibleTotal) + '</span>' +
           '<svg class="category-chevron' + (expanded ? ' expanded' : '') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>' +
@@ -2799,7 +2854,7 @@ import {
         '</div>' +
         (sharedPlan ?
           '<div class="ledger-card">' +
-            '<div class="ledger-title">共有カードの精算プラン</div>' +
+            '<div class="ledger-title">共有カードの精算プラン' + (flags.shared ? ' <span class="chip chip-settled">完了</span>' : '') + '</div>' +
             '<div class="field-hint" style="padding-top:0; margin-bottom:10px;">グロス：共有分も含めた本来の負担額。ネット：共有カード用口座への入金とAB間の精算を1つにまとめた場合の送金額です。</div>' +
             '<div class="kv-row"><span>' + escapeHtml(names.a) + '（グロス）</span><span class="num">' + formatYen(s.burdenA) + '</span></div>' +
             '<div class="kv-row"><span>' + escapeHtml(names.b) + '（グロス）</span><span class="num">' + formatYen(s.burdenB) + '</span></div>' +
@@ -2807,18 +2862,21 @@ import {
               const toText = l.toLabel ? l.toLabel : escapeHtml(paidByLabel(l.to, names));
               return '<div class="kv-row"><span>' + escapeHtml(paidByLabel(l.from, names)) + ' → ' + toText + '（ネット）</span><span class="num">' + formatYen(l.amount) + '</span></div>';
             }).join('') +
+            '<button class="btn ' + (flags.shared ? 'btn-ghost' : 'btn-primary') + '" data-action="toggle-initial-cost-settled-leg" data-leg="shared">' +
+              (flags.shared ? '共有カード用口座への振り込み完了を取り消す' : '共有カード用口座への振り込みを完了にする') +
+            '</button>' +
           '</div>'
           : '') +
-        '<div class="settlement-card">' +
-          (settled ? '<div class="stamp">精算済</div>' : '') +
-          (effectiveSettle(s, sharedPlan) ?
-            '<div class="settlement-flow"><span>' + escapeHtml(effectiveSettle(s, sharedPlan).payer === 'a' ? names.a : names.b) + '</span><span class="arrow">→</span><span>' + escapeHtml(effectiveSettle(s, sharedPlan).receiver === 'a' ? names.a : names.b) + '</span></div>' +
-            '<div class="settlement-amount">' + formatYen(effectiveSettle(s, sharedPlan).amount) + '</div>'
-            : '<div class="settlement-none">精算の必要はありません</div>') +
-          '<button class="btn ' + (settled ? 'btn-ghost' : 'btn-primary') + '" data-action="toggle-initial-cost-settled">' +
-            (settled ? 'この初期費用の精算済みを取り消す' : 'この初期費用を精算済みにする') +
-          '</button>' +
-        '</div>'
+        (applicableDirect ?
+          '<div class="settlement-card">' +
+            (flags.direct ? '<div class="stamp">完了</div>' : '') +
+            '<div class="settlement-flow"><span>' + escapeHtml(direct.payer === 'a' ? names.a : names.b) + '</span><span class="arrow">→</span><span>' + escapeHtml(direct.receiver === 'a' ? names.a : names.b) + '</span></div>' +
+            '<div class="settlement-amount">' + formatYen(direct.amount) + '</div>' +
+            '<button class="btn ' + (flags.direct ? 'btn-ghost' : 'btn-primary') + '" data-action="toggle-initial-cost-settled-leg" data-leg="direct">' +
+              (flags.direct ? 'AB間の精算完了を取り消す' : 'AB間の精算を完了にする') +
+            '</button>' +
+          '</div>'
+          : '<div class="settlement-card"><div class="settlement-none">精算の必要はありません</div></div>')
         : '');
   }
 
@@ -2827,7 +2885,8 @@ import {
   // split-pattern breakdown that explains how that flow was computed.
   function renderSettle() {
     const ctx = currentSummaryContext();
-    const cycle = ctx.cycle, s = ctx.s, names = ctx.names, key = ctx.key, settled = ctx.settled;
+    const cycle = ctx.cycle, s = ctx.s, names = ctx.names, key = ctx.key;
+    const flags = cycleSettleFlags(key);
 
     populateCycleSelect(document.getElementById('settle-cycle-select'), ctx.cycles, key);
     document.getElementById('settle-range').textContent = formatFullDate(cycle.start) + ' 〜 ' + formatFullDate(cycle.end);
@@ -2855,6 +2914,9 @@ import {
       if (savings.bThisMonth > 0) savingsLines.push({ person: 'b', amount: savings.bThisMonth });
     }
 
+    const direct = effectiveSettle(s, sharedPlan);
+    const applicableDirect = !!(direct && direct.amount > 0);
+
     const body = document.getElementById('settle-body');
     body.innerHTML = '' +
       '<div class="ledger-card">' +
@@ -2871,7 +2933,7 @@ import {
       '</div>' +
       (sharedPlan ?
         '<div class="ledger-card">' +
-          '<div class="ledger-title">共有カードの精算プラン</div>' +
+          '<div class="ledger-title">共有カードの精算プラン' + (flags.shared ? ' <span class="chip chip-settled">完了</span>' : '') + '</div>' +
           '<div class="field-hint" style="padding-top:0; margin-bottom:10px;">グロス：共有分も含めた本来の負担額。ネット：共有カード用口座への入金とAB間の精算を1つにまとめた場合の送金額です。</div>' +
           '<div class="kv-row"><span>' + escapeHtml(names.a) + '（グロス）</span><span class="num">' + formatYen(s.burdenA) + '</span></div>' +
           '<div class="kv-row"><span>' + escapeHtml(names.b) + '（グロス）</span><span class="num">' + formatYen(s.burdenB) + '</span></div>' +
@@ -2879,27 +2941,33 @@ import {
             const toText = l.toLabel ? l.toLabel : escapeHtml(paidByLabel(l.to, names));
             return '<div class="kv-row"><span>' + escapeHtml(paidByLabel(l.from, names)) + ' → ' + toText + '（ネット）</span><span class="num">' + formatYen(l.amount) + '</span></div>';
           }).join('') +
+          '<button class="btn ' + (flags.shared ? 'btn-ghost' : 'btn-primary') + '" data-action="toggle-settled-leg" data-key="' + key + '" data-leg="shared">' +
+            (flags.shared ? '共有カード用口座への振り込み完了を取り消す' : '共有カード用口座への振り込みを完了にする') +
+          '</button>' +
         '</div>'
         : '') +
       (savingsLines.length ?
         '<div class="ledger-card">' +
-          '<div class="ledger-title">共有口座への積立</div>' +
+          '<div class="ledger-title">共有口座への積立' + (flags.savings ? ' <span class="chip chip-settled">完了</span>' : '') + '</div>' +
           '<div class="field-hint" style="padding-top:0; margin-bottom:10px;">共有カード用口座とは別の、積立専用の共有口座への入金額です（上の精算プランとはネットされません）。</div>' +
           savingsLines.map(function (l) {
             return '<div class="kv-row"><span>' + escapeHtml(l.person === 'a' ? names.a : names.b) + ' → 共有口座（積立用）</span><span class="num">' + formatYen(l.amount) + '</span></div>';
           }).join('') +
+          '<button class="btn ' + (flags.savings ? 'btn-ghost' : 'btn-primary') + '" data-action="toggle-settled-leg" data-key="' + key + '" data-leg="savings">' +
+            (flags.savings ? '積立の完了を取り消す' : '積立を完了にする') +
+          '</button>' +
         '</div>'
         : '') +
-      '<div class="settlement-card">' +
-        (settled ? '<div class="stamp">精算済</div>' : '') +
-        (effectiveSettle(s, sharedPlan) ?
-          '<div class="settlement-flow"><span>' + escapeHtml(effectiveSettle(s, sharedPlan).payer === 'a' ? names.a : names.b) + '</span><span class="arrow">→</span><span>' + escapeHtml(effectiveSettle(s, sharedPlan).receiver === 'a' ? names.a : names.b) + '</span></div>' +
-          '<div class="settlement-amount">' + formatYen(effectiveSettle(s, sharedPlan).amount) + '</div>'
-          : '<div class="settlement-none">精算の必要はありません</div>') +
-        '<button class="btn ' + (settled ? 'btn-ghost' : 'btn-primary') + '" data-action="toggle-settled" data-key="' + key + '">' +
-          (settled ? 'この月の精算済みを取り消す' : 'この月を精算済みにする') +
-        '</button>' +
-      '</div>' +
+      (applicableDirect ?
+        '<div class="settlement-card">' +
+          (flags.direct ? '<div class="stamp">完了</div>' : '') +
+          '<div class="settlement-flow"><span>' + escapeHtml(direct.payer === 'a' ? names.a : names.b) + '</span><span class="arrow">→</span><span>' + escapeHtml(direct.receiver === 'a' ? names.a : names.b) + '</span></div>' +
+          '<div class="settlement-amount">' + formatYen(direct.amount) + '</div>' +
+          '<button class="btn ' + (flags.direct ? 'btn-ghost' : 'btn-primary') + '" data-action="toggle-settled-leg" data-key="' + key + '" data-leg="direct">' +
+            (flags.direct ? 'AB間の精算完了を取り消す' : 'AB間の精算を完了にする') +
+          '</button>' +
+        '</div>'
+        : '<div class="settlement-card"><div class="settlement-none">精算の必要はありません</div></div>') +
       '<div class="ledger-card">' +
         '<div class="ledger-title">内訳（負担パターン別）</div>' +
         (breakdown || '<div class="empty-inline">この月の支出はありません</div>') +
@@ -3991,17 +4059,6 @@ import {
     await updateSettings({ customCategories: list });
   }
 
-  async function toggleSettled(key) {
-    const settled = !!state.settledCycles[key];
-    const nextSettledCycles = Object.assign({}, state.settledCycles);
-    nextSettledCycles[key] = !settled;
-    await updateSettings({ settledCycles: nextSettledCycles });
-  }
-
-  async function toggleInitialCostSettled() {
-    await updateSettings({ settledInitialCosts: !state.settledInitialCosts });
-  }
-
   async function resetAllData() {
     if (!confirm('この世帯のデータ（支出・収入・設定）をすべて削除します。もう1人の画面からも消え、この操作は取り消せません。よろしいですか？')) return;
     try {
@@ -4672,7 +4729,7 @@ import {
         renderCategorySpecialToggle();
         break;
       case 'close-sheet': closeSheet(target.dataset.sheet + '-sheet-backdrop'); break;
-      case 'toggle-settled': toggleSettled(target.dataset.key); break;
+      case 'toggle-settled-leg': toggleSettledLeg(target.dataset.key, target.dataset.leg); break;
       case 'toggle-category-breakdown':
         expandedCategoryIds[target.dataset.category] = !expandedCategoryIds[target.dataset.category];
         renderSummary();
@@ -4689,7 +4746,7 @@ import {
         categoryViewFilter = target.dataset.value;
         renderSummary();
         break;
-      case 'toggle-initial-cost-settled': toggleInitialCostSettled(); break;
+      case 'toggle-initial-cost-settled-leg': toggleInitialCostSettledLeg(target.dataset.leg); break;
       case 'open-manual': showSheet('manual-sheet-backdrop'); break;
       case 'export-data': exportBackup(); break;
       case 'reset-data': resetAllData(); break;
