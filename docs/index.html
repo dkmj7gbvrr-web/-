@@ -1415,7 +1415,7 @@
 
       <div class="manual-section">
         <h3>初期費用（住宅・家電など）</h3>
-        <p>支出を追加する画面で「この支出の種類」を「初期費用」にすると、月ごとの締めサイクルとは完全に切り離した別枠で管理されます。支出タブの一覧の下に専用のセクションが現れ、負担額・立替額・精算額もそこだけで別集計されます。精算が終わったら「この初期費用を精算済みにする」で記録できます。</p>
+        <p>支出を追加する画面で「この支出の種類」を「初期費用」にすると、月ごとの締めサイクルとは完全に切り離した別枠で管理されます。支出タブの一覧の下に専用のセクションが現れ、負担額・立替額・精算額もそこだけで別集計されます。見出しをタップすると、支出の一覧に加えて負担額・立替額・精算プランなどの内訳もまとめて開閉できます。精算が終わったら「この初期費用を精算済みにする」で記録できます。</p>
       </div>
 
       <div class="manual-section">
@@ -2784,40 +2784,42 @@ import {
         '</button>' +
         (expanded ? '<div class="ledger">' + (visibleItems.length ? visibleItems.map(expenseRowHtml).join('') : '<div class="empty-inline">条件に合う支出がありません</div>') + '</div>' : '') +
       '</div>' +
-      '<div class="ledger-card">' +
-        '<div class="ledger-title">負担額（本来支払うべき金額）</div>' +
-        '<div class="kv-row"><span>' + escapeHtml(names.a) + '</span><span class="num">' + formatYen(s.burdenA) + '</span></div>' +
-        '<div class="kv-row"><span>' + escapeHtml(names.b) + '</span><span class="num">' + formatYen(s.burdenB) + '</span></div>' +
-        '<div class="kv-row total"><span>合計</span><span class="num">' + formatYen(s.total) + '</span></div>' +
-      '</div>' +
-      '<div class="ledger-card">' +
-        '<div class="ledger-title">実際の立替額</div>' +
-        '<div class="kv-row"><span>' + escapeHtml(names.a) + '</span><span class="num">' + formatYen(s.paidByA) + '</span></div>' +
-        '<div class="kv-row"><span>' + escapeHtml(names.b) + '</span><span class="num">' + formatYen(s.paidByB) + '</span></div>' +
-        (s.paidByShared > 0 ? '<div class="kv-row"><span>共有カード</span><span class="num">' + formatYen(s.paidByShared) + '</span></div>' : '') +
-      '</div>' +
-      (sharedPlan ?
+      (expanded ?
         '<div class="ledger-card">' +
-          '<div class="ledger-title">共有カードの精算プラン</div>' +
-          '<div class="field-hint" style="padding-top:0; margin-bottom:10px;">グロス：共有分も含めた本来の負担額。ネット：共有カード用口座への入金とAB間の精算を1つにまとめた場合の送金額です。</div>' +
-          '<div class="kv-row"><span>' + escapeHtml(names.a) + '（グロス）</span><span class="num">' + formatYen(s.burdenA) + '</span></div>' +
-          '<div class="kv-row"><span>' + escapeHtml(names.b) + '（グロス）</span><span class="num">' + formatYen(s.burdenB) + '</span></div>' +
-          sharedPlanLines.map(function (l) {
-            const toText = l.toLabel ? l.toLabel : escapeHtml(paidByLabel(l.to, names));
-            return '<div class="kv-row"><span>' + escapeHtml(paidByLabel(l.from, names)) + ' → ' + toText + '（ネット）</span><span class="num">' + formatYen(l.amount) + '</span></div>';
-          }).join('') +
+          '<div class="ledger-title">負担額（本来支払うべき金額）</div>' +
+          '<div class="kv-row"><span>' + escapeHtml(names.a) + '</span><span class="num">' + formatYen(s.burdenA) + '</span></div>' +
+          '<div class="kv-row"><span>' + escapeHtml(names.b) + '</span><span class="num">' + formatYen(s.burdenB) + '</span></div>' +
+          '<div class="kv-row total"><span>合計</span><span class="num">' + formatYen(s.total) + '</span></div>' +
+        '</div>' +
+        '<div class="ledger-card">' +
+          '<div class="ledger-title">実際の立替額</div>' +
+          '<div class="kv-row"><span>' + escapeHtml(names.a) + '</span><span class="num">' + formatYen(s.paidByA) + '</span></div>' +
+          '<div class="kv-row"><span>' + escapeHtml(names.b) + '</span><span class="num">' + formatYen(s.paidByB) + '</span></div>' +
+          (s.paidByShared > 0 ? '<div class="kv-row"><span>共有カード</span><span class="num">' + formatYen(s.paidByShared) + '</span></div>' : '') +
+        '</div>' +
+        (sharedPlan ?
+          '<div class="ledger-card">' +
+            '<div class="ledger-title">共有カードの精算プラン</div>' +
+            '<div class="field-hint" style="padding-top:0; margin-bottom:10px;">グロス：共有分も含めた本来の負担額。ネット：共有カード用口座への入金とAB間の精算を1つにまとめた場合の送金額です。</div>' +
+            '<div class="kv-row"><span>' + escapeHtml(names.a) + '（グロス）</span><span class="num">' + formatYen(s.burdenA) + '</span></div>' +
+            '<div class="kv-row"><span>' + escapeHtml(names.b) + '（グロス）</span><span class="num">' + formatYen(s.burdenB) + '</span></div>' +
+            sharedPlanLines.map(function (l) {
+              const toText = l.toLabel ? l.toLabel : escapeHtml(paidByLabel(l.to, names));
+              return '<div class="kv-row"><span>' + escapeHtml(paidByLabel(l.from, names)) + ' → ' + toText + '（ネット）</span><span class="num">' + formatYen(l.amount) + '</span></div>';
+            }).join('') +
+          '</div>'
+          : '') +
+        '<div class="settlement-card">' +
+          (settled ? '<div class="stamp">精算済</div>' : '') +
+          (effectiveSettle(s, sharedPlan) ?
+            '<div class="settlement-flow"><span>' + escapeHtml(effectiveSettle(s, sharedPlan).payer === 'a' ? names.a : names.b) + '</span><span class="arrow">→</span><span>' + escapeHtml(effectiveSettle(s, sharedPlan).receiver === 'a' ? names.a : names.b) + '</span></div>' +
+            '<div class="settlement-amount">' + formatYen(effectiveSettle(s, sharedPlan).amount) + '</div>'
+            : '<div class="settlement-none">精算の必要はありません</div>') +
+          '<button class="btn ' + (settled ? 'btn-ghost' : 'btn-primary') + '" data-action="toggle-initial-cost-settled">' +
+            (settled ? 'この初期費用の精算済みを取り消す' : 'この初期費用を精算済みにする') +
+          '</button>' +
         '</div>'
-        : '') +
-      '<div class="settlement-card">' +
-        (settled ? '<div class="stamp">精算済</div>' : '') +
-        (effectiveSettle(s, sharedPlan) ?
-          '<div class="settlement-flow"><span>' + escapeHtml(effectiveSettle(s, sharedPlan).payer === 'a' ? names.a : names.b) + '</span><span class="arrow">→</span><span>' + escapeHtml(effectiveSettle(s, sharedPlan).receiver === 'a' ? names.a : names.b) + '</span></div>' +
-          '<div class="settlement-amount">' + formatYen(effectiveSettle(s, sharedPlan).amount) + '</div>'
-          : '<div class="settlement-none">精算の必要はありません</div>') +
-        '<button class="btn ' + (settled ? 'btn-ghost' : 'btn-primary') + '" data-action="toggle-initial-cost-settled">' +
-          (settled ? 'この初期費用の精算済みを取り消す' : 'この初期費用を精算済みにする') +
-        '</button>' +
-      '</div>';
+        : '');
   }
 
   // 精算タブ: everything about who owes whom -- burden, actual advances,
