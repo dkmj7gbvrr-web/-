@@ -124,3 +124,48 @@ describe('オーバー入賞・ラッキートリガー・ブラックアウト�
     expect(payoutCheck).toBeGreaterThan(0)
   }, 240000)
 })
+
+describe('RUSH 最終変動', () => {
+  test('必ずリーチになり、リーチ中の PUSH は出ず、ハズレ目のあと確率で復活チャンス', () => {
+    let inLast = false
+    let sawReach = false
+    let lastSpins = 0
+    let chances = 0
+    let chanceWin = 0
+    let chanceMiss = 0
+    let chanceOpen = false
+    simulate(21, 2400, (g, e) => {
+      if (e.type === 'lastSpin') {
+        inLast = true
+        sawReach = false
+        lastSpins++
+      }
+      if (!inLast) return
+      if (e.type === 'reach') sawReach = true
+      // 最終変動ではリーチ中の PUSH（pushPrompt）は出ない
+      expect(e.type).not.toBe('pushPrompt')
+      if (e.type === 'lastChance') {
+        chances++
+        chanceOpen = true
+      }
+      if (e.type === 'lastChanceFail') {
+        expect(chanceOpen).toBe(true)
+        expect(g.spin!.outcome.win).toBe(false)
+        chanceMiss++
+      }
+      if (e.type === 'jackpot' || e.type === 'miss' || e.type === 'rushEnd') {
+        if (e.type !== 'rushEnd') {
+          expect(sawReach).toBe(true)
+          if (chanceOpen && e.type === 'jackpot') chanceWin++
+          const reels = g.reels.map((r) => ((((Math.round(r.pos) % SYMBOL_COUNT) + SYMBOL_COUNT) % SYMBOL_COUNT) + 1))
+          if (e.type === 'jackpot') expect(reels).toEqual(e.outcome.symbols)
+          else expect(reels[0]).toBe(reels[2])
+        }
+        inLast = false
+        chanceOpen = false
+      }
+    })
+    expect(lastSpins).toBeGreaterThan(3)
+    expect(chances).toBe(chanceWin + chanceMiss)
+  }, 240000)
+})

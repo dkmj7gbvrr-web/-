@@ -1,6 +1,9 @@
 import {
   decideSpin,
   HOLD_COLORS,
+  LAST_CHANCE_ON_MISS,
+  LAST_CHANCE_ON_WIN,
+  nearMissCenter,
   nextSymbol,
   pickFinale,
   prevSymbol,
@@ -64,6 +67,8 @@ export type GameEvent =
   | { type: 'challengeResult'; success: boolean }
   | { type: 'rushStart'; chain: number; lt: boolean }
   | { type: 'lastSpin' }
+  | { type: 'lastChance' }
+  | { type: 'lastChanceFail' }
   | { type: 'rushEnd'; chain: number; total: number; lt: boolean }
   | { type: 'refill'; amount: number }
 
@@ -108,6 +113,8 @@ export interface SpinRun {
   /** 「発展!?」の最中 */
   developing: boolean
   finale: Finale | null
+  /** RUSH 最終変動の「復活チャンス」ボタンを出している */
+  lastChance: boolean
 }
 
 export interface FeverState {
@@ -463,6 +470,15 @@ export class Game {
       this.rushLeft--
       lastSpin = this.rushLeft === 0
     }
+    if (lastSpin && outcome.reach === 'none') {
+      // RUSH 最終変動は必ずリーチにする（ハズレなら左右をそろえたニアミス目に作り直す）
+      let symbols = outcome.symbols
+      if (!outcome.win) {
+        const l = symbols[0]
+        symbols = [l, nearMissCenter(l, this.rng), l]
+      }
+      outcome = { ...outcome, reach: 'normal', symbols }
+    }
     for (const r of this.reels) {
       r.stopped = false
       r.stopping = null
@@ -487,6 +503,7 @@ export class Game {
       renda: null,
       developing: false,
       finale: null,
+      lastChance: false,
     }
     this.spin = sp
     this.emit({ type: 'spinStart', outcome })
@@ -509,9 +526,7 @@ export class Game {
     const pre = this.schedulePreview(sp)
     const L = pre + (rush ? 0.35 : fast ? 0.45 : 0.9)
     const R = pre + (rush ? 0.6 : fast ? 0.75 : 1.5)
-    let reach = o.reach
-    // RUSH 最終変動はリーチなしでも PUSH で結果を開ける（最後の1回に緊張を集める）
-    if (lastSpin && reach === 'none') reach = 'normal'
+    const reach = o.reach
 
     if (o.kakutei) add(0.05, () => this.emit({ type: 'kakutei' }))
     add(L, () => this.stopReel(0, s0, 0.3, 3))
@@ -563,11 +578,7 @@ export class Game {
         })
         t += 0.7
       }
-      if (lastSpin) {
-        pushPrompt(t)
-        t += 0.05
-      }
-      t = this.scheduleFinale(sp, t, 'normal', k)
+      t = lastSpin ? this.scheduleLastChance(sp, t, k) : this.scheduleFinale(sp, t, 'normal', k)
     } else {
       // スーパー / プレミア：（発展!? →）格上げ → 連打チャンス → PUSH → 決着
       if (!rush && this.rng() < 0.5) {
@@ -614,9 +625,14 @@ export class Game {
       } else {
         t += 1.0
       }
-      pushPrompt(t)
-      t += 0.05
-      t = this.scheduleFinale(sp, t, 'super', k)
+      if (lastSpin) {
+        // RUSH 最終変動はリーチ中に PUSH を出さず、いったん止めてから復活チャンスへ
+        t = this.scheduleLastChance(sp, t, k)
+      } else {
+        pushPrompt(t)
+        t += 0.05
+        t = this.scheduleFinale(sp, t, 'super', k)
+      }
     }
     add(t, () => this.resolve(sp, reach))
   }
@@ -687,6 +703,65 @@ export class Game {
       this.emit({ type: 'blackoutReveal' })
     })
     add(4.3, () => this.resolve(sp, 'none'))
+  }
+
+  /**
+   * RUSH 最終変動の決着：まずハズレ目で止める（当たりの一部はそのまま揃う）。
+   * 確率で「復活チャンス」ボタンが出て、押すと当たりなら全リール再始動で復活、ハズレなら復活ならず。
+   */
+  private scheduleLastChance(sp: SpinRun, t: number, k: number): number {
+    const o = sp.outcome
+    const add = (at: number, fn: () => void) => sp.actions.push({ at, fn })
+    const [W0, s1] = o.symbols
+    const gaps = k < 1 ? CRAWL_GAPS_RUSH : CRAWL_GAPS
+    const button = this.rng() < (o.win ? LAST_CHANCE_ON_WIN : LAST_CHANCE_ON_MISS)
+    sp.finale = 'straight'
+    if (o.win && !button) {
+      // ボタンなしでそのまま揃う
+      return this.crawl(sp, t, W0, gaps) + 0.4
+    }
+    // いったんハズレ目で止まる（当たりのときは1コマ先のハズレ目）
+    t = this.crawl(sp, t, o.win ? nextSymbol(W0) : s1, gaps)
+    if (!button) return t + 0.5
+    add(t + 0.2, () => {
+      sp.dark = true
+      sp.gaugeTarget = 0.05
+      this.emit({ type: 'darkPause' })
+    })
+    t += 1.0
+    add(t, () => {
+      sp.dark = false
+      sp.lastChance = true
+      sp.gaugeTarget = 0.5
+      sp.waitingPush = true
+      this.emit({ type: 'lastChance' })
+    })
+    t += 0.05
+    if (o.win) {
+      sp.finale = 'revival'
+      add(t, () => {
+        sp.lastChance = false
+        sp.gaugeTarget = 1
+        for (const r of this.reels) {
+          r.stopping = null
+          r.stopped = false
+          r.speed = 26
+        }
+        this.emit({ type: 'revival' })
+      })
+      t += 1.0
+      add(t, () => {
+        for (let i = 0; i < 3; i++) this.stopReel(i, W0, 0.4, 4, i === 1)
+      })
+      return t + 0.8
+    }
+    sp.finale = 'fakeRevival'
+    add(t + 0.3, () => {
+      sp.lastChance = false
+      sp.gaugeTarget = 0
+      this.emit({ type: 'lastChanceFail' })
+    })
+    return t + 1.3
   }
 
   /** 中リールを1コマ進める（コマ送り） */

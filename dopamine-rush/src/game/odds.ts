@@ -107,6 +107,14 @@ export const KAKUTEI_FLASH_RATE = 0.05
 export const HOLD_UPGRADE_RATE = 0.45
 /** 通常時の当たりのうち、変動開始直後に画面が落ちる「ブラックアウト」（大当たり確定）になる割合 */
 export const BLACKOUT_RATE = 0.04
+/**
+ * RUSH 最終変動の「復活チャンス」ボタンが出る割合。
+ * 最終変動は必ずリーチになり、PUSH は出さずにいったんハズレ目で止める。そのあと
+ * 当たりなら LAST_CHANCE_ON_WIN の割合でボタン → 押すと復活（残りは止まった瞬間にそのまま揃う）、
+ * ハズレなら LAST_CHANCE_ON_MISS の割合でボタン → 押しても復活ならず。
+ */
+export const LAST_CHANCE_ON_WIN = 0.7
+export const LAST_CHANCE_ON_MISS = 0.4
 
 export const SYMBOL_COUNT = 7
 
@@ -140,7 +148,7 @@ export interface SpinOutcome {
 const colorIndex = (c: HoldColor) => HOLD_COLORS.indexOf(c)
 
 /** ハズレ・リーチ時の中図柄。7割は「1コマズレ」のニアミス目にする。 */
-function nearMissCenter(target: number, rng: Rng): number {
+export function nearMissCenter(target: number, rng: Rng): number {
   if (rng() < 0.7) {
     const dir = rng() < 0.5 ? -1 : 1
     return ((target - 1 + dir + SYMBOL_COUNT) % SYMBOL_COUNT) + 1

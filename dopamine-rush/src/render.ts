@@ -605,12 +605,14 @@ function drawPush(ctx: CanvasRenderingContext2D, g: Game, t: number) {
   ctx.fillStyle = '#fff'
   ctx.font = '900 30px system-ui, sans-serif'
   ctx.textAlign = 'center'
-  ctx.fillText('PUSH', 0, 11)
+  const revive = !!g.spin?.lastChance
+  if (revive) ctx.font = '900 34px system-ui, sans-serif'
+  ctx.fillText(revive ? '復活' : 'PUSH', 0, revive ? 12 : 11)
   ctx.restore()
   ctx.fillStyle = 'rgba(255,255,255,0.8)'
   ctx.font = 'bold 13px system-ui, sans-serif'
   ctx.textAlign = 'center'
-  ctx.fillText('画面をタップ！', cx, cy + 92)
+  ctx.fillText(g.spin?.lastChance ? '復活チャンス！ 画面をタップ！' : '画面をタップ！', cx, cy + 92)
 }
 
 function drawRefill(ctx: CanvasRenderingContext2D, gate: GateState, t: number) {

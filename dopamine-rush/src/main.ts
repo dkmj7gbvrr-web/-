@@ -393,6 +393,19 @@ function onEvent(e: GameEvent) {
       })
       fx.doFlash(0.5, e.lt ? '#ffd23d' : '#ff4df0')
       break
+    case 'lastChance':
+      audio.kakutei()
+      audio.develop()
+      fx.show('復活チャンス!!', { rainbow: true, size: 56, dur: 1.4, priority: 3 })
+      fx.doFlash(0.7, '#ff3355')
+      fx.stop(0.15)
+      fx.shake(0.5)
+      break
+    case 'lastChanceFail':
+      audio.fall()
+      fx.show('復活ならず…', { color: '#8890a8', size: 44, dur: 1.4, priority: 3 })
+      fx.shake(0.3)
+      break
     case 'lastSpin':
       fx.show('LAST!', { color: '#ff3355', size: 70, dur: 1 , priority: 2 })
       audio.heartbeat()
