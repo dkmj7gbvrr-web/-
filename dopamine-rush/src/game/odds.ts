@@ -143,7 +143,35 @@ export interface SpinOutcome {
   blackout: boolean
   /** 保留以外の期待度サイン */
   yokoku: Yokoku
+  /** 違和感演出（当たりにしか付かない。テロップは出さず、気づいた人だけが分かる） */
+  iwakan: Iwakan | null
 }
+
+/**
+ * 違和感演出の種類。
+ *  - bigHold     : 保留アイコンがほんの少し大きい（入賞した瞬間から分かる）
+ *  - silentStart : 変動中のリールの刻み音が鳴らない
+ *  - reverse     : 変動開始の一瞬、図柄が逆回転する
+ *  - lampOff     : 図柄パネルの枠ランプが消えている
+ *  - flicker     : 変動中に盤面の釘ランプが一瞬だけ全部光る
+ *  - musicStop   : RUSH 中、変動開始から BGM が一瞬止まる
+ */
+export type Iwakan = 'bigHold' | 'silentStart' | 'reverse' | 'lampOff' | 'flicker' | 'musicStop'
+export const IWAKAN_NORMAL: ReadonlyArray<readonly [Iwakan, number]> = [
+  ['bigHold', 0.25],
+  ['silentStart', 0.2],
+  ['reverse', 0.2],
+  ['lampOff', 0.2],
+  ['flicker', 0.15],
+]
+export const IWAKAN_RUSH: ReadonlyArray<readonly [Iwakan, number]> = [
+  ['musicStop', 0.35],
+  ['reverse', 0.25],
+  ['lampOff', 0.2],
+  ['flicker', 0.2],
+]
+/** 当たりのうち違和感演出が付く割合（ハズレには付かない＝出たら確定） */
+export const IWAKAN_RATE = { normal: 0.12, rush: 0.08 } as const
 
 const colorIndex = (c: HoldColor) => HOLD_COLORS.indexOf(c)
 
@@ -204,6 +232,10 @@ export function decideSpin(mode: Mode, rng: Rng): SpinOutcome {
   const luckyTrigger = win && mode === 'rush' && rng() < SPEC.luckyTriggerRate
   const blackout = win && mode === 'normal' && rng() < BLACKOUT_RATE
   const yokoku = decideYokoku(mode, win, reach, rng)
+  const iwakan =
+    win && rng() < (mode === 'normal' ? IWAKAN_RATE.normal : IWAKAN_RATE.rush)
+      ? pickWeighted(mode === 'normal' ? IWAKAN_NORMAL : IWAKAN_RUSH, rng)
+      : null
 
   return {
     mode,
@@ -220,6 +252,7 @@ export function decideSpin(mode: Mode, rng: Rng): SpinOutcome {
     luckyTrigger,
     blackout,
     yokoku,
+    iwakan,
   }
 }
 

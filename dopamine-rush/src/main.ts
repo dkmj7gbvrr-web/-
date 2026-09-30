@@ -6,7 +6,7 @@ import { RefillGate } from './ads/refillGate'
 import { Fx } from './fx'
 import { audio } from './game/audio'
 import { Game, holdLevel, type GameEvent } from './game/game'
-import { ltContinueRate, SIGN_COLORS, type HoldColor, type SignColor } from './game/odds'
+import { ltContinueRate, SIGN_COLORS, type HoldColor, type Iwakan, type SignColor } from './game/odds'
 import { BOARD_BOTTOM, H, W } from './game/physics'
 import { mulberry32 } from './game/rng'
 import { BTN_MOTION, BTN_MUTE, BTN_REFILL, render, type Ui } from './render'
@@ -69,6 +69,15 @@ const SIGN_CSS: Record<SignColor, string> = {
   rainbow: '#ffffff',
 }
 const signLevel = (c: SignColor) => SIGN_COLORS.indexOf(c)
+/** 大当たりのあとで「何が違和感だったか」を明かす */
+const IWAKAN_HINT: Record<Iwakan, string> = {
+  bigHold: '保留が少し大きかった',
+  silentStart: 'リールの音が無かった',
+  reverse: '一瞬逆回転した',
+  lampOff: '枠ランプが消えていた',
+  flicker: '盤面が一瞬光った',
+  musicStop: 'BGMが途切れた',
+}
 const RAINBOW = ['#ff3b3b', '#ffa53d', '#ffe23d', '#3ddc84', '#39c0ff', '#b77dff', '#ff6fb5']
 
 let lastPegSound = 0
@@ -238,7 +247,7 @@ function onEvent(e: GameEvent) {
       break
     case 'develop':
       audio.develop()
-      fx.show('発展!?', { color: '#ffd23d', size: 64, dur: 1.1, priority: 2 })
+      fx.show('SUPER!?', { color: '#ffd23d', size: 64, dur: 1.4, priority: 2 })
       fx.shake(0.25)
       break
     case 'developResult':
@@ -246,8 +255,11 @@ function onEvent(e: GameEvent) {
         fx.doFlash(0.6, '#ffd23d')
         fx.stop(0.12)
       } else {
-        audio.fall()
-        fx.show('発展ならず…', { color: '#8890a8', size: 40, dur: 0.9, priority: 2 })
+        // 言葉は出さず、テロップが砕け散る
+        audio.shatter()
+        fx.shatter()
+        fx.doFlash(0.25, '#40445a')
+        fx.shake(0.25)
       }
       break
     case 'rendaStart':
@@ -326,7 +338,8 @@ function onEvent(e: GameEvent) {
       fx.confettiRain(160, W)
       fx.burst(W / 2, 140, 80, RAINBOW, 420, 'star')
       const chainText = e.outcome.mode !== 'normal' ? `${e.chain}連!!` : `${e.outcome.shownRounds}R`
-      fx.show('大当たり!!', { rainbow: true, size: 76, dur: 2.4, sub: chainText , priority: 3 })
+      const hint = e.outcome.iwakan ? `  違和感：${IWAKAN_HINT[e.outcome.iwakan]}` : ''
+      fx.show('大当たり!!', { rainbow: true, size: 76, dur: 2.4, sub: chainText + hint, priority: 3 })
       ui.displayPayout = 0
       attackerCount = 0
       window.setTimeout(() => audio.playMusic('fever', 150 + Math.min(40, e.chain * 5)), 1200)
@@ -564,8 +577,11 @@ function frame(now: number) {
     // 回転中のリールの刻み音
     // 暗転・タメの間は BGM と刻み音を止めて「無音」で溜める
     const silent = !!game.spin && (game.spin.blackout || game.spin.darken || game.spin.dark)
-    audio.duck(silent)
-    const spinning = !silent && game.reels.some((r) => !r.stopped && !r.stopping)
+    // 違和感：RUSH 中に BGM が途切れる / リールの刻み音が鳴らない
+    const iw = game.spin?.outcome.iwakan
+    const musicGap = iw === 'musicStop' && (game.spin?.t ?? 9) < 1.6
+    audio.duck(silent || musicGap)
+    const spinning = !silent && iw !== 'silentStart' && game.reels.some((r) => !r.stopped && !r.stopping)
     tickTimer -= dt
     if (spinning && tickTimer <= 0) {
       audio.reelTick()

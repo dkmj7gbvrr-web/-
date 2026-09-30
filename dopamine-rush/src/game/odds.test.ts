@@ -175,3 +175,20 @@ describe('保留以外の期待度サイン（予告）', () => {
     expect(ltContinueRate()).toBeGreaterThan(rushContinueRate())
   })
 })
+
+describe('違和感演出', () => {
+  test('当たりにしか付かず、通常時と RUSH で種類が分かれる', () => {
+    const rng = mulberry32(31)
+    let n = 0
+    for (let i = 0; i < 200000; i++) {
+      const mode = (['normal', 'rush', 'lt'] as const)[i % 3]
+      const o = decideSpin(mode, rng)
+      if (!o.iwakan) continue
+      n++
+      expect(o.win).toBe(true)
+      if (mode === 'normal') expect(o.iwakan).not.toBe('musicStop')
+      else expect(['bigHold', 'silentStart']).not.toContain(o.iwakan)
+    }
+    expect(n).toBeGreaterThan(100)
+  })
+})

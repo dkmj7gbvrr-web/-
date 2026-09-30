@@ -12,7 +12,7 @@ export interface Particle {
   max: number
   size: number
   color: string
-  kind: 'spark' | 'confetti' | 'coin' | 'ring' | 'star'
+  kind: 'spark' | 'confetti' | 'coin' | 'ring' | 'star' | 'shard'
   rot: number
   vr: number
 }
@@ -113,6 +113,30 @@ export class Fx {
     }
   }
 
+  /** 表示中のテロップをガラスのように砕いて消す（言葉を使わずに「ダメだった」を伝える） */
+  shatter() {
+    const b = this.banner
+    if (!b) return
+    this.banner = null
+    const w = Math.min(360, b.text.length * b.size * 0.9)
+    for (let i = 0; i < 70; i++) {
+      const max = 0.8 + Math.random() * 0.6
+      this.particles.push({
+        x: 225 + (Math.random() - 0.5) * w,
+        y: 470 + (Math.random() - 0.5) * b.size,
+        vx: (Math.random() - 0.5) * 220,
+        vy: -80 + Math.random() * 120,
+        life: max,
+        max,
+        size: 4 + Math.random() * 9,
+        color: b.rainbow ? `hsl(${Math.floor(Math.random() * 360)},90%,65%)` : b.color,
+        kind: 'shard',
+        rot: Math.random() * Math.PI,
+        vr: (Math.random() - 0.5) * 16,
+      })
+    }
+  }
+
   popup(x: number, y: number, text: string, color = '#fff', size = 16) {
     this.popups.push({ x, y, text, color, life: 0.9, size })
   }
@@ -155,7 +179,7 @@ export class Fx {
       if (p.kind === 'confetti') {
         p.vx *= 0.99
         p.vy = Math.min(p.vy + 60 * dt, 160)
-      } else if (p.kind === 'coin') {
+      } else if (p.kind === 'coin' || p.kind === 'shard') {
         p.vy += 900 * dt
       } else if (p.kind === 'spark' || p.kind === 'star') {
         p.vx *= 0.94

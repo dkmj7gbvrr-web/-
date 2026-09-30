@@ -268,7 +268,8 @@ function drawReels(ctx: CanvasRenderingContext2D, g: Game, t: number) {
   else if (stage === 'normal') ctx.strokeStyle = '#ffd23d'
   else if (g.phase === 'rush') ctx.strokeStyle = '#ff4df0'
   else ctx.strokeStyle = 'rgba(160,190,255,0.5)'
-  ctx.stroke()
+  // 違和感：枠ランプが消えている
+  if (sp?.outcome.iwakan !== 'lampOff') ctx.stroke()
 
   for (let i = 0; i < 3; i++) {
     const r = g.reels[i]
@@ -335,7 +336,9 @@ function drawHolds(ctx: CanvasRenderingContext2D, g: Game, t: number) {
     ctx.arc(x, y, 11, 0, Math.PI * 2)
     if (h) {
       const lvl = holdLevel(h.shown)
-      const pulse = lvl >= 3 ? 1 + 0.12 * Math.sin(t * 10) : 1
+      // 違和感：保留アイコンがほんの少しだけ大きい
+      const odd = h.outcome.iwakan === 'bigHold' ? 1.22 : 1
+      const pulse = (lvl >= 3 ? 1 + 0.12 * Math.sin(t * 10) : 1) * odd
       ctx.beginPath()
       ctx.arc(x, y, 11 * pulse, 0, Math.PI * 2)
       ctx.fillStyle = holdFill(ctx, h.shown, x, t)
@@ -358,7 +361,7 @@ function drawHolds(ctx: CanvasRenderingContext2D, g: Game, t: number) {
     ctx.fillStyle = 'rgba(200,210,255,0.6)'
     ctx.fillText('当該', x - 34, y + 4)
     ctx.beginPath()
-    ctx.arc(x + 12, y, 12, 0, Math.PI * 2)
+    ctx.arc(x + 12, y, g.spin.outcome.iwakan === 'bigHold' ? 14.5 : 12, 0, Math.PI * 2)
     ctx.fillStyle = holdFill(ctx, c, x + 12, t)
     ctx.fill()
   }
@@ -422,6 +425,18 @@ function drawParticles(ctx: CanvasRenderingContext2D, fx: Fx) {
       ctx.beginPath()
       ctx.arc(p.x, p.y, p.size * (1 - a) + 4, 0, Math.PI * 2)
       ctx.stroke()
+    } else if (p.kind === 'shard') {
+      ctx.save()
+      ctx.translate(p.x, p.y)
+      ctx.rotate(p.rot)
+      ctx.fillStyle = p.color
+      ctx.beginPath()
+      ctx.moveTo(-p.size / 2, -p.size / 3)
+      ctx.lineTo(p.size / 2, -p.size / 2)
+      ctx.lineTo(p.size / 4, p.size / 2)
+      ctx.closePath()
+      ctx.fill()
+      ctx.restore()
     } else if (p.kind === 'confetti') {
       ctx.save()
       ctx.translate(p.x, p.y)

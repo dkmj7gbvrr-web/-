@@ -40,7 +40,10 @@ describe('Game', () => {
   }, 30000)
 
   test('大当たり → ラウンド消化 → 突入チャレンジ → RUSH/通常 の一連が回る', () => {
-    const { events, g } = simulate(3, 600)
+    // RUSH 突入は50%の抽選なので、特定のシードの運に頼らないよう突入が起きるまで最大5シード試す
+    let run = simulate(3, 600)
+    for (let seed = 4; seed < 8 && !run.events.some((e) => e.type === 'rushStart'); seed++) run = simulate(seed, 600)
+    const { events, g } = run
     const types = events.map((e) => e.type)
     expect(types).toContain('jackpot')
     expect(types).toContain('roundStart')
@@ -59,8 +62,8 @@ describe('Game', () => {
       if (e.type === 'roundStart') rounds++
       if (e.type === 'feverEnd') expect(rounds).toBe(expected)
     }
-    expect(['play', 'fever', 'jackpotIntro', 'challenge', 'rushIntro', 'rushEnd']).toContain(g.scene)
-  }, 60000)
+    expect(['play', 'fever', 'jackpotIntro', 'challenge', 'rushIntro', 'ltIntro', 'rushEnd']).toContain(g.scene)
+  }, 180000)
 
   test('保留は最大4個まで', () => {
     simulate(5, 120, (g) => {
