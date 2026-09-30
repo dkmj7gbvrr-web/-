@@ -8,11 +8,13 @@ on:
       - claude/nanpure-app-dev-u0i5aq
       - claude/test-tube-liquid-game-4trso3
       - claude/kaibugyo-pachinko-game-2gxf3e
+      - claude/fervent-goldberg-s98oys
     paths:
       - "pokefuta-visit-tracker/**"
       - "nanpure-app/**"
       - "test-tube-liquid-game/**"
       - "umi-pachinko-game/**"
+      - "dopamine-rush/**"
       - "docs/**"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
@@ -40,6 +42,7 @@ jobs:
             nanpure-app/package-lock.json
             test-tube-liquid-game/package-lock.json
             umi-pachinko-game/package-lock.json
+            dopamine-rush/package-lock.json
 
       - name: Build pokefuta-visit-tracker
         working-directory: pokefuta-visit-tracker
@@ -67,6 +70,13 @@ jobs:
           npm run test
           npm run build
 
+      - name: Build dopamine-rush
+        working-directory: dopamine-rush
+        run: |
+          npm ci
+          npm run test
+          npm run build
+
       - name: Assemble combined site
         run: |
           mkdir -p site
@@ -77,6 +87,8 @@ jobs:
           cp -r test-tube-liquid-game/dist/. site/test-tube-liquid-game/
           mkdir -p site/umi-pachinko-game
           cp -r umi-pachinko-game/dist/. site/umi-pachinko-game/
+          mkdir -p site/dopamine-rush
+          cp -r dopamine-rush/dist/. site/dopamine-rush/
           mkdir -p site/warikan-kakeibo
           cp -r docs/. site/warikan-kakeibo/
 
