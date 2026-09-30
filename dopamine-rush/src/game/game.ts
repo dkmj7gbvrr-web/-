@@ -174,10 +174,10 @@ export class Game {
     )
   }
 
-  refill() {
+  refill(amount = REFILL_AMOUNT) {
     if (!this.needsRefill) return
-    this.balls += REFILL_AMOUNT
-    this.emit({ type: 'refill', amount: REFILL_AMOUNT })
+    this.balls += amount
+    this.emit({ type: 'refill', amount })
   }
 
   get rendaActive(): boolean {

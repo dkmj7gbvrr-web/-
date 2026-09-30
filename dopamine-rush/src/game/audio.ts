@@ -43,6 +43,15 @@ class Audio {
     if (this.ctx.state === 'suspended') void this.ctx.resume()
   }
 
+  /** 広告の再生中はゲームの音を完全に止める */
+  suspend() {
+    if (this.ctx && this.ctx.state === 'running') void this.ctx.suspend()
+  }
+
+  resume() {
+    if (this.ctx && this.ctx.state === 'suspended') void this.ctx.resume()
+  }
+
   setMuted(m: boolean) {
     this.muted = m
     if (this.master && this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 0.9, this.ctx.currentTime, 0.02)

@@ -1,3 +1,4 @@
+import { AD_REWARD, FALLBACK_REWARD, type GateState } from './ads/refillGate'
 import type { Fx } from './fx'
 import { holdLevel, PUSH_AUTO, RENDA_TIME, type Game } from './game/game'
 import { SPEC, SYMBOL_COUNT, type HoldColor } from './game/odds'
@@ -5,6 +6,10 @@ import { BALL_R, BOARD_BOTTOM, BOARD_TOP, H, PEG_R, W, WALL_L, WALL_R } from './
 import { ATTACKER, BONUS_POCKETS, startPocket } from './game/pockets'
 
 export interface Ui {
+  /** 補給ボタンの状態（広告） */
+  gate: GateState
+  /** 運営者モード（広告なしで補給できる） */
+  owner: boolean
   started: boolean
   muted: boolean
   reducedMotion: boolean
@@ -65,7 +70,7 @@ export function render(ctx: CanvasRenderingContext2D, g: Game, fx: Fx, ui: Ui, t
   drawBanner(ctx, fx, time)
   if (g.spin?.renda) drawRenda(ctx, g, time)
   if (g.pushPending) drawPush(ctx, g, time)
-  if (g.needsRefill) drawRefill(ctx, time)
+  if (g.needsRefill) drawRefill(ctx, ui.gate, time)
   ctx.restore()
 
   if (fx.flash > 0) {
@@ -349,6 +354,11 @@ function drawHud(ctx: CanvasRenderingContext2D, g: Game, ui: Ui, t: number) {
   ctx.fillStyle = '#fff'
   ctx.font = '900 28px system-ui, sans-serif'
   ctx.fillText(Math.round(ui.displayBalls).toLocaleString(), 16, 48)
+  if (ui.owner) {
+    ctx.font = 'bold 10px system-ui, sans-serif'
+    ctx.fillStyle = '#3ddc84'
+    ctx.fillText('OWNER', 60, 20)
+  }
 
   ctx.textAlign = 'center'
   if (g.phase === 'rush' || (g.phase === 'fever' && g.chain > 0 && g.fever?.fromMode === 'rush')) {
@@ -525,16 +535,51 @@ function drawPush(ctx: CanvasRenderingContext2D, g: Game, t: number) {
   ctx.fillText('画面をタップ！', cx, cy + 92)
 }
 
-function drawRefill(ctx: CanvasRenderingContext2D, t: number) {
+function drawRefill(ctx: CanvasRenderingContext2D, gate: GateState, t: number) {
   const b = BTN_REFILL
   const pulse = 0.85 + 0.15 * Math.sin(t * 5)
+  let label = ''
+  let sub = ''
+  let color = `rgba(40,200,120,${pulse})`
+  switch (gate.kind) {
+    case 'free':
+      label = '玉を補給（無料）'
+      break
+    case 'idle':
+    case 'loading':
+      label = '広告を準備中…'
+      color = 'rgba(120,125,150,0.8)'
+      break
+    case 'ready':
+      label = `▶ 広告を見て +${AD_REWARD}玉`
+      sub = '最後まで見ると玉が補給されます'
+      color = `rgba(255,140,40,${pulse})`
+      break
+    case 'showing':
+      label = '広告を再生中…'
+      color = 'rgba(120,125,150,0.8)'
+      break
+    case 'wait':
+      label = `あと ${Math.ceil(gate.left)} 秒`
+      sub = `広告を用意できませんでした。待つと +${FALLBACK_REWARD}玉`
+      color = 'rgba(120,125,150,0.8)'
+      break
+    case 'fallbackReady':
+      label = `+${FALLBACK_REWARD}玉を受け取る`
+      break
+  }
   roundRect(ctx, b.x, b.y, b.w, b.h, 14)
-  ctx.fillStyle = `rgba(40,200,120,${pulse})`
+  ctx.fillStyle = color
   ctx.fill()
   ctx.fillStyle = '#fff'
   ctx.font = '900 18px system-ui, sans-serif'
   ctx.textAlign = 'center'
-  ctx.fillText('玉を補給（無料）', W / 2, b.y + 35)
+  ctx.fillText(label, W / 2, b.y + 35)
+  if (sub) {
+    ctx.font = 'bold 12px system-ui, sans-serif'
+    ctx.fillStyle = 'rgba(255,255,255,0.8)'
+    ctx.fillText(sub, W / 2, b.y + b.h + 20)
+  }
 }
 
 function drawSceneOverlay(ctx: CanvasRenderingContext2D, g: Game, ui: Ui, t: number) {

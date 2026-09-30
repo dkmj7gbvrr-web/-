@@ -1,4 +1,8 @@
 import './style.css'
+import { AdSenseRewardProvider, configureAdSense, loadAdSense } from './ads/adsense'
+import { AD_CLIENT, AD_FREQUENCY_HINT, AD_TEST } from './ads/config'
+import { resolveOwner } from './ads/owner'
+import { RefillGate } from './ads/refillGate'
 import { Fx } from './fx'
 import { audio } from './game/audio'
 import { Game, holdLevel, type GameEvent } from './game/game'
@@ -35,6 +39,8 @@ function save() {
 const saved = load()
 const prefersReduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
 const ui: Ui = {
+  gate: { kind: 'free' },
+  owner: false,
   started: false,
   muted: saved.muted ?? false,
   reducedMotion: saved.reducedMotion ?? prefersReduced,
@@ -333,6 +339,24 @@ function updateBest(chain: number, total: number) {
 }
 
 const game = new Game(mulberry32((Math.random() * 2 ** 32) >>> 0), onEvent)
+
+// ---------------------------------------------------------------- 補給（リワード広告）
+
+const grant = (amount: number) => game.refill(amount)
+/** 広告が未設定なら、これまでどおり無料で補給できる */
+let gate = new RefillGate(null, grant)
+let adsLoaded = false
+// URL の ?owner= は広告の設定に関係なく読み取って消す
+void resolveOwner()
+  .catch(() => false)
+  .then((owner) => {
+    ui.owner = owner
+    if (owner || !AD_CLIENT) return
+    loadAdSense(AD_CLIENT, { test: AD_TEST, frequencyHint: AD_FREQUENCY_HINT })
+    configureAdSense(!ui.muted)
+    adsLoaded = true
+    gate = new RefillGate(new AdSenseRewardProvider(), grant)
+  })
 ui.displayBalls = game.balls
 
 // ---------------------------------------------------------------- 入力
@@ -356,6 +380,7 @@ canvas.addEventListener('pointerdown', (ev) => {
   if (inside(p, BTN_MUTE)) {
     ui.muted = !ui.muted
     audio.setMuted(ui.muted)
+    if (adsLoaded) configureAdSense(!ui.muted)
     save()
     return
   }
@@ -374,7 +399,7 @@ canvas.addEventListener('pointerdown', (ev) => {
     return
   }
   if (game.needsRefill && inside(p, BTN_REFILL)) {
-    game.refill()
+    gate.press()
     return
   }
   game.aimX = p.x
@@ -428,7 +453,14 @@ function frame(now: number) {
   prev = now
   clock += dt
   fx.update(dt)
-  if (ui.started) {
+  gate.update(dt, game.needsRefill)
+  ui.gate = gate.state
+  if (gate.paused) {
+    // 広告の再生中はゲームを止めて消音する
+    game.firing = false
+    audio.suspend()
+  } else if (ui.started) {
+    audio.resume()
     game.update(dt * fx.timeScale)
 
     // 回転中のリールの刻み音
