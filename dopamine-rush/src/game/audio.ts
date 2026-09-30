@@ -43,6 +43,15 @@ class Audio {
     if (this.ctx.state === 'suspended') void this.ctx.resume()
   }
 
+  /** 広告の再生中はゲームの音を完全に止める */
+  suspend() {
+    if (this.ctx && this.ctx.state === 'running') void this.ctx.suspend()
+  }
+
+  resume() {
+    if (this.ctx && this.ctx.state === 'suspended') void this.ctx.resume()
+  }
+
   setMuted(m: boolean) {
     this.muted = m
     if (this.master && this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 0.9, this.ctx.currentTime, 0.02)
@@ -187,6 +196,103 @@ class Audio {
     ;[67, 71, 74, 79, 83, 86].forEach((m, i) =>
       this.tone(midiToFreq(m), 0.3, { type: 'square', gain: 0.06, delay: i * 0.07 }),
     )
+  }
+
+  /** 発展!? の警告音 */
+  develop() {
+    for (let i = 0; i < 6; i++) {
+      this.tone(i % 2 ? 1568 : 2093, 0.09, { type: 'square', gain: 0.06, delay: i * 0.09 })
+    }
+    this.riser(1.0, 0.8)
+  }
+
+  /** 期待を外したときの「ガクッ」 */
+  fall() {
+    this.tone(420, 0.5, { type: 'sawtooth', gain: 0.07, slideTo: 90 })
+    this.tone(90, 0.4, { type: 'sine', gain: 0.3, slideTo: 40 })
+  }
+
+  /** 揃いかけの瞬間（ファンファーレの頭だけ） */
+  tease() {
+    ;[60, 64, 67].forEach((m, i) => this.tone(midiToFreq(m + 12), 0.2, { type: 'square', gain: 0.07, delay: i * 0.05 }))
+  }
+
+  rendaTap(n: number) {
+    const k = Math.min(n, 24)
+    const midi = 72 + Math.floor(k / 5) * 12 + PENTA[k % 5]
+    this.tone(midiToFreq(midi), 0.08, { type: 'square', gain: 0.05 })
+    this.noise(0.04, { gain: 0.08, from: 4000 })
+  }
+
+  /** コマ送りの1コマ。遅いコマほど重く */
+  crawl(slow: boolean, last: boolean) {
+    this.tone(last ? 70 : slow ? 110 : 180, last ? 0.3 : 0.12, { type: 'sine', gain: last ? 0.4 : slow ? 0.25 : 0.12, slideTo: 40 })
+    this.noise(0.04, { gain: slow ? 0.14 : 0.07, from: 2500 })
+  }
+
+  /** 暗転中の低い持続音 */
+  drone(dur: number) {
+    this.tone(55, dur, { type: 'sine', gain: 0.18, attack: 0.3 })
+    this.tone(82.4, dur, { type: 'triangle', gain: 0.05, attack: 0.5 })
+  }
+
+  /** ステップアップ予告：段階ごとに1音ずつ上がる */
+  stepUp(step: number, final: boolean) {
+    const m = 72 + [0, 2, 4, 7, 9, 12][Math.min(step, 5)]
+    this.tone(midiToFreq(m), final ? 0.35 : 0.18, { type: 'square', gain: 0.07 })
+    this.tone(midiToFreq(m + 7), final ? 0.35 : 0.18, { type: 'triangle', gain: 0.04 })
+    this.noise(0.08, { gain: 0.1, from: 3000 })
+  }
+
+  /** 擬似連の「NEXT」 */
+  gijiren(count: number) {
+    for (let i = 0; i < count; i++) {
+      this.tone(midiToFreq(79 + i * 5), 0.12, { type: 'square', gain: 0.06, delay: i * 0.08 })
+    }
+    this.tone(200, 0.3, { type: 'sawtooth', gain: 0.05, slideTo: 1600 })
+  }
+
+  /** カットイン（色が上がるほど厚く） */
+  cutin(level: number) {
+    this.noise(0.35, { gain: 0.25, from: 800, to: 8000, q: 0.8 })
+    this.tone(110 * (1 + level * 0.25), 0.4, { type: 'sawtooth', gain: 0.06, slideTo: 880 * (1 + level * 0.25) })
+    if (level >= 4) this.kakutei()
+  }
+
+  /** 先読みゾーン：連続予告の1回分 */
+  zone(count: number, target: boolean) {
+    const base = 60 + Math.min(count, 5) * 2
+    ;[0, 4, 7].forEach((d, i) => this.tone(midiToFreq(base + d), 0.25, { type: 'triangle', gain: 0.07, delay: i * 0.06 }))
+    if (target) this.riser(0.8, 0.8)
+  }
+
+  /** ブラックアウト中にうっすら聞こえる「歓喜の歌」の頭 */
+  odeWhisper() {
+    const notes = [76, 76, 77, 79, 79, 77, 76, 74]
+    notes.forEach((m, i) => this.tone(midiToFreq(m), 0.34, { type: 'sine', gain: 0.05, delay: i * 0.18, attack: 0.03 }))
+  }
+
+  /** オーバー入賞：規定数を超えて入った1玉 */
+  over(count: number) {
+    this.tone(midiToFreq(91 + Math.min(count, 5) * 2), 0.18, { type: 'square', gain: 0.07 })
+    this.tone(midiToFreq(98 + Math.min(count, 5) * 2), 0.25, { type: 'sine', gain: 0.06, delay: 0.05 })
+  }
+
+  /** ラッキートリガー発動 */
+  luckyTrigger() {
+    this.impact()
+    ;[60, 67, 72, 76, 79, 84, 88, 91].forEach((m, i) =>
+      this.tone(midiToFreq(m), 0.4, { type: 'square', gain: 0.07, delay: 0.1 + i * 0.07 }),
+    )
+    this.tone(2093, 1.6, { type: 'sine', gain: 0.15, slideTo: 2349, delay: 0.7 })
+  }
+
+  private ducked = false
+  /** 暗転・タメの間は BGM を消す（無音で溜める） */
+  duck(on: boolean) {
+    if (on === this.ducked || !this.ctx || !this.musicBus) return
+    this.ducked = on
+    this.musicBus.gain.setTargetAtTime(on ? 0 : 0.55, this.ctx.currentTime, on ? 0.03 : 0.15)
   }
 
   playMusic(kind: 'fever' | 'rush' | null, bpm = 150) {

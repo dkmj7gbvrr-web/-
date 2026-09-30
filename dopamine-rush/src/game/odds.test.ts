@@ -1,6 +1,15 @@
 import { describe, expect, test } from 'vitest'
 import {
+  canFakeAlign,
+  CUTIN_TABLE,
+  GIJIREN_TABLE,
+  ltContinueRate,
+  SIGN_COLORS,
+  STEPUP_TABLE,
+  TITLE_TABLE,
+  type YokokuCategory,
   decideSpin,
+  pickFinale,
   HOLD_COLORS,
   reliability,
   REACH_ON_MISS,
@@ -85,5 +94,84 @@ describe('期待度（信頼度）', () => {
 
   test('RUSH 継続率は約79%', () => {
     expect(rushContinueRate()).toBeCloseTo(0.79, 2)
+  })
+})
+
+describe('決着パターン（pickFinale）', () => {
+  test('成功パターンは当たりにだけ、フェイク成功はハズレにだけ出る', () => {
+    const rng = mulberry32(21)
+    for (let i = 0; i < 50000; i++) {
+      const o = decideSpin('normal', rng)
+      if (o.reach === 'none') continue
+      const f = pickFinale(o, o.reach === 'normal' ? 'normal' : 'super', rng)
+      if (o.win) expect(['straight', 'slip', 'revival', 'darken']).toContain(f)
+      else expect(['straight', 'fakeAlign', 'fakeRevival', 'darken']).toContain(f)
+      if (f === 'fakeAlign') expect(canFakeAlign(o)).toBe(true)
+      if (o.revival) expect(f).toBe('revival')
+    }
+  })
+})
+
+describe('保留以外の期待度サイン（予告）', () => {
+  const rel = (value: string | number, table: Record<YokokuCategory, ReadonlyArray<readonly [string | number, number]>>) => {
+    // ハズレの内訳（リーチなし / ノーマル / SUPER 以上）の比率で重み付けしてハズレ時の出現率を出す
+    const missMix: Record<Exclude<YokokuCategory, 'win'>, number> = { missNone: 0.76, missNormal: 0.17, missSuper: 0.07 }
+    const p = (t: ReadonlyArray<readonly [string | number, number]>) => {
+      const total = t.reduce((a, [, w]) => a + w, 0)
+      return (t.find(([v]) => v === value)?.[1] ?? 0) / total
+    }
+    const pw = p(table.win) * SPEC.normalWinRate
+    const pm = (Object.keys(missMix) as Array<keyof typeof missMix>).reduce((a, c) => a + p(table[c]) * missMix[c], 0) * (1 - SPEC.normalWinRate)
+    return pw / (pw + pm)
+  }
+
+  test('ステップアップは段階が上がるほど期待度が上がり、STEP5 は確定', () => {
+    const r = [1, 2, 3, 4, 5].map((v) => rel(v, STEPUP_TABLE))
+    for (let i = 1; i < r.length; i++) expect(r[i]).toBeGreaterThan(r[i - 1])
+    expect(r[4]).toBe(1)
+  })
+
+  test('擬似連は回数が増えるほど期待度が上がり、×4 は確定', () => {
+    const r = [2, 3, 4].map((v) => rel(v, GIJIREN_TABLE))
+    for (let i = 1; i < r.length; i++) expect(r[i]).toBeGreaterThan(r[i - 1])
+    expect(r[2]).toBe(1)
+  })
+
+  test('タイトル色は 白<青<緑<赤<金<虹、虹は確定', () => {
+    const r = SIGN_COLORS.map((c) => rel(c, TITLE_TABLE))
+    for (let i = 1; i < r.length; i++) expect(r[i]).toBeGreaterThan(r[i - 1])
+    expect(r[5]).toBe(1)
+  })
+
+  test('カットイン色は 青<緑<赤<金<虹（SUPER 以上の中で）、虹は確定', () => {
+    const r = (['blue', 'green', 'red', 'gold', 'rainbow'] as const).map((c) =>
+      reliability(c, CUTIN_TABLE.win, CUTIN_TABLE.miss, 0.5),
+    )
+    for (let i = 1; i < r.length; i++) expect(r[i]).toBeGreaterThan(r[i - 1])
+    expect(r[4]).toBe(1)
+  })
+
+  test('ブラックアウトとラッキートリガーは当たりにしか付かない', () => {
+    const rng = mulberry32(77)
+    let blackout = 0
+    let lt = 0
+    for (let i = 0; i < 100000; i++) {
+      const mode = (['normal', 'rush', 'lt'] as const)[i % 3]
+      const o = decideSpin(mode, rng)
+      if (o.blackout) {
+        blackout++
+        expect(o.win && o.mode === 'normal').toBe(true)
+      }
+      if (o.luckyTrigger) {
+        lt++
+        expect(o.win && o.mode === 'rush').toBe(true)
+      }
+    }
+    expect(blackout).toBeGreaterThan(0)
+    expect(lt).toBeGreaterThan(0)
+  })
+
+  test('ラッキートリガーの継続率は RUSH より高い', () => {
+    expect(ltContinueRate()).toBeGreaterThan(rushContinueRate())
   })
 })
