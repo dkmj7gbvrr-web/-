@@ -1,6 +1,7 @@
 /**
- * 画面効果（ジュース）：パーティクル・画面揺れ・フラッシュ・ヒットストップ・スロー・大文字テロップ。
+ * 画面効果（ジュース）：パーティクル・画面揺れ・フラッシュ・ヒットストップ・スロー・色かぶり・ズーム・ヒビ。
  * 「少ない入力に対して、何倍もの反応を返す」ことを担当する層。
+ * 演出は文字（テロップ）を使わず、光・色・形・動き・音だけで語る。
  */
 
 export interface Particle {
@@ -26,21 +27,25 @@ export interface Popup {
   size: number
 }
 
-export interface Banner {
-  text: string
-  sub?: string
-  color: string
-  life: number
-  max: number
-  size: number
-  rainbow: boolean
-  priority: number
+/** 画面にヒビが入る演出の1本（中心から外へ伸びる折れ線） */
+export interface Crack {
+  points: Array<{ x: number; y: number }>
 }
 
 export class Fx {
   particles: Particle[] = []
   popups: Popup[] = []
-  banner: Banner | null = null
+  /** 画面全体の色かぶり（期待度の色・失敗の灰色など） */
+  tintColor = '#000'
+  tint = 0
+  private tintDecay = 1
+  /** 一瞬の拡大（手前に迫る感じ） */
+  zoom = 0
+  /** 画面のヒビ */
+  cracks: Crack[] = []
+  crackLife = 0
+  /** HUD のラウンド数などを脈打たせる残り秒 */
+  hudPulse = 0
   /** 0〜1。揺れ幅は trauma² に比例させる（小さい揺れは控えめ、大きい揺れは一気に大きく） */
   trauma = 0
   flash = 0
@@ -113,23 +118,40 @@ export class Fx {
     }
   }
 
-  /** 表示中のテロップをガラスのように砕いて消す（言葉を使わずに「ダメだった」を伝える） */
-  shatter() {
-    const b = this.banner
-    if (!b) return
-    this.banner = null
-    const w = Math.min(360, b.text.length * b.size * 0.9)
-    for (let i = 0; i < 70; i++) {
+  popup(x: number, y: number, text: string, color = '#fff', size = 16) {
+    this.popups.push({ x, y, text, color, life: 0.9, size })
+  }
+
+  /** 画面全体を color に染め、dur 秒かけて戻す */
+  doTint(color: string, strength: number, dur = 1) {
+    this.tintColor = color
+    this.tint = Math.max(this.tint, strength * (this.reducedMotion ? 0.5 : 1))
+    this.tintDecay = strength / Math.max(0.05, dur)
+  }
+
+  /** 画面が一瞬手前に迫る */
+  punch(amount: number) {
+    this.zoom = Math.max(this.zoom, amount * (this.reducedMotion ? 0.3 : 1))
+  }
+
+  /** 矩形の縁がガラスのように砕け散る（言葉を使わずに「ダメだった」を伝える） */
+  shatterRect(x: number, y: number, w: number, h: number, colors: string[], n = 70) {
+    for (let i = 0; i < n; i++) {
+      // 縁の上のランダムな点
+      const side = Math.floor(Math.random() * 4)
+      const u = Math.random()
+      const px = side === 0 || side === 2 ? x + u * w : side === 1 ? x + w : x
+      const py = side === 1 || side === 3 ? y + u * h : side === 2 ? y + h : y
       const max = 0.8 + Math.random() * 0.6
       this.particles.push({
-        x: 225 + (Math.random() - 0.5) * w,
-        y: 470 + (Math.random() - 0.5) * b.size,
-        vx: (Math.random() - 0.5) * 220,
-        vy: -80 + Math.random() * 120,
+        x: px,
+        y: py,
+        vx: (px - (x + w / 2)) * 1.2 + (Math.random() - 0.5) * 120,
+        vy: -120 + Math.random() * 140,
         life: max,
         max,
         size: 4 + Math.random() * 9,
-        color: b.rainbow ? `hsl(${Math.floor(Math.random() * 360)},90%,65%)` : b.color,
+        color: colors[Math.floor(Math.random() * colors.length)],
         kind: 'shard',
         rot: Math.random() * Math.PI,
         vr: (Math.random() - 0.5) * 16,
@@ -137,32 +159,24 @@ export class Fx {
     }
   }
 
-  popup(x: number, y: number, text: string, color = '#fff', size = 16) {
-    this.popups.push({ x, y, text, color, life: 0.9, size })
-  }
-
-  /**
-   * 中央の大文字テロップ。priority が低いテロップは、表示中の高いテロップを
-   * （寿命の半分を過ぎるまで）上書きしない。大当たりの瞬間を小さな演出で潰さないため。
-   */
-  show(
-    text: string,
-    opts: { sub?: string; color?: string; dur?: number; size?: number; rainbow?: boolean; priority?: number } = {},
-  ) {
-    const priority = opts.priority ?? 1
-    const cur = this.banner
-    if (cur && cur.priority > priority && cur.life > cur.max * 0.5) return
-    const max = opts.dur ?? 1.4
-    this.banner = {
-      text,
-      sub: opts.sub,
-      color: opts.color ?? '#fff',
-      life: max,
-      max,
-      size: opts.size ?? 54,
-      rainbow: opts.rainbow ?? false,
-      priority,
+  /** 画面にヒビが走る（cx, cy から放射状） */
+  crack(cx: number, cy: number, dur = 1.6) {
+    this.cracks = []
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2 + Math.random() * 0.4
+      const points = [{ x: cx, y: cy }]
+      let x = cx
+      let y = cy
+      const len = 160 + Math.random() * 220
+      for (let d = 0; d < len; d += 24 + Math.random() * 20) {
+        const aa = a + (Math.random() - 0.5) * 0.6
+        x += Math.cos(aa) * 30
+        y += Math.sin(aa) * 30
+        points.push({ x, y })
+      }
+      this.cracks.push({ points })
     }
+    this.crackLife = dur
   }
 
   /** 実時間で進める（ヒットストップ中も演出は動かす） */
@@ -192,10 +206,10 @@ export class Fx {
       p.y -= 40 * dt
     }
     this.popups = this.popups.filter((p) => p.life > 0)
-    if (this.banner) {
-      this.banner.life -= dt
-      if (this.banner.life <= 0) this.banner = null
-    }
+    this.tint = Math.max(0, this.tint - this.tintDecay * dt)
+    this.zoom = Math.max(0, this.zoom - dt * 0.6)
+    this.crackLife = Math.max(0, this.crackLife - dt)
+    this.hudPulse = Math.max(0, this.hudPulse - dt)
   }
 
   /** ゲームロジックに渡す時間倍率 */

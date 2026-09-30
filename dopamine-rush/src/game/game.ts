@@ -115,6 +115,8 @@ export interface SpinRun {
   finale: Finale | null
   /** RUSH 最終変動の「復活チャンス」ボタンを出している */
   lastChance: boolean
+  /** 擬似連の現在回数（1＝なし） */
+  nexts: number
 }
 
 export interface FeverState {
@@ -504,6 +506,7 @@ export class Game {
       developing: false,
       finale: null,
       lastChance: false,
+      nexts: 1,
     }
     this.spin = sp
     this.emit({ type: 'spinStart', outcome })
@@ -695,6 +698,7 @@ export class Game {
           r.speed = 24 + this.rng() * 4
         }
         sp.gaugeTarget = Math.max(sp.gaugeTarget, 0.1 * count)
+        sp.nexts = count
         this.emit({ type: 'gijiren', count })
       })
       t += 0.2
