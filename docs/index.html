@@ -1367,7 +1367,7 @@
           <input type="text" inputmode="numeric" id="savings-plan-b-amount" class="amount-input" placeholder="0">
         </div>
       </div>
-      <div class="field-hint" style="padding-top:0;">積立専用の共有口座に毎月積み立てる金額です。開始年月以降、精算タブに共有カードの精算とは別枠の入金額として表示されます。</div>
+      <div class="field-hint" style="padding-top:0;">積立専用の共有口座に毎月積み立てる金額です。開始年月以降、精算タブに共有カードの精算とは別枠の入金額として表示されます。両方0円にすると新しい積立が発生しなくなりますが、開始年月やこれまでの実績は残ります（「積立をやめる」を押すと設定自体を削除します）。</div>
       <button class="btn btn-danger-ghost" id="savings-plan-delete-btn" data-action="delete-savings-plan" hidden>積立をやめる</button>
     </div>
   </div>
@@ -1445,7 +1445,7 @@
 
       <div class="manual-section">
         <h3>共有口座への積立</h3>
-        <p>収入タブの「共有口座への積立」から、毎月一定額を積立専用の共有口座に積み立てる設定ができます。開始年月とふたりそれぞれの月額を入力すると、開始年月以降の精算タブに「共有口座への積立」として毎月の入金額が表示されます。これは共有カード用口座への精算プランとは別枠の、積立専用口座への入金として扱われるため、共有カードの精算額そのものには影響しません。集計タブの「共有口座の積立残高」カードでは、開始年月からの積立残高（合計・ふたりそれぞれの累計）を確認できます。この残高は積立を「完了にする」にした月の分だけ反映され、まだ完了にしていない月はまだ含まれません。「積立をやめる」でいつでも設定を解除できます。</p>
+        <p>収入タブの「共有口座への積立」から、毎月一定額を積立専用の共有口座に積み立てる設定ができます。開始年月とふたりそれぞれの月額を入力すると、開始年月以降の精算タブに「共有口座への積立」として毎月の入金額が表示されます。これは共有カード用口座への精算プランとは別枠の、積立専用口座への入金として扱われるため、共有カードの精算額そのものには影響しません。集計タブの「共有口座の積立残高」カードでは、開始年月からの積立残高（合計・ふたりそれぞれの累計）を確認できます。この残高は積立を「完了にする」にした月の分だけ反映され、まだ完了にしていない月はまだ含まれません。積立を一時的に止めたいだけなら、月額を両方0円にすれば新しい積立は発生しなくなりますが、開始年月の設定やこれまでの残高・実績はそのまま残ります。設定自体を消したい場合は「積立をやめる」を使ってください。</p>
       </div>
 
       <div class="manual-section">
@@ -1914,11 +1914,27 @@ import {
     if (v && typeof v === 'object') return { shared: !!v.shared, savings: !!v.savings, direct: !!v.direct };
     return { shared: false, savings: false, direct: false };
   }
+  // 積立の月額はいつでも変更・0円化できるので、「完了にする」を押した
+  // 瞬間の金額をこの月の記録としてスナップショットしておく -- そうしない
+  // と、後で月額を下げた（0円にした）だけで過去の完了済み月まで遡って
+  // 金額が変わってしまい、これまでの積立の実績が消えてしまう。
+  function cycleSettledSavingsAmounts(key) {
+    const v = state.settledCycles[key];
+    if (v && typeof v === 'object' && v.savingsAmounts) return v.savingsAmounts;
+    return null;
+  }
   async function toggleSettledLeg(key, leg) {
     const flags = cycleSettleFlags(key);
-    flags[leg] = !flags[leg];
+    const turningOn = !flags[leg];
+    flags[leg] = turningOn;
+    const prevEntry = (state.settledCycles[key] && typeof state.settledCycles[key] === 'object') ? state.settledCycles[key] : {};
+    const nextEntry = Object.assign({}, prevEntry, flags);
+    if (leg === 'savings' && turningOn) {
+      const p = state.settings.jointSavingsPlan;
+      if (p) nextEntry.savingsAmounts = { a: p.aAmount || 0, b: p.bAmount || 0 };
+    }
     const nextSettledCycles = Object.assign({}, state.settledCycles);
-    nextSettledCycles[key] = flags;
+    nextSettledCycles[key] = nextEntry;
     await updateSettings({ settledCycles: nextSettledCycles });
   }
   // 初期費用には積立の概念が無い(jointSavingsForCycle は月次サイクル限定)
@@ -1964,15 +1980,27 @@ import {
   // not a per-cycle figure.
   function jointSavingsBalance() {
     const p = state.settings.jointSavingsPlan;
-    if (!p || (!(p.aAmount > 0) && !(p.bAmount > 0))) return null;
+    // 月額を一時的に0円にして積立を止めても(積立自体をやめたのでない
+    // 限り)これまでの実績は引き続き見えるようにする -- プランが存在する
+    // 限り残高を計算する。金額が0かどうかはここでは見ない。
+    if (!p) return null;
     const startKey = p.startYear * 12 + p.startMonth;
     let aCumulative = 0, bCumulative = 0;
     groupExpensesByCycle().forEach(function (g) {
-      if (!cycleSettleFlags(cycleKey(g.cycle.ym)).savings) return;
+      const key = cycleKey(g.cycle.ym);
+      if (!cycleSettleFlags(key).savings) return;
       const ym = cycleDisplayYearMonth(g.cycle);
       if (ym.year * 12 + ym.month < startKey) return;
-      aCumulative += p.aAmount || 0;
-      bCumulative += p.bAmount || 0;
+      const snapshot = cycleSettledSavingsAmounts(key);
+      if (snapshot) {
+        aCumulative += snapshot.a || 0;
+        bCumulative += snapshot.b || 0;
+      } else {
+        // 完了にした時点のスナップショットが無い(この機能を導入する前に
+        // 完了にした)古いデータへのフォールバック -- 現在の月額で近似する。
+        aCumulative += p.aAmount || 0;
+        bCumulative += p.bAmount || 0;
+      }
     });
     return { aCumulative: aCumulative, bCumulative: bCumulative };
   }
@@ -2906,8 +2934,13 @@ import {
 
     // 積立専用の共有口座への入金は、共有カード用口座の精算プランとは別の
     // 口座が宛先なので、送金額を一切ネットしない -- ふたりそれぞれの設定
-    // 月額を、そのまま別枠の送金として並べるだけ。
-    const savings = jointSavingsForCycle(cycle);
+    // 月額を、そのまま別枠の送金として並べるだけ。すでに完了にした月は、
+    // 完了にした時点でスナップショットした金額を優先する -- そうしないと
+    // 後で月額を変えた（0円にした）だけで過去の完了済み月の表示まで
+    // 変わってしまう。ただしプラン自体を「積立をやめる」で削除した場合は
+    // 従来通り全部消えるべきなので、プランが存在する場合に限る。
+    const savingsSnapshot = (state.settings.jointSavingsPlan && flags.savings) ? cycleSettledSavingsAmounts(key) : null;
+    const savings = savingsSnapshot ? { aThisMonth: savingsSnapshot.a || 0, bThisMonth: savingsSnapshot.b || 0 } : jointSavingsForCycle(cycle);
     const savingsLines = [];
     if (savings) {
       if (savings.aThisMonth > 0) savingsLines.push({ person: 'a', amount: savings.aThisMonth });
@@ -3211,19 +3244,24 @@ import {
     const container = document.getElementById('joint-savings-card');
     const p = state.settings.jointSavingsPlan;
     const names = currentNames();
-    const active = !!(p && (p.aAmount > 0 || p.bAmount > 0));
-    if (!active) {
+    // 月額が両方0円でも、プラン自体(開始年月)が残っている限りは「設定済み」
+    // として扱う -- そうしないと、積立を一時停止したいだけなのに未設定の
+    // 案内表示に戻ってしまい、これまでの実績にもたどり着けなくなる。
+    if (!p) {
       container.innerHTML =
         '<div class="ledger-title">共有口座への積立</div>' +
         '<div class="empty-inline">毎月一定額を共有口座に積み立てる設定ができます</div>' +
         '<div class="settings-actions" style="padding:0 16px 16px;"><button type="button" class="btn btn-secondary" data-action="open-savings-plan-sheet">積立を設定</button></div>';
       return;
     }
+    const paused = !(p.aAmount > 0) && !(p.bAmount > 0);
     container.innerHTML =
       '<div class="ledger-title">共有口座への積立</div>' +
       '<div class="kv-row"><span>' + escapeHtml(names.a) + '（月額）</span><span class="num">' + formatYen(p.aAmount || 0) + '</span></div>' +
       '<div class="kv-row"><span>' + escapeHtml(names.b) + '（月額）</span><span class="num">' + formatYen(p.bAmount || 0) + '</span></div>' +
-      '<div class="field-hint" style="padding-top:0;">' + p.startYear + '年' + p.startMonth + '月から積立中。精算タブに共有カードの精算とは別枠の送金額として表示されます。</div>' +
+      '<div class="field-hint" style="padding-top:0;">' + p.startYear + '年' + p.startMonth + '月から積立中。精算タブに共有カードの精算とは別枠の送金額として表示されます。' +
+        (paused ? '月額が0円のため、今は新しい積立は発生していません（これまでの実績・残高は集計タブでそのまま確認できます）。' : '') +
+      '</div>' +
       '<div class="settings-actions" style="padding:0 16px 16px;"><button type="button" class="btn btn-secondary" data-action="open-savings-plan-sheet">編集する</button></div>';
   }
 
@@ -3249,7 +3287,9 @@ import {
     const startYear = Number(parts[0]), startMonth = Number(parts[1]);
     const aAmount = Number(document.getElementById('savings-plan-a-amount').value.replace(/[^\d]/g, '')) || 0;
     const bAmount = Number(document.getElementById('savings-plan-b-amount').value.replace(/[^\d]/g, '')) || 0;
-    if (aAmount <= 0 && bAmount <= 0) { toast('どちらかの月額を入力してください'); return; }
+    // 両方0円も許可する -- 積立を一時停止したいだけなら、プラン自体を
+    // 消す(積立をやめる)必要はなく、月額を0円にすれば新しい積立は
+    // 発生しなくなる一方、開始年月やこれまでの実績は残り続ける。
     closeSheet('savings-plan-sheet-backdrop');
     await updateSettings({ jointSavingsPlan: { startYear: startYear, startMonth: startMonth, aAmount: aAmount, bAmount: bAmount } });
   }
