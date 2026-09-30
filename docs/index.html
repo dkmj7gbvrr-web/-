@@ -2005,6 +2005,37 @@ import {
     return { aCumulative: aCumulative, bCumulative: bCumulative };
   }
 
+  // スナップショット機能を導入する前に「積立を完了にする」を押していた
+  // 月は、savingsAmounts を持っていない。そのまま放置すると、後で月額を
+  // 0円にした瞬間に(上のフォールバックが現在の月額=0円を使ってしまい)
+  // その月の実績が消えて見える。月額がまだ0円になっていない今のうちに
+  // 現在の月額でスナップショットを補完しておけば、この事故を防げる。
+  // (すでに0円にしてしまった月は、元の金額が分からないので復元できない
+  // -- 正しい金額に一旦戻せば、この関数が次の描画で補完してくれる。)
+  let backfillingSavingsSnapshots = false;
+  async function backfillMissingSavingsSnapshots() {
+    if (backfillingSavingsSnapshots) return;
+    const p = state.settings.jointSavingsPlan;
+    if (!p || (!(p.aAmount > 0) && !(p.bAmount > 0))) return;
+    let changed = false;
+    const nextSettledCycles = Object.assign({}, state.settledCycles);
+    groupExpensesByCycle().forEach(function (g) {
+      const key = cycleKey(g.cycle.ym);
+      const flags = cycleSettleFlags(key);
+      if (!flags.savings || cycleSettledSavingsAmounts(key)) return;
+      const raw = (state.settledCycles[key] && typeof state.settledCycles[key] === 'object') ? state.settledCycles[key] : {};
+      nextSettledCycles[key] = Object.assign({}, raw, flags, { savingsAmounts: { a: p.aAmount || 0, b: p.bAmount || 0 } });
+      changed = true;
+    });
+    if (!changed) return;
+    backfillingSavingsSnapshots = true;
+    try {
+      await updateSettings({ settledCycles: nextSettledCycles });
+    } finally {
+      backfillingSavingsSnapshots = false;
+    }
+  }
+
   const SPLIT_TYPES = ['incomeRatio', 'equal', 'aOnly', 'bOnly', 'customRatio'];
 
   function splitLabel(type, names) {
@@ -3334,6 +3365,7 @@ import {
   }
 
   function renderAll() {
+    backfillMissingSavingsSnapshots();
     renderExpenses();
     renderSettle();
     renderSummary();
