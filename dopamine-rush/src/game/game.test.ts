@@ -76,3 +76,27 @@ describe('Game', () => {
     expect(g.balls).toBeGreaterThan(0)
   })
 })
+
+describe('リーチの決着演出', () => {
+  test('失敗→成功 / 成功→失敗 のパターンが実際に出て、結果と矛盾しない', () => {
+    const seen = new Set<string>()
+    let pending: string[] = []
+    simulate(8, 1500, (g, e) => {
+      if (['slip', 'revival', 'fakeAlign', 'fakeAlignBreak', 'fakeRevivalEnd', 'blackoutEnd', 'develop'].includes(e.type)) {
+        pending.push(e.type)
+        seen.add(e.type)
+      }
+      if (e.type === 'jackpot') {
+        // 失敗と思わせるパターンの後は当たる
+        for (const p of pending) expect(['slip', 'revival', 'blackoutEnd', 'develop']).toContain(p)
+        pending = []
+      }
+      if (e.type === 'miss') {
+        for (const p of pending) expect(['fakeAlign', 'fakeAlignBreak', 'fakeRevivalEnd', 'blackoutEnd', 'develop']).toContain(p)
+        pending = []
+      }
+      if (e.type === 'blackoutEnd') expect(e.win).toBe(g.spin!.outcome.win)
+    })
+    for (const t of ['slip', 'fakeAlign', 'fakeRevivalEnd', 'blackoutEnd', 'develop']) expect(seen).toContain(t)
+  }, 120000)
+})

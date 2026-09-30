@@ -191,3 +191,54 @@ export function reliability<T extends string | number>(
 export function rushContinueRate(): number {
   return 1 - Math.pow(1 - SPEC.rushWinRate, SPEC.rushSpins)
 }
+
+/**
+ * リーチの「決着のさせ方」。どれも最終図柄（symbols）は変えず、見せ方だけを変える。
+ *  - straight    : コマ送りでそのまま止まる
+ *  - slip        : 1コマ手前で止まり、暗転の「タメ」のあと1コマすべって当たり（失敗と思わせて成功）
+ *  - revival     : ハズレで止まり、暗転のあと全リールが再始動して揃う（失敗と思わせて成功）
+ *  - blackout    : 決着の直前に画面が真っ暗・無音になり、明けた瞬間に結果（当たりもハズレもある）
+ *  - fakeAlign   : 一瞬揃って光りかけたあと、1コマずれてハズレ（成功と思わせて失敗）
+ *  - fakeRevival : ハズレで止まり、復活と同じ暗転のタメを見せてから、そのままハズレ
+ */
+export type Finale = 'straight' | 'slip' | 'revival' | 'blackout' | 'fakeAlign' | 'fakeRevival'
+export type FinaleTier = 'normal' | 'super'
+
+export const FINALE_ON_WIN: Record<FinaleTier, ReadonlyArray<readonly [Finale, number]>> = {
+  normal: [
+    ['straight', 0.6],
+    ['slip', 0.4],
+  ],
+  super: [
+    ['straight', 0.35],
+    ['slip', 0.35],
+    ['blackout', 0.3],
+  ],
+}
+export const FINALE_ON_MISS: Record<FinaleTier, ReadonlyArray<readonly [Finale, number]>> = {
+  normal: [
+    ['straight', 0.6],
+    ['fakeAlign', 0.4],
+  ],
+  super: [
+    ['straight', 0.35],
+    ['fakeAlign', 0.3],
+    ['fakeRevival', 0.2],
+    ['blackout', 0.15],
+  ],
+}
+
+/** 中図柄が「揃い目の1コマ先」なら、一度揃ってからずれる fakeAlign が使える */
+export function canFakeAlign(o: SpinOutcome): boolean {
+  return !o.win && o.symbols[1] === (o.symbols[0] % SYMBOL_COUNT) + 1
+}
+
+export function pickFinale(o: SpinOutcome, tier: FinaleTier, rng: Rng): Finale {
+  if (o.win) return o.revival ? 'revival' : pickWeighted(FINALE_ON_WIN[tier], rng)
+  const table = canFakeAlign(o) ? FINALE_ON_MISS[tier] : FINALE_ON_MISS[tier].filter(([f]) => f !== 'fakeAlign')
+  return pickWeighted(table, rng)
+}
+
+/** 図柄 v の1コマ前 / 1コマ先（1〜7 で循環） */
+export const prevSymbol = (v: number) => ((v - 2 + SYMBOL_COUNT) % SYMBOL_COUNT) + 1
+export const nextSymbol = (v: number) => (v % SYMBOL_COUNT) + 1

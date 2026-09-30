@@ -189,6 +189,52 @@ class Audio {
     )
   }
 
+  /** 発展!? の警告音 */
+  develop() {
+    for (let i = 0; i < 6; i++) {
+      this.tone(i % 2 ? 1568 : 2093, 0.09, { type: 'square', gain: 0.06, delay: i * 0.09 })
+    }
+    this.riser(1.0, 0.8)
+  }
+
+  /** 期待を外したときの「ガクッ」 */
+  fall() {
+    this.tone(420, 0.5, { type: 'sawtooth', gain: 0.07, slideTo: 90 })
+    this.tone(90, 0.4, { type: 'sine', gain: 0.3, slideTo: 40 })
+  }
+
+  /** 揃いかけの瞬間（ファンファーレの頭だけ） */
+  tease() {
+    ;[60, 64, 67].forEach((m, i) => this.tone(midiToFreq(m + 12), 0.2, { type: 'square', gain: 0.07, delay: i * 0.05 }))
+  }
+
+  rendaTap(n: number) {
+    const k = Math.min(n, 24)
+    const midi = 72 + Math.floor(k / 5) * 12 + PENTA[k % 5]
+    this.tone(midiToFreq(midi), 0.08, { type: 'square', gain: 0.05 })
+    this.noise(0.04, { gain: 0.08, from: 4000 })
+  }
+
+  /** コマ送りの1コマ。遅いコマほど重く */
+  crawl(slow: boolean, last: boolean) {
+    this.tone(last ? 70 : slow ? 110 : 180, last ? 0.3 : 0.12, { type: 'sine', gain: last ? 0.4 : slow ? 0.25 : 0.12, slideTo: 40 })
+    this.noise(0.04, { gain: slow ? 0.14 : 0.07, from: 2500 })
+  }
+
+  /** 暗転中の低い持続音 */
+  drone(dur: number) {
+    this.tone(55, dur, { type: 'sine', gain: 0.18, attack: 0.3 })
+    this.tone(82.4, dur, { type: 'triangle', gain: 0.05, attack: 0.5 })
+  }
+
+  private ducked = false
+  /** 暗転・タメの間は BGM を消す（無音で溜める） */
+  duck(on: boolean) {
+    if (on === this.ducked || !this.ctx || !this.musicBus) return
+    this.ducked = on
+    this.musicBus.gain.setTargetAtTime(on ? 0 : 0.55, this.ctx.currentTime, on ? 0.03 : 0.15)
+  }
+
   playMusic(kind: 'fever' | 'rush' | null, bpm = 150) {
     if (this.music) {
       this.music.stop()

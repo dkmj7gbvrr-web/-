@@ -1,4 +1,17 @@
-import { decideSpin, HOLD_COLORS, SPEC, SYMBOL_COUNT, type HoldColor, type Reach, type SpinOutcome } from './odds'
+import {
+  decideSpin,
+  HOLD_COLORS,
+  nextSymbol,
+  pickFinale,
+  prevSymbol,
+  SPEC,
+  SYMBOL_COUNT,
+  type Finale,
+  type FinaleTier,
+  type HoldColor,
+  type Reach,
+  type SpinOutcome,
+} from './odds'
 import { createPegs, reachedBottom, spawnBall, stepBall, W, type Ball, type Peg } from './physics'
 import { classifyPocket, type BoardPhase, type PocketKind } from './pockets'
 import type { Rng } from './rng'
@@ -19,6 +32,18 @@ export type GameEvent =
   | { type: 'pushPrompt' }
   | { type: 'pushed'; win: boolean }
   | { type: 'revival' }
+  | { type: 'develop' }
+  | { type: 'developResult'; success: boolean }
+  | { type: 'rendaStart' }
+  | { type: 'rendaTap'; count: number }
+  | { type: 'crawlStep'; slow: boolean; last: boolean }
+  | { type: 'darkPause' }
+  | { type: 'slip' }
+  | { type: 'fakeAlign' }
+  | { type: 'fakeAlignBreak' }
+  | { type: 'fakeRevivalEnd' }
+  | { type: 'blackout' }
+  | { type: 'blackoutEnd'; win: boolean }
   | { type: 'miss'; reach: Reach }
   | { type: 'jackpot'; outcome: SpinOutcome; chain: number }
   | { type: 'roundStart'; round: number; total: number }
@@ -58,8 +83,15 @@ export interface SpinRun {
   /** リーチ中の期待度ゲージ 0〜1（描画用） */
   gauge: number
   gaugeTarget: number
-  /** 復活演出のためにハズレ目を見せている */
-  fakeMiss: boolean
+  /** 決着前の「タメ」：リール部分が暗くなり「・・・」を出す */
+  dark: boolean
+  /** 決着直前の暗転（画面全体が真っ暗・無音） */
+  blackout: boolean
+  /** 連打チャンス中なら残り秒と連打数 */
+  renda: { left: number; taps: number } | null
+  /** 「発展!?」の最中 */
+  developing: boolean
+  finale: Finale | null
 }
 
 export interface FeverState {
@@ -77,6 +109,10 @@ export interface FeverState {
 }
 
 export const FIRE_INTERVAL = 0.14
+export const RENDA_TIME = 2.4
+/** コマ送りの間隔：最初は速く、最後の数コマで一気に溜める */
+const CRAWL_GAPS = [0.06, 0.06, 0.07, 0.08, 0.1, 0.13, 0.18, 0.26, 0.38, 0.55, 0.85]
+const CRAWL_GAPS_RUSH = [0.06, 0.08, 0.12, 0.2, 0.35, 0.55]
 export const PUSH_AUTO = 4
 export const REFILL_AMOUNT = 300
 export const START_BALLS = 500
@@ -144,10 +180,24 @@ export class Game {
     this.emit({ type: 'refill', amount: REFILL_AMOUNT })
   }
 
+  get rendaActive(): boolean {
+    return !!this.spin?.renda
+  }
+
+  /** 連打チャンス中のタップ。ゲージを押し上げるだけで、結果は変わらない */
+  tap() {
+    const r = this.spin?.renda
+    if (!r || !this.spin) return
+    r.taps++
+    this.spin.gaugeTarget = Math.min(0.92, this.spin.gaugeTarget + 0.035)
+    this.emit({ type: 'rendaTap', count: r.taps })
+  }
+
   push() {
     if (this.spin?.waitingPush) {
       this.spin.waitingPush = false
-      this.emit({ type: 'pushed', win: this.spin.outcome.win && !this.spin.outcome.revival })
+      // PUSH は決着の「始まり」。ここではまだ結果をにおわせない
+      this.emit({ type: 'pushed', win: false })
     } else if (this.challengePush) {
       this.challengePush = false
       this.resolveChallenge()
@@ -339,6 +389,10 @@ export class Game {
       if (sp.pushWait > PUSH_AUTO) this.push()
       return
     }
+    if (sp.renda) {
+      sp.renda.left -= dt
+      sp.gaugeTarget = Math.min(0.92, sp.gaugeTarget + dt * 0.06)
+    }
     sp.gauge += (sp.gaugeTarget - sp.gauge) * Math.min(1, dt * 2.5)
     sp.t += dt
     while (sp.actions.length > 0 && sp.actions[0].at <= sp.t && !sp.waitingPush) {
@@ -374,7 +428,11 @@ export class Game {
       escalated: false,
       gauge: 0,
       gaugeTarget: 0,
-      fakeMiss: false,
+      dark: false,
+      blackout: false,
+      renda: null,
+      developing: false,
+      finale: null,
     }
     this.spin = sp
     this.emit({ type: 'spinStart', outcome })
@@ -383,11 +441,14 @@ export class Game {
     }
     if (lastSpin) this.emit({ type: 'lastSpin' })
     this.buildTimeline(sp, fast, lastSpin)
+    // 演出の予約は前後して積むことがあるので時刻順に並べる（同時刻は積んだ順）
+    sp.actions.sort((x, y) => x.at - y.at)
   }
 
   private buildTimeline(sp: SpinRun, fast: boolean, lastSpin: boolean) {
     const o = sp.outcome
     const rush = o.mode === 'rush'
+    const k = rush ? 0.6 : 1
     const add = (at: number, fn: () => void) => sp.actions.push({ at, fn })
     const [s0, s1, s2] = o.symbols
     const L = rush ? 0.35 : fast ? 0.45 : 0.9
@@ -407,71 +468,219 @@ export class Game {
       return
     }
 
-    // リーチ（左右が揃ったまま、中図柄だけがゆっくり回る）
+    // リーチ成立：左右が揃い、中図柄は高速で回り続ける（ブレて見えない）
     add(R, () => {
       this.stopReel(2, s2, 0.35, 3, true)
       sp.stage = 'normal'
       sp.gaugeTarget = 0.2
-      this.reels[1].speed = 6
+      this.reels[1].speed = 14
       this.emit({ type: 'reach', reach })
     })
-    const fakeCenter = ((s1 % SYMBOL_COUNT) + 1) as number // 復活用：1コマ先のハズレ目
-    const finalCenter = o.revival ? fakeCenter : s1
-    let t = R
+    let t = R + 1.2 * k
     const escalate = (at: number, level: Reach, gauge: number) =>
       add(at, () => {
         sp.stage = level
         sp.escalated = true
         sp.gaugeTarget = gauge
-        this.reels[1].speed = level === 'premium' ? 2.2 : 3
         this.emit({ type: 'escalate', reach: level })
       })
-
-    if (reach === 'normal') {
-      t += rush ? 1.1 : 2.2
-      if (lastSpin) {
-        add(t - 0.4, () => {
-          sp.gaugeTarget = 0.5
-          this.emit({ type: 'pushPrompt' })
-          sp.waitingPush = true
-        })
-      }
-      add(t, () => this.stopReel(1, finalCenter, 0.9, 1.6, true))
-      t += 1.0
-    } else {
-      // スーパー / プレミア：格上げ → ゲージ上昇 → PUSH（自分で結果を開ける）
-      t += rush ? 0.5 : 1.1
-      escalate(t, 'super', 0.45)
-      if (reach === 'premium') {
-        t += rush ? 0.6 : 1.3
-        escalate(t, 'premium', 0.85)
-      }
-      t += rush ? 1.0 : 2.2
-      add(t, () => {
+    const pushPrompt = (at: number) =>
+      add(at, () => {
         sp.gaugeTarget = Math.max(sp.gaugeTarget, 0.5)
         sp.waitingPush = true
         this.emit({ type: 'pushPrompt' })
       })
-      t += 0.05
-      add(t, () => this.stopReel(1, finalCenter, 0.45, 1.2, true))
-      t += 0.7
-    }
 
-    if (o.revival) {
-      add(t, () => {
-        sp.fakeMiss = true
-        sp.gaugeTarget = 0
-      })
-      t += 1.3
-      add(t, () => {
-        sp.fakeMiss = false
-        sp.gaugeTarget = 1
-        this.emit({ type: 'revival' })
-        this.stopReel(1, s1, 0.45, 6, true)
-      })
-      t += 0.8
+    if (reach === 'normal') {
+      // 「発展!?」と見せて発展しない（期待させて外す）
+      if (!rush && !lastSpin && this.rng() < 0.35) {
+        add(t, () => {
+          sp.developing = true
+          sp.gaugeTarget = 0.4
+          this.emit({ type: 'develop' })
+        })
+        t += 1.1
+        add(t, () => {
+          sp.developing = false
+          sp.gaugeTarget = 0.15
+          this.emit({ type: 'developResult', success: false })
+        })
+        t += 0.7
+      }
+      if (lastSpin) {
+        pushPrompt(t)
+        t += 0.05
+      }
+      t = this.scheduleFinale(sp, t, 'normal', k)
+    } else {
+      // スーパー / プレミア：（発展!? →）格上げ → 連打チャンス → PUSH → 決着
+      if (!rush && this.rng() < 0.5) {
+        add(t, () => {
+          sp.developing = true
+          sp.gaugeTarget = 0.4
+          this.emit({ type: 'develop' })
+        })
+        t += 1.1
+        add(t, () => {
+          sp.developing = false
+          this.emit({ type: 'developResult', success: true })
+        })
+      }
+      escalate(t, 'super', 0.45)
+      if (reach === 'premium') {
+        t += 1.3 * k
+        escalate(t, 'premium', 0.7)
+      }
+      if (!rush) {
+        t += 1.3
+        add(t, () => {
+          sp.renda = { left: RENDA_TIME, taps: 0 }
+          this.emit({ type: 'rendaStart' })
+        })
+        t += RENDA_TIME
+        add(t, () => {
+          sp.renda = null
+        })
+        t += 0.2
+      } else {
+        t += 1.0
+      }
+      pushPrompt(t)
+      t += 0.05
+      t = this.scheduleFinale(sp, t, 'super', k)
     }
     add(t, () => this.resolve(sp, reach))
+  }
+
+  /** 中リールを1コマ進める（コマ送り） */
+  private stepCenter(dur: number) {
+    const r = this.reels[1]
+    const from = r.stopping ? r.stopping.to : Math.round(r.pos)
+    r.pos = from
+    r.speed = 0
+    r.stopped = false
+    r.stopping = { from, to: from + 1, t: 0, dur }
+  }
+
+  /**
+   * 中リールを減速させながらコマ送りし、symbol で止める。止まる時刻を返す。
+   * 開始時に「残りコマ数ぶん手前」へ位置を合わせる（直前まで高速回転でブレているので見えない）。
+   */
+  private crawl(sp: SpinRun, t: number, symbol: number, gaps: number[]): number {
+    sp.actions.push({
+      at: t,
+      fn: () => {
+        const r = this.reels[1]
+        r.stopping = null
+        r.stopped = true
+        r.speed = 0
+        r.pos = symbol - 1 - gaps.length
+      },
+    })
+    let tt = t
+    gaps.forEach((gap, i) => {
+      tt += gap
+      const last = i === gaps.length - 1
+      sp.actions.push({
+        at: tt,
+        fn: () => {
+          this.stepCenter(gap >= 0.3 ? 0.18 : 0.07)
+          if (gap >= 0.2 || last) this.emit({ type: 'crawlStep', slow: gap >= 0.3, last })
+        },
+      })
+    })
+    return tt + 0.2
+  }
+
+  private scheduleFinale(sp: SpinRun, t: number, tier: FinaleTier, k: number): number {
+    const o = sp.outcome
+    const add = (at: number, fn: () => void) => sp.actions.push({ at, fn })
+    const [W0, s1] = o.symbols
+    const gaps = k < 1 ? CRAWL_GAPS_RUSH : CRAWL_GAPS
+    const finale = pickFinale(o, tier, this.rng)
+    sp.finale = finale
+    const darkPause = (at: number) =>
+      add(at, () => {
+        sp.dark = true
+        sp.gaugeTarget = 0.05
+        this.emit({ type: 'darkPause' })
+      })
+
+    switch (finale) {
+      case 'straight':
+        t = this.crawl(sp, t, s1, gaps)
+        return t + 0.4
+      case 'slip':
+        // 1コマ手前で止まる → 暗転のタメ → すべって揃う
+        t = this.crawl(sp, t, prevSymbol(W0), gaps)
+        darkPause(t + 0.35)
+        t += 0.35 + 1.3 * k
+        add(t, () => {
+          sp.dark = false
+          sp.gaugeTarget = 1
+          this.stepCenter(0.3)
+          this.emit({ type: 'slip' })
+        })
+        return t + 0.7
+      case 'fakeAlign':
+        // 一瞬揃う → 1コマずれてハズレ
+        t = this.crawl(sp, t, W0, gaps)
+        add(t - 0.15, () => {
+          sp.gaugeTarget = 1
+          this.emit({ type: 'fakeAlign' })
+        })
+        t += 0.45
+        add(t, () => {
+          sp.gaugeTarget = 0
+          this.stepCenter(0.12)
+          this.emit({ type: 'fakeAlignBreak' })
+        })
+        return t + 0.8
+      case 'revival':
+        // ハズレで止まる → 暗転のタメ → 全リール再始動 → 揃う
+        t = this.crawl(sp, t, nextSymbol(W0), gaps)
+        darkPause(t + 0.4)
+        t += 0.4 + 1.6 * k
+        add(t, () => {
+          sp.dark = false
+          sp.gaugeTarget = 1
+          for (const r of this.reels) {
+            r.stopping = null
+            r.stopped = false
+            r.speed = 26
+          }
+          this.emit({ type: 'revival' })
+        })
+        t += 1.0
+        add(t, () => {
+          for (let i = 0; i < 3; i++) this.stopReel(i, W0, 0.4, 4, i === 1)
+        })
+        return t + 0.8
+      case 'fakeRevival':
+        // 復活と同じタメを見せて、そのままハズレ
+        t = this.crawl(sp, t, s1, gaps)
+        darkPause(t + 0.4)
+        t += 0.4 + 1.6 * k
+        add(t, () => {
+          sp.dark = false
+          this.emit({ type: 'fakeRevivalEnd' })
+        })
+        return t + 0.6
+      case 'blackout':
+        // 決着直前に真っ暗・無音 → 明けた瞬間に結果
+        add(t, () => {
+          sp.blackout = true
+          this.emit({ type: 'blackout' })
+        })
+        t += 1.2 * k
+        add(t, () => {
+          sp.blackout = false
+          sp.gaugeTarget = o.win ? 1 : 0
+          this.stopReel(1, s1, 0.18, 2, true)
+          this.emit({ type: 'blackoutEnd', win: o.win })
+        })
+        return t + 0.7
+    }
   }
 
   private resolve(sp: SpinRun, shownReach: Reach) {

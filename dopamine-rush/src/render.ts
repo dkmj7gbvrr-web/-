@@ -1,5 +1,5 @@
 import type { Fx } from './fx'
-import { holdLevel, PUSH_AUTO, type Game } from './game/game'
+import { holdLevel, PUSH_AUTO, RENDA_TIME, type Game } from './game/game'
 import { SPEC, SYMBOL_COUNT, type HoldColor } from './game/odds'
 import { BALL_R, BOARD_BOTTOM, BOARD_TOP, H, PEG_R, W, WALL_L, WALL_R } from './game/physics'
 import { ATTACKER, BONUS_POCKETS, startPocket } from './game/pockets'
@@ -63,6 +63,7 @@ export function render(ctx: CanvasRenderingContext2D, g: Game, fx: Fx, ui: Ui, t
   drawParticles(ctx, fx)
   drawSceneOverlay(ctx, g, ui, time)
   drawBanner(ctx, fx, time)
+  if (g.spin?.renda) drawRenda(ctx, g, time)
   if (g.pushPending) drawPush(ctx, g, time)
   if (g.needsRefill) drawRefill(ctx, time)
   ctx.restore()
@@ -72,6 +73,10 @@ export function render(ctx: CanvasRenderingContext2D, g: Game, fx: Fx, ui: Ui, t
     ctx.fillStyle = fx.flashColor
     ctx.fillRect(0, 0, W, H)
     ctx.globalAlpha = 1
+  }
+  if (g.spin?.blackout) {
+    ctx.fillStyle = '#000'
+    ctx.fillRect(0, 0, W, H)
   }
   if (!ui.started) drawTitle(ctx, ui, time)
 }
@@ -276,13 +281,21 @@ function drawReels(ctx: CanvasRenderingContext2D, g: Game, t: number) {
     roundRect(ctx, gx, gy, Math.max(10, gw * sp.gauge), 10, 5)
     ctx.fill()
   }
-  if (sp?.fakeMiss) {
-    ctx.fillStyle = 'rgba(0,0,0,0.5)'
-    ctx.fillRect(26, REEL_Y - 8, W - 52, REEL_H + 16)
-    ctx.fillStyle = '#aab'
-    ctx.font = 'bold 26px system-ui, sans-serif'
+  if (sp?.dark) {
+    // 決着前のタメ：画面全体を落とし、「・」を1つずつ灯す
+    ctx.fillStyle = 'rgba(0,0,0,0.72)'
+    ctx.fillRect(-20, -20, W + 40, H + 40)
+    const dots = Math.floor((t * 2.2) % 4)
+    ctx.fillStyle = '#e6e9f5'
+    ctx.font = '900 64px system-ui, sans-serif'
     ctx.textAlign = 'center'
-    ctx.fillText('・・・', W / 2, REEL_Y + REEL_H / 2 + 8)
+    ctx.fillText('・'.repeat(dots), W / 2, 470)
+  }
+  if (sp?.developing) {
+    ctx.lineWidth = 6
+    ctx.strokeStyle = Math.floor(t * 16) % 2 ? '#ffd23d' : '#ff3355'
+    roundRect(ctx, 26, REEL_Y - 8, W - 52, REEL_H + 16, 16)
+    ctx.stroke()
   }
 }
 
@@ -445,6 +458,36 @@ function drawBanner(ctx: CanvasRenderingContext2D, fx: Fx, t: number) {
     ctx.fillText(b.sub, 0, 40)
   }
   ctx.restore()
+}
+
+function drawRenda(ctx: CanvasRenderingContext2D, g: Game, t: number) {
+  const r = g.spin!.renda!
+  const cx = W / 2
+  const cy = 600
+  const beat = 1 + 0.12 * Math.abs(Math.sin(t * 18))
+  ctx.save()
+  ctx.translate(cx, cy)
+  ctx.scale(beat, beat)
+  ctx.textAlign = 'center'
+  ctx.font = '900 58px system-ui, sans-serif'
+  ctx.lineWidth = 10
+  ctx.strokeStyle = 'rgba(0,0,0,0.85)'
+  ctx.strokeText('連打!!', 0, 0)
+  ctx.fillStyle = rainbowGradient(ctx, -110, 110, t)
+  ctx.fillText('連打!!', 0, 0)
+  ctx.restore()
+  ctx.textAlign = 'center'
+  ctx.font = 'bold 14px system-ui, sans-serif'
+  ctx.fillStyle = '#fff'
+  ctx.fillText(`画面を連打してゲージを上げろ！  ${r.taps} HIT`, cx, cy + 40)
+  // 残り時間
+  const k = Math.max(0, r.left / RENDA_TIME)
+  ctx.fillStyle = 'rgba(255,255,255,0.15)'
+  roundRect(ctx, cx - 100, cy + 54, 200, 8, 4)
+  ctx.fill()
+  ctx.fillStyle = '#ff3355'
+  roundRect(ctx, cx - 100, cy + 54, Math.max(8, 200 * k), 8, 4)
+  ctx.fill()
 }
 
 function drawPush(ctx: CanvasRenderingContext2D, g: Game, t: number) {

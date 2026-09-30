@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest'
 import {
+  canFakeAlign,
   decideSpin,
+  pickFinale,
   HOLD_COLORS,
   reliability,
   REACH_ON_MISS,
@@ -85,5 +87,20 @@ describe('期待度（信頼度）', () => {
 
   test('RUSH 継続率は約79%', () => {
     expect(rushContinueRate()).toBeCloseTo(0.79, 2)
+  })
+})
+
+describe('決着パターン（pickFinale）', () => {
+  test('成功パターンは当たりにだけ、フェイク成功はハズレにだけ出る', () => {
+    const rng = mulberry32(21)
+    for (let i = 0; i < 50000; i++) {
+      const o = decideSpin('normal', rng)
+      if (o.reach === 'none') continue
+      const f = pickFinale(o, o.reach === 'normal' ? 'normal' : 'super', rng)
+      if (o.win) expect(['straight', 'slip', 'revival', 'blackout']).toContain(f)
+      else expect(['straight', 'fakeAlign', 'fakeRevival', 'blackout']).toContain(f)
+      if (f === 'fakeAlign') expect(canFakeAlign(o)).toBe(true)
+      if (o.revival) expect(f).toBe('revival')
+    }
   })
 })

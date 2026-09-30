@@ -149,7 +149,7 @@ function onEvent(e: GameEvent) {
     case 'pushed':
       audio.impact()
       fx.stop(0.2)
-      fx.shake(e.win ? 0.7 : 0.4)
+      fx.shake(0.4)
       fx.doFlash(e.win ? 0.9 : 0.4)
       break
     case 'revival':
@@ -160,6 +160,78 @@ function onEvent(e: GameEvent) {
       fx.stop(0.25)
       fx.shake(0.8)
       fx.confettiRain(80, W)
+      break
+    case 'develop':
+      audio.develop()
+      fx.show('発展!?', { color: '#ffd23d', size: 64, dur: 1.1, priority: 2 })
+      fx.shake(0.25)
+      break
+    case 'developResult':
+      if (e.success) {
+        fx.doFlash(0.6, '#ffd23d')
+        fx.stop(0.12)
+      } else {
+        audio.fall()
+        fx.show('発展ならず…', { color: '#8890a8', size: 40, dur: 0.9, priority: 2 })
+      }
+      break
+    case 'rendaStart':
+      audio.startPocket()
+      audio.riser(2.4, 0.9)
+      fx.doFlash(0.3, '#ff3355')
+      break
+    case 'rendaTap':
+      audio.rendaTap(e.count)
+      fx.shake(0.06)
+      fx.burst(W / 2 + (Math.random() - 0.5) * 160, 600 + (Math.random() - 0.5) * 60, 6, RAINBOW, 180, 'star')
+      break
+    case 'crawlStep':
+      audio.crawl(e.slow, e.last)
+      fx.shake(e.last ? 0.3 : e.slow ? 0.12 : 0.04)
+      if (e.last) fx.stop(0.08)
+      break
+    case 'darkPause':
+      audio.drone(1.6)
+      fx.rainbow = 0
+      break
+    case 'slip':
+      audio.kakutei()
+      audio.impact()
+      fx.show('キタ!!', { rainbow: true, size: 80, dur: 0.9, priority: 3 })
+      fx.doFlash(1)
+      fx.stop(0.2)
+      fx.shake(0.8)
+      break
+    case 'fakeAlign':
+      audio.tease()
+      fx.doFlash(0.55)
+      fx.shake(0.35)
+      fx.rainbow = 0.25
+      fx.burst(W / 2, 140, 30, RAINBOW, 260, 'star')
+      break
+    case 'fakeAlignBreak':
+      audio.fall()
+      fx.rainbow = 0
+      fx.shake(0.55)
+      fx.stop(0.15)
+      break
+    case 'fakeRevivalEnd':
+      audio.tone(300, 0.6, { type: 'triangle', gain: 0.05, slideTo: 140 })
+      break
+    case 'blackout':
+      fx.rainbow = 0
+      break
+    case 'blackoutEnd':
+      if (e.win) {
+        audio.kakutei()
+        audio.impact()
+        fx.doFlash(1)
+        fx.stop(0.25)
+        fx.shake(0.9)
+      } else {
+        audio.reelStop(true)
+        fx.shake(0.2)
+      }
       break
     case 'miss':
       audio.miss()
@@ -293,6 +365,10 @@ canvas.addEventListener('pointerdown', (ev) => {
     save()
     return
   }
+  if (game.rendaActive) {
+    game.tap()
+    return
+  }
   if (game.pushPending) {
     game.push()
     return
@@ -319,6 +395,7 @@ window.addEventListener('keydown', (ev) => {
   ev.preventDefault()
   audio.unlock()
   if (!ui.started) ui.started = true
+  else if (game.rendaActive) game.tap()
   else if (game.pushPending) game.push()
   else game.firing = true
 })
@@ -355,7 +432,10 @@ function frame(now: number) {
     game.update(dt * fx.timeScale)
 
     // 回転中のリールの刻み音
-    const spinning = game.reels.some((r) => !r.stopped && !r.stopping)
+    // 暗転・タメの間は BGM と刻み音を止めて「無音」で溜める
+    const silent = !!game.spin && (game.spin.blackout || game.spin.dark)
+    audio.duck(silent)
+    const spinning = !silent && game.reels.some((r) => !r.stopped && !r.stopping)
     tickTimer -= dt
     if (spinning && tickTimer <= 0) {
       audio.reelTick()
@@ -364,7 +444,7 @@ function frame(now: number) {
     // リーチ中・チャレンジ中の心音：期待度が上がるほど速くなる
     const tense = (game.spin && game.spin.stage !== 'rolling' && !game.spin.done) || (game.scene === 'challenge' && game.challengeResult === null)
     heartTimer -= dt
-    if (tense && heartTimer <= 0) {
+    if (tense && !game.spin?.blackout && heartTimer <= 0) {
       audio.heartbeat()
       const gauge = game.spin?.gauge ?? Math.min(1, game.sceneTime / 3.2) * 0.8
       heartTimer = 0.95 - gauge * 0.5
