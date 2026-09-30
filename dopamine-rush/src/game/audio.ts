@@ -198,7 +198,7 @@ class Audio {
     )
   }
 
-  /** 発展!? の警告音 */
+  /** 「SUPER!?」（昇格するかどうか）の警告音 */
   develop() {
     for (let i = 0; i < 6; i++) {
       this.tone(i % 2 ? 1568 : 2093, 0.09, { type: 'square', gain: 0.06, delay: i * 0.09 })
@@ -285,6 +285,14 @@ class Audio {
       this.tone(midiToFreq(m), 0.4, { type: 'square', gain: 0.07, delay: 0.1 + i * 0.07 }),
     )
     this.tone(2093, 1.6, { type: 'sine', gain: 0.15, slideTo: 2349, delay: 0.7 })
+  }
+
+  /** ガラスが割れる音 */
+  shatter() {
+    for (let i = 0; i < 5; i++) {
+      this.noise(0.12 + i * 0.03, { gain: 0.18, from: 6000 - i * 700, q: 4, delay: i * 0.035 })
+    }
+    this.tone(1760, 0.3, { type: 'triangle', gain: 0.04, slideTo: 440 })
   }
 
   private ducked = false

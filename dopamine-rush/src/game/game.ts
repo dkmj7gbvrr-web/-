@@ -110,11 +110,13 @@ export interface SpinRun {
   cutin: { color: SignColor; t: number } | null
   /** 連打チャンス中なら残り秒と連打数 */
   renda: { left: number; taps: number } | null
-  /** 「発展!?」の最中 */
+  /** 「SUPER!?」（昇格するかどうか）の最中 */
   developing: boolean
   finale: Finale | null
   /** RUSH 最終変動の「復活チャンス」ボタンを出している */
   lastChance: boolean
+  /** 擬似連の現在回数（1＝なし） */
+  nexts: number
 }
 
 export interface FeverState {
@@ -504,6 +506,7 @@ export class Game {
       developing: false,
       finale: null,
       lastChance: false,
+      nexts: 1,
     }
     this.spin = sp
     this.emit({ type: 'spinStart', outcome })
@@ -511,6 +514,25 @@ export class Game {
       this.emit({ type: 'holdChange', from: h.shown, to: outcome.tell })
     }
     if (lastSpin) this.emit({ type: 'lastSpin' })
+    if (outcome.iwakan === 'reverse') {
+      // 違和感：変動開始の一瞬だけ逆回転
+      for (const r of this.reels) r.speed = -5
+      sp.actions.push({
+        at: 0.28,
+        fn: () => {
+          for (const r of this.reels) if (!r.stopped && !r.stopping) r.speed = 24 + this.rng() * 4
+        },
+      })
+    }
+    if (outcome.iwakan === 'flicker') {
+      // 違和感：盤面の釘ランプが一瞬だけ全部光る
+      sp.actions.push({
+        at: 0.55,
+        fn: () => {
+          for (const p of this.pegs) p.glow = 0.12
+        },
+      })
+    }
     if (outcome.blackout) this.buildBlackout(sp)
     else this.buildTimeline(sp, fast, lastSpin)
     // 演出の予約は前後して積むことがあるので時刻順に並べる（同時刻は積んだ順）
@@ -676,6 +698,7 @@ export class Game {
           r.speed = 24 + this.rng() * 4
         }
         sp.gaugeTarget = Math.max(sp.gaugeTarget, 0.1 * count)
+        sp.nexts = count
         this.emit({ type: 'gijiren', count })
       })
       t += 0.2

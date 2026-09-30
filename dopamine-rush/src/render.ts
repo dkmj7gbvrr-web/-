@@ -58,23 +58,38 @@ export function render(ctx: CanvasRenderingContext2D, g: Game, fx: Fx, ui: Ui, t
   const sh = fx.shakeOffset(time)
   ctx.translate(W / 2 + sh.x, H / 2 + sh.y)
   ctx.rotate(sh.r)
+  // 一瞬手前に迫る（パンチ）
+  const z = 1 + fx.zoom
+  ctx.scale(z, z)
   ctx.translate(-W / 2, -H / 2)
 
   drawBackground(ctx, g, fx, time)
   drawBoard(ctx, g, time)
   drawReels(ctx, g, time)
   drawHolds(ctx, g, time)
-  drawHud(ctx, g, ui, time)
+  drawHud(ctx, g, ui, fx, time)
   drawParticles(ctx, fx)
   drawSceneOverlay(ctx, g, ui, time)
-  drawBanner(ctx, fx, time)
+  drawPopups(ctx, fx)
   if (g.spin && g.spin.step > 0) drawStepUp(ctx, g.spin.step, g.spin.outcome.yokoku.stepUp, time)
   if (g.spin?.cutin) drawCutin(ctx, g.spin.cutin, time)
-  if (g.zoneCount > 0 && g.phase === 'normal') drawZone(ctx, g.zoneCount, time)
+  if (g.zoneCount > 0 && g.phase === 'normal') drawZone(ctx, g.zoneCount, !!g.spin && g.holds.every((h) => !h.zone), time)
   if (g.spin?.renda) drawRenda(ctx, g, time)
   if (g.pushPending) drawPush(ctx, g, time)
   if (g.needsRefill) drawRefill(ctx, ui.gate, time)
   ctx.restore()
+
+  // RUSH 最終変動：画面の縁が赤く脈打つ
+  if (g.phase === 'rush' && g.rushLeft === 0 && g.spin && !g.spin.done) {
+    drawVignette(ctx, `rgba(255,20,50,${0.35 + 0.25 * Math.sin(time * 7)})`)
+  }
+  if (fx.tint > 0) {
+    ctx.globalAlpha = Math.min(0.8, fx.tint)
+    ctx.fillStyle = fx.tintColor
+    ctx.fillRect(0, 0, W, H)
+    ctx.globalAlpha = 1
+  }
+  if (fx.crackLife > 0) drawCracks(ctx, fx)
 
   if (fx.flash > 0) {
     ctx.globalAlpha = Math.min(1, fx.flash)
@@ -191,11 +206,28 @@ function drawBoard(ctx: CanvasRenderingContext2D, g: Game, t: number) {
     ctx.fillStyle = open ? grad : 'rgba(120,120,140,0.6)'
     roundRect(ctx, ATTACKER.x0, py + 4, ATTACKER.x1 - ATTACKER.x0, 30, 8)
     ctx.fill()
-    ctx.fillStyle = '#fff'
-    ctx.font = 'bold 16px system-ui, sans-serif'
-    ctx.textAlign = 'center'
     const closing = open && (g.fever?.closing ?? 0) > 0
-    ctx.fillText(closing ? (Math.floor(t * 20) % 2 ? 'CLOSING…' : '') : open ? 'ATTACKER OPEN' : 'CLOSE', W / 2, py + 25)
+    if (open && !closing) {
+      // 開いている：吸い込まれるように下向きの山形が流れる
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)'
+      ctx.lineWidth = 3
+      for (let i = 0; i < 7; i++) {
+        const x = ATTACKER.x0 + 20 + i * ((ATTACKER.x1 - ATTACKER.x0 - 40) / 6)
+        const yy = py + 8 + ((t * 40 + i * 4) % 20)
+        ctx.beginPath()
+        ctx.moveTo(x - 7, yy)
+        ctx.lineTo(x, yy + 6)
+        ctx.lineTo(x + 7, yy)
+        ctx.stroke()
+      }
+    } else if (closing) {
+      // 閉じかけ：シャッターが左右から迫る
+      const k = 1 - (g.fever!.closing / SPEC.attackerCloseTime)
+      const half = ((ATTACKER.x1 - ATTACKER.x0) / 2) * k
+      ctx.fillStyle = '#ff6fb5'
+      ctx.fillRect(ATTACKER.x0, py + 4, half, 30)
+      ctx.fillRect(ATTACKER.x1 - half, py + 4, half, 30)
+    }
   } else {
     for (const b of BONUS_POCKETS) {
       ctx.fillStyle = 'rgba(80,200,255,0.35)'
@@ -265,10 +297,14 @@ function drawReels(ctx: CanvasRenderingContext2D, g: Game, t: number) {
   ctx.lineWidth = stage === 'rolling' ? 2 : 5
   if (stage === 'premium' || g.phase === 'fever') ctx.strokeStyle = rainbowGradient(ctx, 26, W - 26, t)
   else if (stage === 'super') ctx.strokeStyle = `rgba(255,50,80,${0.6 + 0.4 * Math.sin(t * 12)})`
-  else if (stage === 'normal') ctx.strokeStyle = '#ffd23d'
+  else if (stage === 'normal') {
+    const tc = sp!.outcome.yokoku?.title ?? 'white'
+    ctx.strokeStyle = tc === 'rainbow' ? rainbowGradient(ctx, 26, W - 26, t) : SIGN_FILL[tc]
+  }
   else if (g.phase === 'rush') ctx.strokeStyle = '#ff4df0'
   else ctx.strokeStyle = 'rgba(160,190,255,0.5)'
-  ctx.stroke()
+  // 違和感：枠ランプが消えている
+  if (sp?.outcome.iwakan !== 'lampOff') ctx.stroke()
 
   for (let i = 0; i < 3; i++) {
     const r = g.reels[i]
@@ -292,6 +328,32 @@ function drawReels(ctx: CanvasRenderingContext2D, g: Game, t: number) {
     ctx.restore()
   }
 
+  // リーチ：揃った左右の図柄の枠が、リーチタイトルの色で脈打つように光る
+  if (sp && sp.stage !== 'rolling' && !sp.dark) {
+    const tc = sp.outcome.yokoku?.title ?? 'white'
+    const glow = 0.55 + 0.45 * Math.sin(t * 9)
+    ctx.save()
+    for (const i of [0, 2]) {
+      const x = REEL_X[i]
+      ctx.strokeStyle = tc === 'rainbow' ? rainbowGradient(ctx, x, x + REEL_W, t) : SIGN_FILL[tc]
+      ctx.shadowColor = tc === 'rainbow' ? '#ffffff' : SIGN_FILL[tc]
+      ctx.shadowBlur = 18 * glow
+      ctx.lineWidth = 3 + 2 * glow
+      roundRect(ctx, x + 2, REEL_Y + 2, REEL_W - 4, REEL_H - 4, 10)
+      ctx.stroke()
+    }
+    ctx.restore()
+  }
+  // 擬似連：回数ぶんパネル上端のランプが灯る
+  if (sp && sp.nexts > 1) {
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath()
+      ctx.arc(W / 2 - 36 + i * 24, REEL_Y - 8, 6, 0, Math.PI * 2)
+      ctx.fillStyle = i < sp.nexts ? (sp.nexts >= 3 ? '#ff3355' : '#39e0e0') : 'rgba(255,255,255,0.15)'
+      ctx.fill()
+    }
+  }
+
   // 期待度ゲージ（リーチ中）
   if (sp && sp.stage !== 'rolling') {
     const gx = 44
@@ -308,11 +370,14 @@ function drawReels(ctx: CanvasRenderingContext2D, g: Game, t: number) {
     // 決着前のタメ：画面全体を落とし、「・」を1つずつ灯す
     ctx.fillStyle = 'rgba(0,0,0,0.72)'
     ctx.fillRect(-20, -20, W + 40, H + 40)
+    // 光の粒が1つずつ灯る
     const dots = Math.floor((t * 2.2) % 4)
-    ctx.fillStyle = '#e6e9f5'
-    ctx.font = '900 64px system-ui, sans-serif'
-    ctx.textAlign = 'center'
-    ctx.fillText('・'.repeat(dots), W / 2, 470)
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath()
+      ctx.arc(W / 2 - 40 + i * 40, 470, 9, 0, Math.PI * 2)
+      ctx.fillStyle = i < dots ? '#e6e9f5' : 'rgba(230,233,245,0.12)'
+      ctx.fill()
+    }
   }
   if (sp?.developing) {
     ctx.lineWidth = 6
@@ -335,7 +400,9 @@ function drawHolds(ctx: CanvasRenderingContext2D, g: Game, t: number) {
     ctx.arc(x, y, 11, 0, Math.PI * 2)
     if (h) {
       const lvl = holdLevel(h.shown)
-      const pulse = lvl >= 3 ? 1 + 0.12 * Math.sin(t * 10) : 1
+      // 違和感：保留アイコンがほんの少しだけ大きい
+      const odd = h.outcome.iwakan === 'bigHold' ? 1.22 : 1
+      const pulse = (lvl >= 3 ? 1 + 0.12 * Math.sin(t * 10) : 1) * odd
       ctx.beginPath()
       ctx.arc(x, y, 11 * pulse, 0, Math.PI * 2)
       ctx.fillStyle = holdFill(ctx, h.shown, x, t)
@@ -358,13 +425,13 @@ function drawHolds(ctx: CanvasRenderingContext2D, g: Game, t: number) {
     ctx.fillStyle = 'rgba(200,210,255,0.6)'
     ctx.fillText('当該', x - 34, y + 4)
     ctx.beginPath()
-    ctx.arc(x + 12, y, 12, 0, Math.PI * 2)
+    ctx.arc(x + 12, y, g.spin.outcome.iwakan === 'bigHold' ? 14.5 : 12, 0, Math.PI * 2)
     ctx.fillStyle = holdFill(ctx, c, x + 12, t)
     ctx.fill()
   }
 }
 
-function drawHud(ctx: CanvasRenderingContext2D, g: Game, ui: Ui, t: number) {
+function drawHud(ctx: CanvasRenderingContext2D, g: Game, ui: Ui, fx: Fx, t: number) {
   ctx.textAlign = 'left'
   ctx.fillStyle = 'rgba(200,210,255,0.7)'
   ctx.font = 'bold 11px system-ui, sans-serif'
@@ -389,9 +456,15 @@ function drawHud(ctx: CanvasRenderingContext2D, g: Game, ui: Ui, t: number) {
       ctx.fillText(`残り ${g.rushLeft} 回`, W / 2, 48)
     }
   } else if (g.phase === 'fever' && g.fever) {
+    // ラウンド開始・昇格のときは数字が脈打ち、昇格中は虹色になる
+    const pulse = fx.hudPulse > 0 ? 1 + 0.25 * Math.abs(Math.sin(t * 12)) * Math.min(1, fx.hudPulse) : 1
+    ctx.save()
+    ctx.translate(W / 2, 30)
+    ctx.scale(pulse, pulse)
     ctx.font = '900 20px system-ui, sans-serif'
-    ctx.fillStyle = '#ffd23d'
-    ctx.fillText(`ROUND ${Math.max(1, g.fever.round)} / ${g.fever.shownRounds}`, W / 2, 30)
+    ctx.fillStyle = fx.hudPulse > 0.6 ? rainbowGradient(ctx, -90, 90, t) : '#ffd23d'
+    ctx.fillText(`ROUND ${Math.max(1, g.fever.round)} / ${g.fever.shownRounds}`, 0, 0)
+    ctx.restore()
   } else {
     ctx.font = 'bold 11px system-ui, sans-serif'
     ctx.fillStyle = 'rgba(200,210,255,0.55)'
@@ -422,6 +495,18 @@ function drawParticles(ctx: CanvasRenderingContext2D, fx: Fx) {
       ctx.beginPath()
       ctx.arc(p.x, p.y, p.size * (1 - a) + 4, 0, Math.PI * 2)
       ctx.stroke()
+    } else if (p.kind === 'shard') {
+      ctx.save()
+      ctx.translate(p.x, p.y)
+      ctx.rotate(p.rot)
+      ctx.fillStyle = p.color
+      ctx.beginPath()
+      ctx.moveTo(-p.size / 2, -p.size / 3)
+      ctx.lineTo(p.size / 2, -p.size / 2)
+      ctx.lineTo(p.size / 4, p.size / 2)
+      ctx.closePath()
+      ctx.fill()
+      ctx.restore()
     } else if (p.kind === 'confetti') {
       ctx.save()
       ctx.translate(p.x, p.y)
@@ -458,32 +543,25 @@ function drawPopups(ctx: CanvasRenderingContext2D, fx: Fx) {
   ctx.globalAlpha = 1
 }
 
-function drawBanner(ctx: CanvasRenderingContext2D, fx: Fx, t: number) {
-  drawPopups(ctx, fx)
-  const b = fx.banner
-  if (!b) return
-  const age = b.max - b.life
-  // 出現時にオーバーシュートして弾む
-  const k = Math.min(1, age / 0.25)
-  const pop = k < 1 ? 0.3 + 0.7 * (1 + 2.2 * Math.pow(k - 1, 3) + 1.2 * Math.pow(k - 1, 2)) : 1
-  const alpha = Math.min(1, b.life / 0.25)
+function drawVignette(ctx: CanvasRenderingContext2D, color: string) {
+  const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.75)
+  g.addColorStop(0, 'rgba(0,0,0,0)')
+  g.addColorStop(1, color)
+  ctx.fillStyle = g
+  ctx.fillRect(0, 0, W, H)
+}
+
+function drawCracks(ctx: CanvasRenderingContext2D, fx: Fx) {
   ctx.save()
-  ctx.globalAlpha = alpha
-  ctx.translate(W / 2, 470)
-  ctx.scale(pop, pop)
-  ctx.textAlign = 'center'
-  ctx.font = `900 ${b.size}px system-ui, sans-serif`
-  ctx.lineWidth = 10
-  ctx.strokeStyle = 'rgba(0,0,0,0.85)'
-  ctx.strokeText(b.text, 0, 0)
-  ctx.fillStyle = b.rainbow ? rainbowGradient(ctx, -180, 180, t) : b.color
-  ctx.fillText(b.text, 0, 0)
-  if (b.sub) {
-    ctx.font = '900 22px system-ui, sans-serif'
-    ctx.lineWidth = 6
-    ctx.strokeText(b.sub, 0, 40)
-    ctx.fillStyle = '#fff'
-    ctx.fillText(b.sub, 0, 40)
+  ctx.globalAlpha = Math.min(1, fx.crackLife)
+  ctx.strokeStyle = '#ffffff'
+  ctx.shadowColor = '#ffd23d'
+  ctx.shadowBlur = 8
+  ctx.lineWidth = 2
+  for (const c of fx.cracks) {
+    ctx.beginPath()
+    c.points.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)))
+    ctx.stroke()
   }
   ctx.restore()
 }
@@ -498,28 +576,63 @@ const SIGN_FILL: Record<SignColor, string> = {
 }
 const STEP_COLORS: SignColor[] = ['white', 'white', 'blue', 'green', 'red', 'gold']
 
-/** ステップアップ予告：段階が上がるほど枠が大きく・色が上がる */
+/** ステップアップ予告：枠が段階ごとに大きく・色が上がり、中の菱形が段階の数だけ重なる */
 function drawStepUp(ctx: CanvasRenderingContext2D, step: number, finalStep: number, t: number) {
   const c = STEP_COLORS[Math.min(step, 5)]
   const w = 120 + step * 36
   const h = 50 + step * 12
   const x = W / 2 - w / 2
   const y = 470 - h / 2
+  const max = step >= 5 && finalStep >= 5
+  const fill = (x0: number, x1: number) => (max ? rainbowGradient(ctx, x0, x1, t) : SIGN_FILL[c] === 'rainbow' ? '#fff' : SIGN_FILL[c])
   ctx.save()
   roundRect(ctx, x, y, w, h, 12)
   ctx.fillStyle = 'rgba(0,0,0,0.75)'
   ctx.fill()
   ctx.lineWidth = 3 + step
-  ctx.strokeStyle = step >= 5 && finalStep >= 5 ? rainbowGradient(ctx, x, x + w, t) : SIGN_FILL[c]
+  ctx.strokeStyle = fill(x, x + w)
   ctx.stroke()
-  ctx.textAlign = 'center'
-  ctx.font = `900 ${20 + step * 5}px system-ui, sans-serif`
-  ctx.fillStyle = SIGN_FILL[c] === 'rainbow' ? '#fff' : SIGN_FILL[c]
-  ctx.fillText(step >= 5 ? 'STEP MAX' : `STEP ${step}`, W / 2, y + h / 2 + 8 + step)
+  if (max) {
+    drawStar(ctx, W / 2, 470, h * 0.42, rainbowGradient(ctx, W / 2 - 60, W / 2 + 60, t), t)
+  } else {
+    ctx.strokeStyle = fill(x, x + w)
+    ctx.lineWidth = 3
+    for (let i = 1; i <= step; i++) {
+      const r = 6 + i * 6
+      ctx.globalAlpha = 0.4 + (0.6 * i) / step
+      ctx.beginPath()
+      ctx.moveTo(W / 2, 470 - r)
+      ctx.lineTo(W / 2 + r, 470)
+      ctx.lineTo(W / 2, 470 + r)
+      ctx.lineTo(W / 2 - r, 470)
+      ctx.closePath()
+      ctx.stroke()
+    }
+  }
   ctx.restore()
 }
 
-/** カットイン：画面を斜めに横切る色の帯。色が期待度のサイン */
+/** 星形（確定・上位演出の紋章） */
+function drawStar(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, fill: string | CanvasGradient, rot: number) {
+  ctx.save()
+  ctx.translate(cx, cy)
+  ctx.rotate(rot)
+  ctx.beginPath()
+  for (let i = 0; i < 10; i++) {
+    const rr = i % 2 ? r * 0.45 : r
+    const a = (i / 10) * Math.PI * 2 - Math.PI / 2
+    if (i) ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr)
+    else ctx.moveTo(Math.cos(a) * rr, Math.sin(a) * rr)
+  }
+  ctx.closePath()
+  ctx.shadowColor = '#fff'
+  ctx.shadowBlur = 20
+  ctx.fillStyle = fill
+  ctx.fill()
+  ctx.restore()
+}
+
+/** カットイン：画面を斜めに横切る色の帯と、走り抜ける光の筋。色が期待度のサイン */
 function drawCutin(ctx: CanvasRenderingContext2D, c: { color: SignColor; t: number }, t: number) {
   const k = Math.min(1, c.t / 0.18)
   const off = (1 - k) * W * 1.2
@@ -532,87 +645,133 @@ function drawCutin(ctx: CanvasRenderingContext2D, c: { color: SignColor; t: numb
   ctx.globalAlpha = 1
   ctx.fillStyle = 'rgba(0,0,0,0.85)'
   ctx.fillRect(-W, -30, W * 2, 60)
-  ctx.textAlign = 'center'
-  ctx.font = '900 40px system-ui, sans-serif'
-  ctx.fillStyle = c.color === 'rainbow' ? rainbowGradient(ctx, -150, 150, t) : SIGN_FILL[c.color]
-  const label = c.color === 'rainbow' ? 'PREMIUM' : c.color === 'gold' ? '激アツ!!' : 'CHANCE!'
-  ctx.fillText(label, 0, 14)
+  // 帯の中を走る光の筋（色が上がるほど本数が増える）
+  const lines = 3 + ['white', 'blue', 'green', 'red', 'gold', 'rainbow'].indexOf(c.color) * 2
+  ctx.strokeStyle = c.color === 'rainbow' ? rainbowGradient(ctx, -W, W, t) : SIGN_FILL[c.color]
+  for (let i = 0; i < lines; i++) {
+    const yy = -24 + ((i * 53) % 48)
+    const xx = ((t * 900 + i * 170) % (W * 2)) - W
+    ctx.lineWidth = 2 + (i % 3)
+    ctx.beginPath()
+    ctx.moveTo(xx, yy)
+    ctx.lineTo(xx + 120 + (i % 4) * 30, yy)
+    ctx.stroke()
+  }
   ctx.restore()
 }
 
-/** 先読みゾーン：保留の横に連続予告の回数 */
-function drawZone(ctx: CanvasRenderingContext2D, count: number, t: number) {
-  ctx.textAlign = 'left'
-  ctx.font = '900 13px system-ui, sans-serif'
-  ctx.fillStyle = count >= 3 ? `rgba(255,80,110,${0.7 + 0.3 * Math.sin(t * 10)})` : '#c9a6ff'
-  ctx.fillText(`ZONE 連続${count}`, 330, 240)
+/** 先読みゾーン：盤面の両脇に炎の柱が立ち、連続回数ぶん高くなる。対象の変動では赤く燃え上がる */
+function drawZone(ctx: CanvasRenderingContext2D, count: number, target: boolean, t: number) {
+  const h = Math.min(1, count / 4) * 320 + 40
+  for (const x of [WALL_L + 6, WALL_R - 6]) {
+    for (let i = 0; i < 14; i++) {
+      const u = i / 14
+      const flick = Math.sin(t * 12 + i * 1.7 + x) * 6
+      const yy = BOARD_BOTTOM - u * h
+      const r = (1 - u) * 16 + 4 + flick * 0.3
+      ctx.fillStyle = target
+        ? `rgba(255,${60 + u * 120},60,${0.35 * (1 - u) + 0.1})`
+        : `rgba(${150 + u * 80},70,255,${0.3 * (1 - u) + 0.08})`
+      ctx.beginPath()
+      ctx.arc(x + flick * 0.4, yy, r, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
 }
 
+/** 連打チャンス：大きなボタンが叩かれるように脈打ち、残り時間が縮んでいく */
 function drawRenda(ctx: CanvasRenderingContext2D, g: Game, t: number) {
   const r = g.spin!.renda!
   const cx = W / 2
   const cy = 600
-  const beat = 1 + 0.12 * Math.abs(Math.sin(t * 18))
-  ctx.save()
-  ctx.translate(cx, cy)
-  ctx.scale(beat, beat)
-  ctx.textAlign = 'center'
-  ctx.font = '900 58px system-ui, sans-serif'
-  ctx.lineWidth = 10
-  ctx.strokeStyle = 'rgba(0,0,0,0.85)'
-  ctx.strokeText('連打!!', 0, 0)
-  ctx.fillStyle = rainbowGradient(ctx, -110, 110, t)
-  ctx.fillText('連打!!', 0, 0)
-  ctx.restore()
-  ctx.textAlign = 'center'
-  ctx.font = 'bold 14px system-ui, sans-serif'
-  ctx.fillStyle = '#fff'
-  ctx.fillText(`画面を連打してゲージを上げろ！  ${r.taps} HIT`, cx, cy + 40)
-  // 残り時間
+  const hit = Math.abs(Math.sin(t * 22))
+  drawButton(ctx, cx, cy, 58 * (0.9 + 0.12 * hit), '#ff3355', '#ff8aa0', t)
+  // 叩く手の代わりに、上から降ってくる山形
+  ctx.strokeStyle = '#ffffff'
+  ctx.lineWidth = 5
+  for (let i = 0; i < 3; i++) {
+    const yy = cy - 120 + ((t * 260 + i * 22) % 60)
+    ctx.globalAlpha = 1 - ((t * 260 + i * 22) % 60) / 60
+    ctx.beginPath()
+    ctx.moveTo(cx - 18, yy)
+    ctx.lineTo(cx, yy + 14)
+    ctx.lineTo(cx + 18, yy)
+    ctx.stroke()
+  }
+  ctx.globalAlpha = 1
   const k = Math.max(0, r.left / RENDA_TIME)
   ctx.fillStyle = 'rgba(255,255,255,0.15)'
-  roundRect(ctx, cx - 100, cy + 54, 200, 8, 4)
+  roundRect(ctx, cx - 100, cy + 76, 200, 8, 4)
   ctx.fill()
-  ctx.fillStyle = '#ff3355'
-  roundRect(ctx, cx - 100, cy + 54, Math.max(8, 200 * k), 8, 4)
+  ctx.fillStyle = rainbowGradient(ctx, cx - 100, cx + 100, t)
+  roundRect(ctx, cx - 100, cy + 76, Math.max(8, 200 * k), 8, 4)
   ctx.fill()
 }
 
+/** 押しボタン（文字なし）。ドーム状に光る */
+function drawButton(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, base: string, light: string, t: number) {
+  ctx.save()
+  ctx.translate(cx, cy)
+  ctx.shadowColor = base
+  ctx.shadowBlur = 30
+  const grd = ctx.createRadialGradient(-r * 0.25, -r * 0.35, r * 0.1, 0, 0, r * 1.05)
+  grd.addColorStop(0, '#ffffff')
+  grd.addColorStop(0.25, light)
+  grd.addColorStop(1, base)
+  ctx.fillStyle = grd
+  ctx.beginPath()
+  ctx.arc(0, 0, r, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.shadowBlur = 0
+  ctx.strokeStyle = `rgba(255,255,255,${0.5 + 0.5 * Math.sin(t * 10)})`
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.arc(0, 0, r * 0.72, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.restore()
+}
+
+/** PUSH：文字の無いボタンが脈打ち、上から「押せ」と山形が降りてくる。復活チャンスは金色でヒビの輪 */
 function drawPush(ctx: CanvasRenderingContext2D, g: Game, t: number) {
   const cx = W / 2
   const cy = 600
   const waited = g.spin?.waitingPush ? g.spin.pushWait : g.sceneTime - 3.2
   const remain = Math.max(0, 1 - waited / PUSH_AUTO)
+  const revive = !!g.spin?.lastChance
   const pulse = 1 + 0.08 * Math.sin(t * 14)
-  ctx.save()
-  ctx.translate(cx, cy)
-  ctx.scale(pulse, pulse)
-  ctx.shadowColor = '#ff2d55'
-  ctx.shadowBlur = 30
-  const grd = ctx.createRadialGradient(0, -10, 10, 0, 0, 62)
-  grd.addColorStop(0, '#ff8aa0')
-  grd.addColorStop(1, '#d0002a')
-  ctx.fillStyle = grd
-  ctx.beginPath()
-  ctx.arc(0, 0, 58, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.shadowBlur = 0
+  drawButton(ctx, cx, cy, 58 * pulse, revive ? '#d99a00' : '#d0002a', revive ? '#fff3b0' : '#ff8aa0', t)
+  if (revive) {
+    // ヒビの入った金の輪
+    ctx.strokeStyle = '#fff3b0'
+    ctx.lineWidth = 2
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + t * 0.5
+      ctx.beginPath()
+      ctx.moveTo(cx + Math.cos(a) * 62, cy + Math.sin(a) * 62)
+      ctx.lineTo(cx + Math.cos(a + 0.15) * 80, cy + Math.sin(a + 0.15) * 80)
+      ctx.lineTo(cx + Math.cos(a + 0.05) * 92, cy + Math.sin(a + 0.05) * 92)
+      ctx.stroke()
+    }
+  }
+  // 残り時間の輪
   ctx.strokeStyle = '#fff'
   ctx.lineWidth = 5
   ctx.beginPath()
-  ctx.arc(0, 0, 68, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * remain)
+  ctx.arc(cx, cy, 68, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * remain)
   ctx.stroke()
-  ctx.fillStyle = '#fff'
-  ctx.font = '900 30px system-ui, sans-serif'
-  ctx.textAlign = 'center'
-  const revive = !!g.spin?.lastChance
-  if (revive) ctx.font = '900 34px system-ui, sans-serif'
-  ctx.fillText(revive ? '復活' : 'PUSH', 0, revive ? 12 : 11)
-  ctx.restore()
-  ctx.fillStyle = 'rgba(255,255,255,0.8)'
-  ctx.font = 'bold 13px system-ui, sans-serif'
-  ctx.textAlign = 'center'
-  ctx.fillText(g.spin?.lastChance ? '復活チャンス！ 画面をタップ！' : '画面をタップ！', cx, cy + 92)
+  // 押す場所を示す山形
+  ctx.lineWidth = 5
+  for (let i = 0; i < 3; i++) {
+    const ph = (t * 1.6 + i / 3) % 1
+    ctx.globalAlpha = 1 - ph
+    const yy = cy - 150 + ph * 60
+    ctx.beginPath()
+    ctx.moveTo(cx - 20, yy)
+    ctx.lineTo(cx, yy + 16)
+    ctx.lineTo(cx + 20, yy)
+    ctx.stroke()
+  }
+  ctx.globalAlpha = 1
 }
 
 function drawRefill(ctx: CanvasRenderingContext2D, gate: GateState, t: number) {
@@ -690,28 +849,23 @@ function drawSceneOverlay(ctx: CanvasRenderingContext2D, g: Game, ui: Ui, t: num
       ctx.fillStyle = '#ff6fb5'
       ctx.fill()
     }
-    if (f.over > 0) {
-      ctx.font = 'bold 13px system-ui, sans-serif'
-      ctx.fillStyle = '#ff9fd0'
-      ctx.textAlign = 'center'
-      ctx.fillText(`オーバー入賞 ${f.over}個`, W / 2, 398)
-    }
+
   }
   if (g.scene === 'challenge') {
     ctx.fillStyle = 'rgba(0,0,0,0.6)'
     ctx.fillRect(0, BOARD_TOP - 12, W, H)
     ctx.textAlign = 'center'
-    ctx.font = '900 26px system-ui, sans-serif'
-    ctx.fillStyle = rainbowGradient(ctx, 80, 370, t)
-    ctx.fillText('RUSH 突入チャレンジ', W / 2, 330)
+    // 獲得数（数字のみ）
     if (g.fever) {
-      ctx.font = '900 20px system-ui, sans-serif'
+      ctx.font = '900 34px system-ui, sans-serif'
       ctx.fillStyle = '#ffd23d'
-      ctx.fillText(`今回の獲得 +${g.fever.payout.toLocaleString()} 玉`, W / 2, 292)
+      ctx.fillText(`+${g.fever.payout.toLocaleString()}`, W / 2, 330)
     }
-    ctx.font = 'bold 14px system-ui, sans-serif'
-    ctx.fillStyle = '#ddd'
-    ctx.fillText(`成功で「継続率 約${Math.round((1 - Math.pow(1 - SPEC.rushWinRate, SPEC.rushSpins)) * 100)}%」の RUSH へ`, W / 2, 358)
+    // RUSH の色の扉が、ゲージの先で脈打つ
+    const glow = 0.5 + 0.5 * Math.sin(t * 6)
+    ctx.fillStyle = `rgba(255,77,240,${0.15 + 0.2 * glow})`
+    roundRect(ctx, W - 60 - 10, 370, 20, 62, 8)
+    ctx.fill()
     // 50% へ向かって上がるゲージ
     const k = g.challengeResult === null ? Math.min(1, g.sceneTime / 3.2) : 1
     const gx = 60
@@ -728,39 +882,39 @@ function drawSceneOverlay(ctx: CanvasRenderingContext2D, g: Game, ui: Ui, t: num
     ctx.moveTo(gx + gw / 2, 384)
     ctx.lineTo(gx + gw / 2, 418)
     ctx.stroke()
-    ctx.font = 'bold 12px system-ui, sans-serif'
-    ctx.fillStyle = '#fff'
-    ctx.fillText('50%', gx + gw / 2, 432)
+
   }
   if (g.scene === 'ltIntro') {
-    ctx.fillStyle = 'rgba(20,12,0,0.75)'
+    // 上位 RUSH 突入：金の光芒が回り、中央の金の星が脈打ちながら大きくなる
+    ctx.fillStyle = 'rgba(20,12,0,0.6)'
     ctx.fillRect(0, BOARD_TOP - 12, W, H)
-    ctx.textAlign = 'center'
-    const pulse = 1 + 0.06 * Math.sin(t * 10)
     ctx.save()
-    ctx.translate(W / 2, 560)
-    ctx.scale(pulse, pulse)
-    ctx.font = '900 30px system-ui, sans-serif'
-    ctx.fillStyle = '#ffd23d'
-    ctx.fillText('上位RUSH 突入', 0, 0)
+    ctx.translate(W / 2, 500)
+    ctx.rotate(t * 0.8)
+    for (let i = 0; i < 16; i++) {
+      ctx.rotate((Math.PI * 2) / 16)
+      ctx.fillStyle = i % 2 ? 'rgba(255,210,61,0.35)' : 'rgba(255,243,176,0.2)'
+      ctx.beginPath()
+      ctx.moveTo(0, 0)
+      ctx.lineTo(420, -40)
+      ctx.lineTo(420, 40)
+      ctx.closePath()
+      ctx.fill()
+    }
     ctx.restore()
-    ctx.font = 'bold 15px system-ui, sans-serif'
-    ctx.fillStyle = '#fff3b0'
-    ctx.fillText(`${SPEC.ltSpins}回転 × 1/${Math.round(1 / SPEC.ltWinRate)}・16R が出やすい`, W / 2, 596)
+    const grow = Math.min(1, g.sceneTime / 1.2)
+    drawStar(ctx, W / 2, 500, (40 + 60 * grow) * (1 + 0.06 * Math.sin(t * 10)), '#ffd23d', t * 0.5)
   }
   if (g.scene === 'rushEnd') {
     ctx.fillStyle = 'rgba(0,0,0,0.7)'
     ctx.fillRect(0, BOARD_TOP - 12, W, H)
     ctx.textAlign = 'center'
-    ctx.font = '900 24px system-ui, sans-serif'
-    ctx.fillStyle = '#fff'
-    ctx.fillText(g.lt ? 'LUCKY TRIGGER 終了' : 'RUSH 終了', W / 2, 360)
     ctx.font = '900 54px system-ui, sans-serif'
     ctx.fillStyle = rainbowGradient(ctx, 100, 350, t)
     ctx.fillText(`${g.chain}連`, W / 2, 430)
     ctx.font = '900 26px system-ui, sans-serif'
     ctx.fillStyle = '#ffd23d'
-    ctx.fillText(`総獲得 ${g.chainTotal.toLocaleString()} 玉`, W / 2, 480)
+    ctx.fillText(`+${g.chainTotal.toLocaleString()}`, W / 2, 480)
   }
 }
 
@@ -779,7 +933,7 @@ function drawTitle(ctx: CanvasRenderingContext2D, ui: Ui, t: number) {
     '指の位置に玉が落ちます。',
     '動く「START」に入れるとデジタル抽選。',
     '保留の色・リーチの格は期待度のサイン。',
-    'PUSH が出たら自分の手で結果を開けよう。',
+    '光るボタンが出たら、自分の手で結果を開けよう。',
   ]
   lines.forEach((l, i) => ctx.fillText(l, W / 2, 370 + i * 26))
   const a = 0.6 + 0.4 * Math.sin(t * 4)

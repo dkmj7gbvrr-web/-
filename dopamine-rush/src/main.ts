@@ -6,7 +6,7 @@ import { RefillGate } from './ads/refillGate'
 import { Fx } from './fx'
 import { audio } from './game/audio'
 import { Game, holdLevel, type GameEvent } from './game/game'
-import { ltContinueRate, SIGN_COLORS, type HoldColor, type SignColor } from './game/odds'
+import { SIGN_COLORS, type HoldColor, type SignColor } from './game/odds'
 import { BOARD_BOTTOM, H, W } from './game/physics'
 import { mulberry32 } from './game/rng'
 import { BTN_MOTION, BTN_MUTE, BTN_REFILL, render, type Ui } from './render'
@@ -75,6 +75,11 @@ let lastPegSound = 0
 let attackerCount = 0
 let clock = 0
 
+/** 図柄パネルの位置（演出の中心） */
+const PANEL = { x: 26, y: 58, w: W - 52, h: 156, cx: W / 2, cy: 136 }
+const BUTTON = { x: W / 2, y: 600, r: 58 }
+const GRAY = ['#8890a8', '#5a6078', '#c0c6d8']
+
 function onEvent(e: GameEvent) {
   switch (e.type) {
     case 'peg': {
@@ -91,7 +96,10 @@ function onEvent(e: GameEvent) {
       fx.ring(e.peg.x, e.peg.y, '#ffd23d', 40)
       fx.popup(e.peg.x, e.peg.y - 8, '+1', '#ffd23d', 16)
       if (e.split) {
-        fx.show('MULTI BALL!', { color: '#ffd23d', size: 40, dur: 1 })
+        // 玉が分裂：金の衝撃波が二重に広がる
+        fx.ring(e.peg.x, e.peg.y, '#ffd23d', 90)
+        fx.ring(e.peg.x, e.peg.y, '#fff3b0', 140)
+        fx.punch(0.03)
         fx.shake(0.25)
         audio.levelUp()
       }
@@ -117,11 +125,13 @@ function onEvent(e: GameEvent) {
       break
     }
     case 'holdChange': {
+      // 当該保留が弾けて色が変わる
       const lvl = holdLevel(e.to)
+      const colors = e.to === 'rainbow' ? RAINBOW : [HOLD_COLOR_CSS[e.to], '#fff']
       audio.holdChange(lvl)
       fx.doFlash(0.25 + lvl * 0.08, HOLD_COLOR_CSS[e.to])
-      fx.burst(262, 236, 30, e.to === 'rainbow' ? RAINBOW : [HOLD_COLOR_CSS[e.to], '#fff'], 220, 'star')
-      fx.show('保留変化!!', { color: HOLD_COLOR_CSS[e.to], size: 40, dur: 0.9, rainbow: e.to === 'rainbow' })
+      fx.burst(262, 236, 30 + lvl * 8, colors, 220, 'star')
+      fx.ring(262, 236, HOLD_COLOR_CSS[e.to], 50 + lvl * 12)
       fx.shake(0.12 + lvl * 0.05)
       if (e.to === 'rainbow') audio.kakutei()
       break
@@ -137,128 +147,145 @@ function onEvent(e: GameEvent) {
       audio.reelStop(e.heavy)
       fx.shake(e.heavy ? 0.18 : 0.06)
       break
-    case 'reach':
+    case 'reach': {
+      // リーチ：パネルの枠がタイトル色に灯り、左右の図柄が光の線で結ばれる（描画側）
+      const lvl = signLevel(e.title)
       audio.reach()
-      // リーチタイトルの色も期待度のサイン（白 < 青 < 緑 < 赤 < 金 < 虹）
-      fx.show('リーチ!', {
-        color: SIGN_CSS[e.title],
-        rainbow: e.title === 'rainbow',
-        size: 62 + signLevel(e.title) * 3,
-        dur: 1.1,
-        priority: 2,
-      })
-      fx.shake(0.2 + signLevel(e.title) * 0.05)
-      if (signLevel(e.title) >= 4) fx.doFlash(0.4, SIGN_CSS[e.title])
+      fx.punch(0.04 + lvl * 0.01)
+      fx.doTint(SIGN_CSS[e.title], 0.12 + lvl * 0.04, 1.2)
+      fx.ring(PANEL.cx, PANEL.cy, SIGN_CSS[e.title], 180)
+      fx.shake(0.2 + lvl * 0.05)
+      if (lvl >= 4) fx.doFlash(0.4, SIGN_CSS[e.title])
       break
+    }
     case 'stepUp':
       audio.stepUp(e.step, e.final)
       fx.shake(0.05 * e.step)
+      fx.ring(W / 2, 470, e.step >= 5 ? '#ffd23d' : '#ffffff', 60 + e.step * 25)
       if (e.step >= 4) fx.doFlash(0.15 * (e.step - 3), e.step >= 5 ? '#ffd23d' : '#ff3355')
       break
     case 'gijiren':
+      // 擬似連：パネルから衝撃波が回数ぶん広がる（下のランプの数でも分かる）
       audio.gijiren(e.count)
-      fx.show(`NEXT ×${e.count}`, { color: e.count >= 3 ? '#ff3355' : '#39e0e0', size: 52 + e.count * 4, dur: 0.8, priority: 2 })
+      for (let i = 0; i < e.count; i++) fx.ring(PANEL.cx, PANEL.cy, e.count >= 3 ? '#ff3355' : '#39e0e0', 120 + i * 70)
       fx.doFlash(0.3, '#39e0e0')
+      fx.punch(0.03 * e.count)
       fx.shake(0.15 * e.count)
       break
     case 'zone':
+      // 先読みゾーン：盤面の両脇に紫の炎が立ち、回を重ねるごとに高くなる（描画側）
       audio.zone(e.count, e.target)
-      fx.show(e.target ? '連続予告 MAX!!' : `連続予告 ${e.count}`, {
-        color: e.count >= 3 || e.target ? '#ff3355' : '#b77dff',
-        rainbow: e.target && e.count >= 3,
-        size: 40,
-        dur: 0.9,
-        priority: 1,
-      })
-      fx.doFlash(0.2, '#b77dff')
+      fx.doTint(e.target ? '#ff3355' : '#7a2cff', e.target ? 0.3 : 0.18, 0.9)
+      if (e.target) fx.punch(0.05)
       break
     case 'cutin':
       audio.cutin(signLevel(e.color))
       fx.shake(0.2 + signLevel(e.color) * 0.1)
       fx.doFlash(0.25 + signLevel(e.color) * 0.1, SIGN_CSS[e.color])
+      fx.punch(0.03 + signLevel(e.color) * 0.01)
       if (e.color === 'rainbow') fx.confettiRain(80, W)
       break
     case 'blackoutReveal':
       audio.kakutei()
       audio.impact()
-      fx.show('確定!!', { rainbow: true, size: 90, dur: 1.2, priority: 3 })
       fx.doFlash(1)
       fx.stop(0.3)
       fx.shake(1)
+      fx.punch(0.08)
+      fx.ring(PANEL.cx, PANEL.cy, '#ffffff', 260)
+      fx.burst(PANEL.cx, PANEL.cy, 90, RAINBOW, 460, 'star')
       break
     case 'over':
       audio.over(e.count)
-      fx.burst(e.x, BOARD_BOTTOM, 14, RAINBOW, 260, 'star')
-      fx.popup(e.x, BOARD_BOTTOM - 24, `OVER +${e.payout}`, '#ff6fb5', 20)
+      fx.burst(e.x, BOARD_BOTTOM, 14, ['#ff6fb5', '#ffffff', '#ffd23d'], 260, 'star')
+      fx.ring(e.x, BOARD_BOTTOM, '#ff6fb5', 50)
+      fx.popup(e.x, BOARD_BOTTOM - 24, `+${e.payout}`, '#ff6fb5', 20)
       fx.shake(0.12)
       break
     case 'luckyTrigger':
+      // 画面が金色に染まり、金の粒が降り注ぐ（続く上位 RUSH 導入画面も描画側）
       audio.playMusic(null)
       audio.luckyTrigger()
-      fx.show('LUCKY TRIGGER', { rainbow: true, size: 44, dur: 3.2, sub: `上位RUSH 継続率 約${Math.round(ltContinueRate() * 100)}%`, priority: 3 })
       fx.doFlash(1, '#ffd23d')
+      fx.doTint('#ffb800', 0.45, 3)
       fx.stop(0.4)
       fx.shake(1)
+      fx.punch(0.1)
       fx.confettiRain(260, W)
       fx.burst(W / 2, 300, 120, ['#ffd23d', '#fff3b0', '#ffffff', '#ffb800'], 480, 'star')
       break
     case 'escalate':
       if (e.reach === 'premium') {
         audio.riser(1.4, 1.4)
-        fx.show('激アツ!!', { rainbow: true, size: 72, dur: 1.5 , priority: 2 })
         fx.doFlash(0.7)
         fx.shake(0.45)
+        fx.punch(0.06)
         fx.rainbow = 0.2
         fx.confettiRain(60, W)
       } else {
+        // SUPER：画面が赤く沈み、パネルが迫る
         audio.riser(2.2)
-        fx.show('SUPER リーチ', { color: '#ff3355', size: 46, dur: 1.4 , priority: 2 })
         fx.doFlash(0.35, '#ff3355')
+        fx.doTint('#ff1030', 0.25, 1.6)
+        fx.punch(0.05)
         fx.shake(0.3)
       }
       break
     case 'pushPrompt':
       audio.tone(880, 0.12, { type: 'square', gain: 0.08 })
       audio.tone(1320, 0.18, { type: 'square', gain: 0.08, delay: 0.12 })
+      fx.ring(BUTTON.x, BUTTON.y, '#ff3355', 110)
       break
     case 'pushed':
       audio.impact()
       fx.stop(0.2)
       fx.shake(0.4)
+      fx.punch(0.05)
+      fx.ring(BUTTON.x, BUTTON.y, '#ffffff', 160)
       fx.doFlash(e.win ? 0.9 : 0.4)
       break
     case 'revival':
       audio.kakutei()
       audio.impact()
-      fx.show('復活!!', { rainbow: true, size: 80, dur: 1.2 , priority: 3 })
       fx.doFlash(1)
       fx.stop(0.25)
       fx.shake(0.8)
+      fx.punch(0.08)
+      fx.ring(PANEL.cx, PANEL.cy, '#ffffff', 240)
+      fx.burst(PANEL.cx, PANEL.cy, 60, RAINBOW, 400, 'star')
       fx.confettiRain(80, W)
       break
     case 'develop':
+      // SUPER に上がるか：パネルの枠が赤と金で激しく明滅（描画側）＋縁から火花
       audio.develop()
-      fx.show('発展!?', { color: '#ffd23d', size: 64, dur: 1.1, priority: 2 })
       fx.shake(0.25)
+      fx.doTint('#ffb800', 0.15, 1.1)
+      fx.burst(PANEL.x, PANEL.cy, 20, ['#ffd23d', '#ff3355'], 220)
+      fx.burst(PANEL.x + PANEL.w, PANEL.cy, 20, ['#ffd23d', '#ff3355'], 220)
       break
     case 'developResult':
       if (e.success) {
         fx.doFlash(0.6, '#ffd23d')
         fx.stop(0.12)
       } else {
-        audio.fall()
-        fx.show('発展ならず…', { color: '#8890a8', size: 40, dur: 0.9, priority: 2 })
+        // 上がらなかった：パネルの枠がガラスのように砕け、画面が一瞬くすむ
+        audio.shatter()
+        fx.shatterRect(PANEL.x, PANEL.y, PANEL.w, PANEL.h, ['#ffd23d', '#ff3355', '#ffffff'])
+        fx.doTint('#30334a', 0.35, 0.8)
+        fx.shake(0.25)
       }
       break
     case 'rendaStart':
       audio.startPocket()
       audio.riser(2.4, 0.9)
       fx.doFlash(0.3, '#ff3355')
+      fx.ring(BUTTON.x, BUTTON.y, '#ff3355', 140)
       break
     case 'rendaTap':
       audio.rendaTap(e.count)
       fx.shake(0.06)
-      fx.burst(W / 2 + (Math.random() - 0.5) * 160, 600 + (Math.random() - 0.5) * 60, 6, RAINBOW, 180, 'star')
+      fx.ring(BUTTON.x, BUTTON.y, `hsl(${(e.count * 37) % 360},100%,65%)`, 90 + Math.min(e.count, 30) * 3)
+      fx.burst(BUTTON.x + (Math.random() - 0.5) * 160, BUTTON.y + (Math.random() - 0.5) * 60, 6, RAINBOW, 180, 'star')
       break
     case 'crawlStep':
       audio.crawl(e.slow, e.last)
@@ -272,10 +299,11 @@ function onEvent(e: GameEvent) {
     case 'slip':
       audio.kakutei()
       audio.impact()
-      fx.show('キタ!!', { rainbow: true, size: 80, dur: 0.9, priority: 3 })
       fx.doFlash(1)
       fx.stop(0.2)
       fx.shake(0.8)
+      fx.punch(0.07)
+      fx.ring(PANEL.cx, PANEL.cy, '#ffffff', 220)
       break
     case 'fakeAlign':
       audio.tease()
@@ -287,11 +315,13 @@ function onEvent(e: GameEvent) {
     case 'fakeAlignBreak':
       audio.fall()
       fx.rainbow = 0
+      fx.doTint('#30334a', 0.35, 0.9)
       fx.shake(0.55)
       fx.stop(0.15)
       break
     case 'fakeRevivalEnd':
       audio.tone(300, 0.6, { type: 'triangle', gain: 0.05, slideTo: 140 })
+      fx.doTint('#30334a', 0.3, 0.8)
       break
     case 'blackout':
       // 大当たり確定のブラックアウト：画面を落として無音にし、うっすら「歓喜の歌」
@@ -308,8 +338,10 @@ function onEvent(e: GameEvent) {
         fx.doFlash(1)
         fx.stop(0.25)
         fx.shake(0.9)
+        fx.punch(0.07)
       } else {
         audio.reelStop(true)
+        fx.doTint('#30334a', 0.3, 0.8)
         fx.shake(0.2)
       }
       break
@@ -317,23 +349,25 @@ function onEvent(e: GameEvent) {
       audio.miss()
       fx.rainbow = 0
       break
-    case 'jackpot': {
+    case 'jackpot':
+      // 大当たり：ヒットストップ → 白飛び → 図柄から虹の衝撃波と星、紙吹雪、画面が迫る
       audio.fanfare()
       fx.stop(0.35)
       fx.doFlash(1)
       fx.shake(1)
+      fx.punch(0.12)
       fx.rainbow = 0
       fx.confettiRain(160, W)
-      fx.burst(W / 2, 140, 80, RAINBOW, 420, 'star')
-      const chainText = e.outcome.mode !== 'normal' ? `${e.chain}連!!` : `${e.outcome.shownRounds}R`
-      fx.show('大当たり!!', { rainbow: true, size: 76, dur: 2.4, sub: chainText , priority: 3 })
+      fx.burst(PANEL.cx, PANEL.cy, 80, RAINBOW, 420, 'star')
+      for (let i = 0; i < 3; i++) fx.ring(PANEL.cx, PANEL.cy, RAINBOW[i * 2], 200 + i * 90)
       ui.displayPayout = 0
       attackerCount = 0
       window.setTimeout(() => audio.playMusic('fever', 150 + Math.min(40, e.chain * 5)), 1200)
       break
-    }
     case 'roundStart':
-      fx.show(`ROUND ${e.round}`, { color: '#ffd23d', size: 44, dur: 0.9, sub: `/ ${e.total}R` })
+      // ラウンド開始：アタッカーが開く瞬間に金の衝撃波
+      fx.ring(W / 2, BOARD_BOTTOM + 18, '#ffd23d', 160)
+      fx.hudPulse = 0.5
       break
     case 'attackerIn':
       attackerCount++
@@ -343,25 +377,20 @@ function onEvent(e: GameEvent) {
       fx.shake(0.04)
       break
     case 'upgrade':
+      // ラウンド昇格：HUD のラウンド数が虹色に脈打つ（描画側）
       audio.levelUp()
       audio.kakutei()
-      fx.show('ラウンド昇格!!', { rainbow: true, size: 52, dur: 1.8, sub: `${e.total}R へ` , priority: 3 })
+      fx.hudPulse = 2
       fx.doFlash(0.9)
       fx.stop(0.25)
       fx.shake(0.7)
+      fx.punch(0.06)
+      fx.ring(W / 2, 30, '#ffffff', 200)
       fx.confettiRain(120, W)
       break
     case 'feverEnd':
-      // 通常時からの大当たりは突入チャレンジ画面に獲得数を出すので、テロップは RUSH 中だけ
-      if (game.fever && game.fever.fromMode !== 'normal') {
-        fx.show(`+${e.payout.toLocaleString()} 玉`, {
-          color: '#ffd23d',
-          size: 54,
-          dur: 1.8,
-          priority: 2,
-          sub: e.over > 0 ? `オーバー入賞 ${e.over}個` : undefined,
-        })
-      }
+      // 獲得数の表示からコインが噴き上がる
+      fx.burst(W / 2, 330, 40 + Math.min(80, Math.round(e.payout / 20)), ['#ffd23d', '#ffb800', '#fff3b0'], 320, 'coin')
       audio.levelUp()
       updateBest(game.chain, game.chainTotal)
       break
@@ -371,44 +400,53 @@ function onEvent(e: GameEvent) {
       break
     case 'challengeResult':
       if (e.success) {
+        // ゲージが虹色に満ちて弾ける
         audio.fanfare()
         audio.kakutei()
-        fx.show('RUSH 突入!!', { rainbow: true, size: 66, dur: 2 , priority: 3 })
         fx.doFlash(1)
         fx.stop(0.3)
         fx.shake(1)
+        fx.punch(0.1)
+        fx.doTint('#ff4df0', 0.3, 2)
+        fx.burst(W / 2, 401, 120, RAINBOW, 480, 'star')
         fx.confettiRain(200, W)
       } else {
+        // ゲージが砕け、画面が灰色にくすむ
+        audio.shatter()
         audio.miss()
-        fx.show('残念…', { color: '#8890a8', size: 50, dur: 1.8, sub: 'また次の大当たりで' })
+        fx.shatterRect(60, 390, W - 120, 22, ['#ff3355', ...GRAY], 90)
+        fx.doTint('#30334a', 0.5, 1.8)
       }
       break
     case 'rushStart':
       audio.playMusic('rush', Math.min(210, (e.lt ? 160 : 138) + e.chain * 6))
-      fx.show(e.chain <= 1 ? 'RUSH START' : `${e.chain}連 継続中!!`, {
-        rainbow: true,
-        size: 50,
-        dur: 1.5,
-        sub: e.lt ? 'LUCKY TRIGGER 上位RUSH' : undefined,
-      })
       fx.doFlash(0.5, e.lt ? '#ffd23d' : '#ff4df0')
+      fx.ring(W / 2, 30, e.lt ? '#ffd23d' : '#ff4df0', 220)
+      fx.hudPulse = 1
       break
     case 'lastChance':
+      // 復活チャンス：画面にヒビが走り、金色のボタンがせり上がる
       audio.kakutei()
       audio.develop()
-      fx.show('復活チャンス!!', { rainbow: true, size: 56, dur: 1.4, priority: 3 })
+      fx.crack(BUTTON.x, BUTTON.y, 1.8)
       fx.doFlash(0.7, '#ff3355')
+      fx.doTint('#ffb800', 0.2, 1.5)
       fx.stop(0.15)
       fx.shake(0.5)
+      fx.punch(0.05)
       break
     case 'lastChanceFail':
+      // ボタンが砕け散る
+      audio.shatter()
       audio.fall()
-      fx.show('復活ならず…', { color: '#8890a8', size: 44, dur: 1.4, priority: 3 })
+      fx.shatterRect(BUTTON.x - BUTTON.r, BUTTON.y - BUTTON.r, BUTTON.r * 2, BUTTON.r * 2, ['#ffd23d', ...GRAY], 90)
+      fx.doTint('#30334a', 0.45, 1.4)
       fx.shake(0.3)
       break
     case 'lastSpin':
-      fx.show('LAST!', { color: '#ff3355', size: 70, dur: 1 , priority: 2 })
+      // 最終変動：画面の縁が赤く脈打つ（描画側）
       audio.heartbeat()
+      fx.doTint('#ff1030', 0.25, 1.2)
       fx.shake(0.3)
       break
     case 'rushEnd':
@@ -417,7 +455,8 @@ function onEvent(e: GameEvent) {
       updateBest(e.chain, e.total)
       break
     case 'refill':
-      fx.show(`+${e.amount} 玉`, { color: '#3ddc84', size: 44, dur: 1.2 })
+      fx.ring(W / 2, 32, '#3ddc84', 120)
+      fx.burst(60, 36, 40, ['#3ddc84', '#ffffff'], 200, 'coin')
       audio.levelUp()
       break
   }
@@ -564,8 +603,11 @@ function frame(now: number) {
     // 回転中のリールの刻み音
     // 暗転・タメの間は BGM と刻み音を止めて「無音」で溜める
     const silent = !!game.spin && (game.spin.blackout || game.spin.darken || game.spin.dark)
-    audio.duck(silent)
-    const spinning = !silent && game.reels.some((r) => !r.stopped && !r.stopping)
+    // 違和感：RUSH 中に BGM が途切れる / リールの刻み音が鳴らない
+    const iw = game.spin?.outcome.iwakan
+    const musicGap = iw === 'musicStop' && (game.spin?.t ?? 9) < 1.6
+    audio.duck(silent || musicGap)
+    const spinning = !silent && iw !== 'silentStart' && game.reels.some((r) => !r.stopped && !r.stopping)
     tickTimer -= dt
     if (spinning && tickTimer <= 0) {
       audio.reelTick()
