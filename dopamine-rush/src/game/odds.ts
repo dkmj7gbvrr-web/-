@@ -21,9 +21,17 @@ export const SPEC = {
   startPocketPayout: 3,
   /** 保留の最大数 */
   maxHolds: 4,
+  /** RUSH 中の大当たりのうち、ラッキートリガー（上位 RUSH）に突入する割合 */
+  luckyTriggerRate: 0.12,
+  /** ラッキートリガー（上位 RUSH）中の大当たり確率と回数。継続率 = 1 - (1 - 1/4)^9 ≒ 92% */
+  ltWinRate: 1 / 4,
+  ltSpins: 9,
+  /** 大当たり中、規定数が入ってからアタッカーが閉じきるまでの秒数（この間の入賞がオーバー入賞） */
+  attackerCloseTime: 0.15,
 } as const
 
-export type Mode = 'normal' | 'rush'
+/** normal：通常時 / rush：RUSH / lt：ラッキートリガー（上位 RUSH） */
+export type Mode = 'normal' | 'rush' | 'lt'
 export const HOLD_COLORS = ['white', 'blue', 'green', 'red', 'gold', 'rainbow'] as const
 export type HoldColor = (typeof HOLD_COLORS)[number]
 export type Reach = 'none' | 'normal' | 'super' | 'premium'
@@ -79,6 +87,10 @@ export const ROUNDS_NORMAL: ReadonlyArray<readonly [Rounds, number]> = [
   [8, 0.35],
   [16, 0.2],
 ]
+export const ROUNDS_LT: ReadonlyArray<readonly [Rounds, number]> = [
+  [8, 0.3],
+  [16, 0.7],
+]
 export const ROUNDS_RUSH: ReadonlyArray<readonly [Rounds, number]> = [
   [4, 0.3],
   [8, 0.4],
@@ -93,6 +105,8 @@ export const REVIVAL_RATE = 0.22
 export const KAKUTEI_FLASH_RATE = 0.05
 /** 保留が入った瞬間は本来より低い色で見せ、変動開始時に「保留変化」させる割合 */
 export const HOLD_UPGRADE_RATE = 0.45
+/** 通常時の当たりのうち、変動開始直後に画面が落ちる「ブラックアウト」（大当たり確定）になる割合 */
+export const BLACKOUT_RATE = 0.04
 
 export const SYMBOL_COUNT = 7
 
@@ -115,6 +129,12 @@ export interface SpinOutcome {
   shownRounds: Rounds
   /** 通常時の大当たりの場合、RUSH 突入チャレンジに成功するか */
   rushEntry: boolean
+  /** RUSH 中の当たりで、ラッキートリガー（上位 RUSH）へ突入するか */
+  luckyTrigger: boolean
+  /** 変動開始直後のブラックアウト（大当たり確定） */
+  blackout: boolean
+  /** 保留以外の期待度サイン */
+  yokoku: Yokoku
 }
 
 const colorIndex = (c: HoldColor) => HOLD_COLORS.indexOf(c)
@@ -130,16 +150,22 @@ function nearMissCenter(target: number, rng: Rng): number {
   return c
 }
 
+const WIN_RATE: Record<Mode, number> = {
+  normal: SPEC.normalWinRate,
+  rush: SPEC.rushWinRate,
+  lt: SPEC.ltWinRate,
+}
+
 export function decideSpin(mode: Mode, rng: Rng): SpinOutcome {
-  const win = rng() < (mode === 'rush' ? SPEC.rushWinRate : SPEC.normalWinRate)
+  const win = rng() < WIN_RATE[mode]
   const tell =
-    mode === 'rush' ? 'white' : pickWeighted(win ? TELL_ON_WIN : TELL_ON_MISS, rng)
+    mode !== 'normal' ? 'white' : pickWeighted(win ? TELL_ON_WIN : TELL_ON_MISS, rng)
   let entryColor: HoldColor = tell
   if (colorIndex(tell) >= colorIndex('green') && rng() < HOLD_UPGRADE_RATE) {
     entryColor = HOLD_COLORS[randInt(rng, 0, colorIndex(tell) - 1)]
   }
   const reachTable =
-    mode === 'rush'
+    mode !== 'normal'
       ? win
         ? RUSH_REACH_ON_WIN
         : RUSH_REACH_ON_MISS
@@ -164,11 +190,101 @@ export function decideSpin(mode: Mode, rng: Rng): SpinOutcome {
 
   const revival = win && (reach === 'super' || reach === 'premium') && rng() < REVIVAL_RATE
   const kakutei = win && mode === 'normal' && rng() < KAKUTEI_FLASH_RATE
-  const rounds = pickWeighted(mode === 'rush' ? ROUNDS_RUSH : ROUNDS_NORMAL, rng)
+  const rounds = pickWeighted(mode === 'lt' ? ROUNDS_LT : mode === 'rush' ? ROUNDS_RUSH : ROUNDS_NORMAL, rng)
   const shownRounds: Rounds = rounds > 4 && rng() < UPGRADE_RATE ? 4 : rounds
-  const rushEntry = mode === 'rush' ? true : rng() < SPEC.rushEntryRate
+  const rushEntry = mode !== 'normal' ? true : rng() < SPEC.rushEntryRate
+  const luckyTrigger = win && mode === 'rush' && rng() < SPEC.luckyTriggerRate
+  const blackout = win && mode === 'normal' && rng() < BLACKOUT_RATE
+  const yokoku = decideYokoku(mode, win, reach, rng)
 
-  return { mode, win, symbols, reach, revival, kakutei, tell, entryColor, rounds, shownRounds, rushEntry }
+  return {
+    mode,
+    win,
+    symbols,
+    reach,
+    revival,
+    kakutei,
+    tell,
+    entryColor,
+    rounds,
+    shownRounds,
+    rushEntry,
+    luckyTrigger,
+    blackout,
+    yokoku,
+  }
+}
+
+// ---------------------------------------------------------------- 保留以外の期待度サイン（予告）
+
+/** 色の序列：青 < 緑 < 赤 < 金 < 虹（虹は当たりでしか出ない＝確定） */
+export const SIGN_COLORS = ['white', 'blue', 'green', 'red', 'gold', 'rainbow'] as const
+export type SignColor = (typeof SIGN_COLORS)[number]
+
+export interface Yokoku {
+  /** ステップアップ予告の到達段階（0＝発生なし、5＝最終段階） */
+  stepUp: number
+  /** 擬似連の回数（1＝なし、2〜4＝NEXT で再始動した回数+1） */
+  gijiren: number
+  /** リーチタイトルの色（リーチ時のみ意味を持つ） */
+  title: SignColor
+  /** SUPER 以上のリーチで出るカットインの色（null＝出ない） */
+  cutin: SignColor | null
+  /** 先読みゾーン（この保留より前の変動で連続予告を出す）の対象になり得るか */
+  zone: boolean
+}
+
+type Table<T extends string | number> = ReadonlyArray<readonly [T, number]>
+/** 当たり / SUPER 以上のハズレ / ノーマルリーチのハズレ / リーチなしのハズレ */
+export type YokokuCategory = 'win' | 'missSuper' | 'missNormal' | 'missNone'
+
+export const STEPUP_TABLE: Record<YokokuCategory, Table<number>> = {
+  win: [[0, 0.25], [1, 0.05], [2, 0.1], [3, 0.2], [4, 0.25], [5, 0.15]],
+  missSuper: [[0, 0.35], [1, 0.1], [2, 0.2], [3, 0.25], [4, 0.1], [5, 0]],
+  missNormal: [[0, 0.6], [1, 0.15], [2, 0.15], [3, 0.1], [4, 0], [5, 0]],
+  missNone: [[0, 0.93], [1, 0.05], [2, 0.02], [3, 0], [4, 0], [5, 0]],
+}
+export const GIJIREN_TABLE: Record<YokokuCategory, Table<number>> = {
+  win: [[1, 0.35], [2, 0.3], [3, 0.25], [4, 0.1]],
+  missSuper: [[1, 0.5], [2, 0.35], [3, 0.15], [4, 0]],
+  missNormal: [[1, 0.8], [2, 0.2], [3, 0], [4, 0]],
+  missNone: [[1, 1], [2, 0], [3, 0], [4, 0]],
+}
+export const TITLE_TABLE: Record<YokokuCategory, Table<SignColor>> = {
+  win: [['white', 0.1], ['blue', 0.15], ['green', 0.2], ['red', 0.3], ['gold', 0.15], ['rainbow', 0.1]],
+  missSuper: [['white', 0.3], ['blue', 0.3], ['green', 0.25], ['red', 0.13], ['gold', 0.02], ['rainbow', 0]],
+  missNormal: [['white', 0.6], ['blue', 0.3], ['green', 0.1], ['red', 0], ['gold', 0], ['rainbow', 0]],
+  missNone: [['white', 1], ['blue', 0], ['green', 0], ['red', 0], ['gold', 0], ['rainbow', 0]],
+}
+export const CUTIN_TABLE: Record<'win' | 'miss', Table<SignColor>> = {
+  win: [['blue', 0.1], ['green', 0.2], ['red', 0.35], ['gold', 0.25], ['rainbow', 0.1]],
+  miss: [['blue', 0.45], ['green', 0.35], ['red', 0.18], ['gold', 0.02], ['rainbow', 0]],
+}
+/** 先読みゾーン（連続予告）の対象になる割合 */
+export const ZONE_RATE: Record<YokokuCategory, number> = {
+  win: 0.45,
+  missSuper: 0.2,
+  missNormal: 0.05,
+  missNone: 0.01,
+}
+
+export function yokokuCategory(win: boolean, reach: Reach): YokokuCategory {
+  if (win) return 'win'
+  if (reach === 'super' || reach === 'premium') return 'missSuper'
+  if (reach === 'normal') return 'missNormal'
+  return 'missNone'
+}
+
+export function decideYokoku(mode: Mode, win: boolean, reach: Reach, rng: Rng): Yokoku {
+  const cat = yokokuCategory(win, reach)
+  const normal = mode === 'normal'
+  return {
+    stepUp: normal ? pickWeighted(STEPUP_TABLE[cat], rng) : 0,
+    gijiren: normal ? pickWeighted(GIJIREN_TABLE[cat], rng) : 1,
+    title: pickWeighted(TITLE_TABLE[cat], rng),
+    cutin: reach === 'super' || reach === 'premium' ? pickWeighted(CUTIN_TABLE[win ? 'win' : 'miss'], rng) : null,
+    zone: normal && rng() < ZONE_RATE[cat],
+  }
 }
 
 /** ベイズの定理で「その演出が出たときの大当たり期待度」を計算する。 */
@@ -187,6 +303,11 @@ export function reliability<T extends string | number>(
   return pw + pm === 0 ? 0 : pw / (pw + pm)
 }
 
+/** ラッキートリガーの継続率 */
+export function ltContinueRate(): number {
+  return 1 - Math.pow(1 - SPEC.ltWinRate, SPEC.ltSpins)
+}
+
 /** RUSH の継続率（ST 中に1回以上当たる確率） */
 export function rushContinueRate(): number {
   return 1 - Math.pow(1 - SPEC.rushWinRate, SPEC.rushSpins)
@@ -197,11 +318,12 @@ export function rushContinueRate(): number {
  *  - straight    : コマ送りでそのまま止まる
  *  - slip        : 1コマ手前で止まり、暗転の「タメ」のあと1コマすべって当たり（失敗と思わせて成功）
  *  - revival     : ハズレで止まり、暗転のあと全リールが再始動して揃う（失敗と思わせて成功）
- *  - blackout    : 決着の直前に画面が真っ暗・無音になり、明けた瞬間に結果（当たりもハズレもある）
+ *  - darken      : 決着の直前に画面が真っ暗・無音になり、明けた瞬間に結果（当たりもハズレもある）
+ *    ※大当たり確定の「ブラックアウト」（SpinOutcome.blackout）とは別物
  *  - fakeAlign   : 一瞬揃って光りかけたあと、1コマずれてハズレ（成功と思わせて失敗）
  *  - fakeRevival : ハズレで止まり、復活と同じ暗転のタメを見せてから、そのままハズレ
  */
-export type Finale = 'straight' | 'slip' | 'revival' | 'blackout' | 'fakeAlign' | 'fakeRevival'
+export type Finale = 'straight' | 'slip' | 'revival' | 'darken' | 'fakeAlign' | 'fakeRevival'
 export type FinaleTier = 'normal' | 'super'
 
 export const FINALE_ON_WIN: Record<FinaleTier, ReadonlyArray<readonly [Finale, number]>> = {
@@ -212,7 +334,7 @@ export const FINALE_ON_WIN: Record<FinaleTier, ReadonlyArray<readonly [Finale, n
   super: [
     ['straight', 0.35],
     ['slip', 0.35],
-    ['blackout', 0.3],
+    ['darken', 0.3],
   ],
 }
 export const FINALE_ON_MISS: Record<FinaleTier, ReadonlyArray<readonly [Finale, number]>> = {
@@ -224,7 +346,7 @@ export const FINALE_ON_MISS: Record<FinaleTier, ReadonlyArray<readonly [Finale, 
     ['straight', 0.35],
     ['fakeAlign', 0.3],
     ['fakeRevival', 0.2],
-    ['blackout', 0.15],
+    ['darken', 0.15],
   ],
 }
 

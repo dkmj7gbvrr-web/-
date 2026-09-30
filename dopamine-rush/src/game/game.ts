@@ -9,14 +9,16 @@ import {
   type Finale,
   type FinaleTier,
   type HoldColor,
+  type Mode,
   type Reach,
+  type SignColor,
   type SpinOutcome,
 } from './odds'
 import { createPegs, reachedBottom, spawnBall, stepBall, W, type Ball, type Peg } from './physics'
 import { classifyPocket, type BoardPhase, type PocketKind } from './pockets'
 import type { Rng } from './rng'
 
-export type Scene = 'play' | 'jackpotIntro' | 'fever' | 'challenge' | 'rushIntro' | 'rushEnd'
+export type Scene = 'play' | 'jackpotIntro' | 'fever' | 'challenge' | 'rushIntro' | 'ltIntro' | 'rushEnd'
 
 export type GameEvent =
   | { type: 'peg'; peg: Peg; ball: Ball }
@@ -27,7 +29,16 @@ export type GameEvent =
   | { type: 'spinStart'; outcome: SpinOutcome }
   | { type: 'kakutei' }
   | { type: 'reelStop'; reel: number; heavy: boolean }
-  | { type: 'reach'; reach: Reach }
+  | { type: 'reach'; reach: Reach; title: SignColor }
+  | { type: 'stepUp'; step: number; final: boolean }
+  | { type: 'gijiren'; count: number }
+  | { type: 'zone'; count: number; target: boolean }
+  | { type: 'cutin'; color: SignColor }
+  | { type: 'blackoutReveal' }
+  | { type: 'darken' }
+  | { type: 'darkenEnd'; win: boolean }
+  | { type: 'over'; x: number; payout: number; count: number }
+  | { type: 'luckyTrigger' }
   | { type: 'escalate'; reach: Reach }
   | { type: 'pushPrompt' }
   | { type: 'pushed'; win: boolean }
@@ -43,18 +54,17 @@ export type GameEvent =
   | { type: 'fakeAlignBreak' }
   | { type: 'fakeRevivalEnd' }
   | { type: 'blackout' }
-  | { type: 'blackoutEnd'; win: boolean }
   | { type: 'miss'; reach: Reach }
   | { type: 'jackpot'; outcome: SpinOutcome; chain: number }
   | { type: 'roundStart'; round: number; total: number }
   | { type: 'attackerIn'; x: number; payout: number }
   | { type: 'upgrade'; total: number }
-  | { type: 'feverEnd'; payout: number }
+  | { type: 'feverEnd'; payout: number; over: number }
   | { type: 'challengeStart' }
   | { type: 'challengeResult'; success: boolean }
-  | { type: 'rushStart'; chain: number }
+  | { type: 'rushStart'; chain: number; lt: boolean }
   | { type: 'lastSpin' }
-  | { type: 'rushEnd'; chain: number; total: number }
+  | { type: 'rushEnd'; chain: number; total: number; lt: boolean }
   | { type: 'refill'; amount: number }
 
 export interface Reel {
@@ -85,8 +95,14 @@ export interface SpinRun {
   gaugeTarget: number
   /** 決着前の「タメ」：リール部分が暗くなり「・・・」を出す */
   dark: boolean
-  /** 決着直前の暗転（画面全体が真っ暗・無音） */
+  /** 決着直前の暗転（画面全体が真っ暗・無音。当たりもハズレもある） */
+  darken: boolean
+  /** 大当たり確定のブラックアウト（画面が落ち、揃った図柄がうっすら回る） */
   blackout: boolean
+  /** ステップアップ予告の現在段階（0＝非表示） */
+  step: number
+  /** 出ているカットインの色と経過秒 */
+  cutin: { color: SignColor; t: number } | null
   /** 連打チャンス中なら残り秒と連打数 */
   renda: { left: number; taps: number } | null
   /** 「発展!?」の最中 */
@@ -104,8 +120,14 @@ export interface FeverState {
   interval: number
   payout: number
   spawnTimer: number
-  fromMode: 'normal' | 'rush'
+  fromMode: Mode
   rushEntry: boolean
+  luckyTrigger: boolean
+  /** 規定数に達してからアタッカーが閉じきるまでの残り秒（>0 のあいだ入った玉はオーバー入賞） */
+  closing: number
+  /** このラウンドのオーバー入賞数 / 大当たり全体のオーバー入賞数 */
+  overInRound: number
+  over: number
 }
 
 export const FIRE_INTERVAL = 0.14
@@ -126,7 +148,11 @@ export class Game {
   phase: BoardPhase = 'normal'
   pegs: Peg[] = createPegs()
   flying: Ball[] = []
-  holds: Array<{ outcome: SpinOutcome; shown: HoldColor }> = []
+  holds: Array<{ outcome: SpinOutcome; shown: HoldColor; zone: boolean }> = []
+  /** ラッキートリガー（上位 RUSH）中か */
+  lt = false
+  /** 先読みゾーン：連続予告の回数（0＝ゾーン外） */
+  zoneCount = 0
   spin: SpinRun | null = null
   reels: Reel[] = [0, 1, 2].map((i) => ({ pos: i * 2, speed: 0, stopping: null, stopped: true }))
   rushLeft = 0
@@ -241,6 +267,9 @@ export class Game {
       case 'rushIntro':
         if (this.sceneTime > 1.8) this.setScene('play')
         break
+      case 'ltIntro':
+        if (this.sceneTime > 4.2) this.enterRush()
+        break
       case 'rushEnd':
         if (this.sceneTime > 3.8) this.backToNormal()
         break
@@ -313,10 +342,16 @@ export class Game {
       case 'attacker': {
         const f = this.fever!
         if (f.inRound >= SPEC.ballsPerRound) {
-          this.emit({ type: 'pocket', kind: 'out', x: ball.x, payout: 0 })
+          // 規定数に達したあと、閉じきる前に滑り込んだ玉＝オーバー入賞
+          f.overInRound++
+          f.over++
+          f.payout += SPEC.payoutPerBall
+          this.balls += SPEC.payoutPerBall
+          this.emit({ type: 'over', x: ball.x, payout: SPEC.payoutPerBall, count: f.overInRound })
           return
         }
         f.inRound++
+        if (f.inRound >= SPEC.ballsPerRound) f.closing = SPEC.attackerCloseTime
         f.payout += SPEC.payoutPerBall
         this.balls += SPEC.payoutPerBall
         this.emit({ type: 'attackerIn', x: ball.x, payout: SPEC.payoutPerBall })
@@ -326,9 +361,12 @@ export class Game {
         this.balls += SPEC.startPocketPayout
         this.emit({ type: 'pocket', kind: 'start', x: ball.x, payout: SPEC.startPocketPayout })
         if (this.holds.length < SPEC.maxHolds) {
-          const mode = this.phase === 'rush' ? 'rush' : 'normal'
+          const mode = this.boardMode()
           const outcome = decideSpin(mode, this.rng)
-          this.holds.push({ outcome, shown: outcome.entryColor })
+          // 先読みゾーンは、この保留より前に消化される変動があるときだけ成立する
+          const ahead = this.holds.length + (this.spin ? 1 : 0)
+          const zone = outcome.yokoku.zone && ahead > 0 && !this.holds.some((h) => h.zone)
+          this.holds.push({ outcome, shown: outcome.entryColor, zone })
           this.emit({ type: 'holdAdded', color: outcome.entryColor })
         }
         return
@@ -340,6 +378,10 @@ export class Game {
       case 'out':
         this.emit({ type: 'pocket', kind: 'out', x: ball.x, payout: 0 })
     }
+  }
+
+  private boardMode(): Mode {
+    return this.phase === 'rush' ? (this.lt ? 'lt' : 'rush') : 'normal'
   }
 
   private feverOpen(): boolean {
@@ -389,6 +431,7 @@ export class Game {
       if (sp.pushWait > PUSH_AUTO) this.push()
       return
     }
+    if (sp.cutin) sp.cutin.t += dt
     if (sp.renda) {
       sp.renda.left -= dt
       sp.gaugeTarget = Math.min(0.92, sp.gaugeTarget + dt * 0.06)
@@ -404,11 +447,19 @@ export class Game {
   private startNextSpin() {
     const h = this.holds.shift()!
     let outcome = h.outcome
-    const mode = this.phase === 'rush' ? 'rush' : 'normal'
+    const mode = this.boardMode()
     if (outcome.mode !== mode) outcome = decideSpin(mode, this.rng)
     const fast = mode === 'normal' && this.holds.length >= 3
+    // 先読みゾーン：対象保留より前の変動ごとに連続予告を1つずつ積み、対象の変動で最高潮にする
+    const zoneAhead = this.holds.some((x) => x.zone)
+    if (mode === 'normal' && (zoneAhead || h.zone)) {
+      this.zoneCount++
+      this.emit({ type: 'zone', count: this.zoneCount, target: h.zone })
+    } else {
+      this.zoneCount = 0
+    }
     let lastSpin = false
-    if (mode === 'rush') {
+    if (mode !== 'normal') {
       this.rushLeft--
       lastSpin = this.rushLeft === 0
     }
@@ -429,7 +480,10 @@ export class Game {
       gauge: 0,
       gaugeTarget: 0,
       dark: false,
+      darken: false,
       blackout: false,
+      step: 0,
+      cutin: null,
       renda: null,
       developing: false,
       finale: null,
@@ -440,19 +494,21 @@ export class Game {
       this.emit({ type: 'holdChange', from: h.shown, to: outcome.tell })
     }
     if (lastSpin) this.emit({ type: 'lastSpin' })
-    this.buildTimeline(sp, fast, lastSpin)
+    if (outcome.blackout) this.buildBlackout(sp)
+    else this.buildTimeline(sp, fast, lastSpin)
     // 演出の予約は前後して積むことがあるので時刻順に並べる（同時刻は積んだ順）
     sp.actions.sort((x, y) => x.at - y.at)
   }
 
   private buildTimeline(sp: SpinRun, fast: boolean, lastSpin: boolean) {
     const o = sp.outcome
-    const rush = o.mode === 'rush'
+    const rush = o.mode !== 'normal'
     const k = rush ? 0.6 : 1
     const add = (at: number, fn: () => void) => sp.actions.push({ at, fn })
     const [s0, s1, s2] = o.symbols
-    const L = rush ? 0.35 : fast ? 0.45 : 0.9
-    const R = rush ? 0.6 : fast ? 0.75 : 1.5
+    const pre = this.schedulePreview(sp)
+    const L = pre + (rush ? 0.35 : fast ? 0.45 : 0.9)
+    const R = pre + (rush ? 0.6 : fast ? 0.75 : 1.5)
     let reach = o.reach
     // RUSH 最終変動はリーチなしでも PUSH で結果を開ける（最後の1回に緊張を集める）
     if (lastSpin && reach === 'none') reach = 'normal'
@@ -474,7 +530,7 @@ export class Game {
       sp.stage = 'normal'
       sp.gaugeTarget = 0.2
       this.reels[1].speed = 14
-      this.emit({ type: 'reach', reach })
+      this.emit({ type: 'reach', reach, title: o.yokoku.title })
     })
     let t = R + 1.2 * k
     const escalate = (at: number, level: Reach, gauge: number) =>
@@ -531,6 +587,19 @@ export class Game {
         t += 1.3 * k
         escalate(t, 'premium', 0.7)
       }
+      const cutin = o.yokoku.cutin
+      if (cutin) {
+        t += 1.1 * k
+        add(t, () => {
+          sp.cutin = { color: cutin, t: 0 }
+          sp.gaugeTarget = Math.max(sp.gaugeTarget, SIGN_GAUGE[cutin])
+          this.emit({ type: 'cutin', color: cutin })
+        })
+        add(t + 1.2 * k, () => {
+          sp.cutin = null
+        })
+        t += 0.2 * k
+      }
       if (!rush) {
         t += 1.3
         add(t, () => {
@@ -550,6 +619,74 @@ export class Game {
       t = this.scheduleFinale(sp, t, 'super', k)
     }
     add(t, () => this.resolve(sp, reach))
+  }
+
+  /**
+   * 変動開始直後の予告（ステップアップ → 擬似連）を予約し、かかった秒数を返す。
+   * 通常時のみ。RUSH 中はテンポを優先して出さない。
+   */
+  private schedulePreview(sp: SpinRun): number {
+    const y = sp.outcome.yokoku
+    if (sp.outcome.mode !== 'normal') return 0
+    const add = (at: number, fn: () => void) => sp.actions.push({ at, fn })
+    let t = 0.15
+    for (let step = 1; step <= y.stepUp; step++) {
+      const st = step
+      add(t, () => {
+        sp.step = st
+        sp.gaugeTarget = Math.max(sp.gaugeTarget, st * 0.08)
+        this.emit({ type: 'stepUp', step: st, final: st === y.stepUp })
+      })
+      t += 0.42
+    }
+    if (y.stepUp > 0) {
+      add(t + 0.2, () => {
+        sp.step = 0
+      })
+      t += 0.2
+    }
+    // 擬似連：全リールが一度止まり「NEXT」で再始動する
+    for (let n = 2; n <= y.gijiren; n++) {
+      const count = n
+      t += 0.8
+      add(t, () => {
+        for (let i = 0; i < 3; i++) this.stopReel(i, 1 + Math.floor(this.rng() * SYMBOL_COUNT), 0.2, 2)
+      })
+      t += 0.45
+      add(t, () => {
+        for (const r of this.reels) {
+          r.stopping = null
+          r.stopped = false
+          r.speed = 24 + this.rng() * 4
+        }
+        sp.gaugeTarget = Math.max(sp.gaugeTarget, 0.1 * count)
+        this.emit({ type: 'gijiren', count })
+      })
+      t += 0.2
+    }
+    return t
+  }
+
+  /**
+   * ブラックアウト（大当たり確定）：変動開始直後に画面が落ちて無音になり、
+   * 暗闇の中で揃った図柄がうっすら回ってから、光が戻ると同時に大当たり。
+   */
+  private buildBlackout(sp: SpinRun) {
+    const add = (at: number, fn: () => void) => sp.actions.push({ at, fn })
+    const s = sp.outcome.symbols[0]
+    add(0.35, () => {
+      sp.blackout = true
+      this.emit({ type: 'blackout' })
+    })
+    add(2.2, () => {
+      for (let i = 0; i < 3; i++) this.stopReel(i, s, 0.6, 3)
+    })
+    add(3.6, () => {
+      sp.blackout = false
+      sp.gaugeTarget = 1
+      this.emit({ type: 'blackoutReveal' })
+    })
+    add(4.3, () => this.resolve(sp, 'none'))
   }
 
   /** 中リールを1コマ進める（コマ送り） */
@@ -666,18 +803,18 @@ export class Game {
           this.emit({ type: 'fakeRevivalEnd' })
         })
         return t + 0.6
-      case 'blackout':
+      case 'darken':
         // 決着直前に真っ暗・無音 → 明けた瞬間に結果
         add(t, () => {
-          sp.blackout = true
-          this.emit({ type: 'blackout' })
+          sp.darken = true
+          this.emit({ type: 'darken' })
         })
         t += 1.2 * k
         add(t, () => {
-          sp.blackout = false
+          sp.darken = false
           sp.gaugeTarget = o.win ? 1 : 0
           this.stopReel(1, s1, 0.18, 2, true)
-          this.emit({ type: 'blackoutEnd', win: o.win })
+          this.emit({ type: 'darkenEnd', win: o.win })
         })
         return t + 0.7
     }
@@ -687,7 +824,7 @@ export class Game {
     sp.done = true
     const o = sp.outcome
     if (o.win) {
-      this.chain = o.mode === 'rush' ? this.chain + 1 : 1
+      this.chain = o.mode !== 'normal' ? this.chain + 1 : 1
       if (o.mode === 'normal') this.chainTotal = 0
       this.phase = 'fever'
       this.fever = {
@@ -701,6 +838,10 @@ export class Game {
         spawnTimer: 0,
         fromMode: o.mode,
         rushEntry: o.rushEntry,
+        luckyTrigger: o.luckyTrigger,
+        closing: 0,
+        overInRound: 0,
+        over: 0,
       }
       this.firing = false
       this.setScene('jackpotIntro')
@@ -708,9 +849,9 @@ export class Game {
       return
     }
     if (shownReach !== 'none') this.emit({ type: 'miss', reach: shownReach })
-    if (o.mode === 'rush' && this.rushLeft <= 0) {
+    if (o.mode !== 'normal' && this.rushLeft <= 0) {
       this.setScene('rushEnd')
-      this.emit({ type: 'rushEnd', chain: this.chain, total: this.chainTotal })
+      this.emit({ type: 'rushEnd', chain: this.chain, total: this.chainTotal, lt: this.lt })
     }
   }
 
@@ -726,6 +867,8 @@ export class Game {
     f.round++
     f.inRound = 0
     f.roundTime = 0
+    f.closing = 0
+    f.overInRound = 0
     f.interval = ROUND_INTERVAL
     this.emit({ type: 'roundStart', round: f.round, total: f.shownRounds })
   }
@@ -744,6 +887,11 @@ export class Game {
       const x = W / 2 + (this.rng() - 0.5) * 220
       this.flying.push(spawnBall(this.nextId++, x, this.rng, true))
     }
+    if (f.closing > 0) {
+      // 規定数に達したアタッカーが閉じきるまでの間（ここで入るとオーバー入賞）
+      f.closing -= dt
+      if (f.closing > 0) return
+    }
     if (f.inRound >= SPEC.ballsPerRound || f.roundTime >= ROUND_MAX_TIME) {
       if (f.round < f.shownRounds) {
         this.nextRound()
@@ -760,8 +908,18 @@ export class Game {
   private endFever() {
     const f = this.fever!
     this.chainTotal += f.payout
-    this.emit({ type: 'feverEnd', payout: f.payout })
-    if (f.fromMode === 'rush') {
+    this.emit({ type: 'feverEnd', payout: f.payout, over: f.over })
+    if (f.fromMode !== 'normal') {
+      if (f.fromMode === 'rush' && f.luckyTrigger) {
+        // ラッキートリガー発動：RUSH より上の「上位 RUSH」へ
+        this.lt = true
+        this.phase = 'rush'
+        this.rushLeft = SPEC.ltSpins
+        this.fever = null
+        this.setScene('ltIntro')
+        this.emit({ type: 'luckyTrigger' })
+        return
+      }
       this.enterRush()
       return
     }
@@ -780,15 +938,16 @@ export class Game {
 
   private enterRush() {
     this.phase = 'rush'
-    this.rushLeft = SPEC.rushSpins
+    this.rushLeft = this.lt ? SPEC.ltSpins : SPEC.rushSpins
     this.fever = null
     this.challengeResult = null
     this.setScene('rushIntro')
-    this.emit({ type: 'rushStart', chain: this.chain })
+    this.emit({ type: 'rushStart', chain: this.chain, lt: this.lt })
   }
 
   private backToNormal() {
     this.phase = 'normal'
+    this.lt = false
     this.fever = null
     this.challengeResult = null
     this.chain = 0
@@ -797,3 +956,13 @@ export class Game {
 }
 
 export const holdLevel = (c: HoldColor) => HOLD_COLORS.indexOf(c)
+
+/** 色サインが出たときにゲージを押し上げる量 */
+const SIGN_GAUGE: Record<SignColor, number> = {
+  white: 0.3,
+  blue: 0.4,
+  green: 0.5,
+  red: 0.65,
+  gold: 0.8,
+  rainbow: 1,
+}

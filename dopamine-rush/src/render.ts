@@ -1,7 +1,7 @@
 import { AD_REWARD, FALLBACK_REWARD, type GateState } from './ads/refillGate'
 import type { Fx } from './fx'
 import { holdLevel, PUSH_AUTO, RENDA_TIME, type Game } from './game/game'
-import { SPEC, SYMBOL_COUNT, type HoldColor } from './game/odds'
+import { SPEC, SYMBOL_COUNT, type HoldColor, type SignColor } from './game/odds'
 import { BALL_R, BOARD_BOTTOM, BOARD_TOP, H, PEG_R, W, WALL_L, WALL_R } from './game/physics'
 import { ATTACKER, BONUS_POCKETS, startPocket } from './game/pockets'
 
@@ -68,6 +68,9 @@ export function render(ctx: CanvasRenderingContext2D, g: Game, fx: Fx, ui: Ui, t
   drawParticles(ctx, fx)
   drawSceneOverlay(ctx, g, ui, time)
   drawBanner(ctx, fx, time)
+  if (g.spin && g.spin.step > 0) drawStepUp(ctx, g.spin.step, g.spin.outcome.yokoku.stepUp, time)
+  if (g.spin?.cutin) drawCutin(ctx, g.spin.cutin, time)
+  if (g.zoneCount > 0 && g.phase === 'normal') drawZone(ctx, g.zoneCount, time)
   if (g.spin?.renda) drawRenda(ctx, g, time)
   if (g.pushPending) drawPush(ctx, g, time)
   if (g.needsRefill) drawRefill(ctx, ui.gate, time)
@@ -79,16 +82,29 @@ export function render(ctx: CanvasRenderingContext2D, g: Game, fx: Fx, ui: Ui, t
     ctx.fillRect(0, 0, W, H)
     ctx.globalAlpha = 1
   }
-  if (g.spin?.blackout) {
+  if (g.spin?.darken || g.spin?.blackout) {
     ctx.fillStyle = '#000'
     ctx.fillRect(0, 0, W, H)
+  }
+  if (g.spin?.blackout) {
+    // 確定ブラックアウト：暗闇の中で図柄だけがうっすら回る
+    ctx.globalAlpha = 0.28
+    drawReels(ctx, g, time)
+    ctx.globalAlpha = 1
   }
   if (!ui.started) drawTitle(ctx, ui, time)
 }
 
 function drawBackground(ctx: CanvasRenderingContext2D, g: Game, fx: Fx, t: number) {
   const bg = ctx.createLinearGradient(0, 0, 0, H)
-  if (g.phase === 'rush') {
+  if (g.phase === 'rush' && g.lt) {
+    bg.addColorStop(0, '#3d2a00')
+    bg.addColorStop(1, '#140a00')
+  } else if (g.zoneCount > 0 && g.phase === 'normal') {
+    // 先読みゾーン中は背景が紫に沈む
+    bg.addColorStop(0, '#2a0a4a')
+    bg.addColorStop(1, '#0a0220')
+  } else if (g.phase === 'rush') {
     bg.addColorStop(0, '#2a0033')
     bg.addColorStop(1, '#07001a')
   } else if (g.phase === 'fever') {
@@ -178,7 +194,8 @@ function drawBoard(ctx: CanvasRenderingContext2D, g: Game, t: number) {
     ctx.fillStyle = '#fff'
     ctx.font = 'bold 16px system-ui, sans-serif'
     ctx.textAlign = 'center'
-    ctx.fillText(open ? 'ATTACKER OPEN' : 'CLOSE', W / 2, py + 25)
+    const closing = open && (g.fever?.closing ?? 0) > 0
+    ctx.fillText(closing ? (Math.floor(t * 20) % 2 ? 'CLOSING…' : '') : open ? 'ATTACKER OPEN' : 'CLOSE', W / 2, py + 25)
   } else {
     for (const b of BONUS_POCKETS) {
       ctx.fillStyle = 'rgba(80,200,255,0.35)'
@@ -224,7 +241,8 @@ function drawBoard(ctx: CanvasRenderingContext2D, g: Game, t: number) {
 
 function drawSymbol(ctx: CanvasRenderingContext2D, idx: number, cx: number, cy: number, scale: number, alpha: number) {
   const n = idx + 1
-  ctx.globalAlpha = alpha
+  const baseAlpha = ctx.globalAlpha
+  ctx.globalAlpha = baseAlpha * alpha
   ctx.font = `900 ${Math.round(78 * scale)}px system-ui, sans-serif`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
@@ -233,7 +251,7 @@ function drawSymbol(ctx: CanvasRenderingContext2D, idx: number, cx: number, cy: 
   ctx.strokeText(String(n), cx, cy)
   ctx.fillStyle = SYMBOL_COLORS[idx]
   ctx.fillText(String(n), cx, cy)
-  ctx.globalAlpha = 1
+  ctx.globalAlpha = baseAlpha
   ctx.textBaseline = 'alphabetic'
 }
 
@@ -361,10 +379,10 @@ function drawHud(ctx: CanvasRenderingContext2D, g: Game, ui: Ui, t: number) {
   }
 
   ctx.textAlign = 'center'
-  if (g.phase === 'rush' || (g.phase === 'fever' && g.chain > 0 && g.fever?.fromMode === 'rush')) {
+  if (g.phase === 'rush' || (g.phase === 'fever' && g.chain > 0 && g.fever?.fromMode !== 'normal')) {
     ctx.font = '900 22px system-ui, sans-serif'
-    ctx.fillStyle = rainbowGradient(ctx, 150, 300, t)
-    ctx.fillText(`RUSH ${g.chain}連`, W / 2, 30)
+    ctx.fillStyle = g.lt ? '#ffd23d' : rainbowGradient(ctx, 150, 300, t)
+    ctx.fillText(g.lt ? `LT 上位RUSH ${g.chain}連` : `RUSH ${g.chain}連`, W / 2, 30)
     if (g.phase === 'rush') {
       ctx.font = 'bold 12px system-ui, sans-serif'
       ctx.fillStyle = '#ffb3f5'
@@ -468,6 +486,66 @@ function drawBanner(ctx: CanvasRenderingContext2D, fx: Fx, t: number) {
     ctx.fillText(b.sub, 0, 40)
   }
   ctx.restore()
+}
+
+const SIGN_FILL: Record<SignColor, string> = {
+  white: '#e8eef7',
+  blue: '#3d8bff',
+  green: '#27d17f',
+  red: '#ff3355',
+  gold: '#ffd23d',
+  rainbow: 'rainbow',
+}
+const STEP_COLORS: SignColor[] = ['white', 'white', 'blue', 'green', 'red', 'gold']
+
+/** ステップアップ予告：段階が上がるほど枠が大きく・色が上がる */
+function drawStepUp(ctx: CanvasRenderingContext2D, step: number, finalStep: number, t: number) {
+  const c = STEP_COLORS[Math.min(step, 5)]
+  const w = 120 + step * 36
+  const h = 50 + step * 12
+  const x = W / 2 - w / 2
+  const y = 470 - h / 2
+  ctx.save()
+  roundRect(ctx, x, y, w, h, 12)
+  ctx.fillStyle = 'rgba(0,0,0,0.75)'
+  ctx.fill()
+  ctx.lineWidth = 3 + step
+  ctx.strokeStyle = step >= 5 && finalStep >= 5 ? rainbowGradient(ctx, x, x + w, t) : SIGN_FILL[c]
+  ctx.stroke()
+  ctx.textAlign = 'center'
+  ctx.font = `900 ${20 + step * 5}px system-ui, sans-serif`
+  ctx.fillStyle = SIGN_FILL[c] === 'rainbow' ? '#fff' : SIGN_FILL[c]
+  ctx.fillText(step >= 5 ? 'STEP MAX' : `STEP ${step}`, W / 2, y + h / 2 + 8 + step)
+  ctx.restore()
+}
+
+/** カットイン：画面を斜めに横切る色の帯。色が期待度のサイン */
+function drawCutin(ctx: CanvasRenderingContext2D, c: { color: SignColor; t: number }, t: number) {
+  const k = Math.min(1, c.t / 0.18)
+  const off = (1 - k) * W * 1.2
+  ctx.save()
+  ctx.translate(W / 2 - off, 460)
+  ctx.rotate(-0.12)
+  ctx.fillStyle = c.color === 'rainbow' ? rainbowGradient(ctx, -W, W, t) : SIGN_FILL[c.color]
+  ctx.globalAlpha = 0.92
+  ctx.fillRect(-W, -46, W * 2, 92)
+  ctx.globalAlpha = 1
+  ctx.fillStyle = 'rgba(0,0,0,0.85)'
+  ctx.fillRect(-W, -30, W * 2, 60)
+  ctx.textAlign = 'center'
+  ctx.font = '900 40px system-ui, sans-serif'
+  ctx.fillStyle = c.color === 'rainbow' ? rainbowGradient(ctx, -150, 150, t) : SIGN_FILL[c.color]
+  const label = c.color === 'rainbow' ? 'PREMIUM' : c.color === 'gold' ? '激アツ!!' : 'CHANCE!'
+  ctx.fillText(label, 0, 14)
+  ctx.restore()
+}
+
+/** 先読みゾーン：保留の横に連続予告の回数 */
+function drawZone(ctx: CanvasRenderingContext2D, count: number, t: number) {
+  ctx.textAlign = 'left'
+  ctx.font = '900 13px system-ui, sans-serif'
+  ctx.fillStyle = count >= 3 ? `rgba(255,80,110,${0.7 + 0.3 * Math.sin(t * 10)})` : '#c9a6ff'
+  ctx.fillText(`ZONE 連続${count}`, 330, 240)
 }
 
 function drawRenda(ctx: CanvasRenderingContext2D, g: Game, t: number) {
@@ -603,6 +681,19 @@ function drawSceneOverlay(ctx: CanvasRenderingContext2D, g: Game, ui: Ui, t: num
       ctx.fillStyle = i < f.inRound ? '#ffd23d' : 'rgba(255,255,255,0.15)'
       ctx.fill()
     }
+    // オーバー入賞（規定数を超えて入った玉）はピンクで右に足していく
+    for (let i = 0; i < f.overInRound; i++) {
+      ctx.beginPath()
+      ctx.arc(W / 2 - 90 + (SPEC.ballsPerRound + i) * 20, 372, 7, 0, Math.PI * 2)
+      ctx.fillStyle = '#ff6fb5'
+      ctx.fill()
+    }
+    if (f.over > 0) {
+      ctx.font = 'bold 13px system-ui, sans-serif'
+      ctx.fillStyle = '#ff9fd0'
+      ctx.textAlign = 'center'
+      ctx.fillText(`オーバー入賞 ${f.over}個`, W / 2, 398)
+    }
   }
   if (g.scene === 'challenge') {
     ctx.fillStyle = 'rgba(0,0,0,0.6)'
@@ -639,13 +730,29 @@ function drawSceneOverlay(ctx: CanvasRenderingContext2D, g: Game, ui: Ui, t: num
     ctx.fillStyle = '#fff'
     ctx.fillText('50%', gx + gw / 2, 432)
   }
+  if (g.scene === 'ltIntro') {
+    ctx.fillStyle = 'rgba(20,12,0,0.75)'
+    ctx.fillRect(0, BOARD_TOP - 12, W, H)
+    ctx.textAlign = 'center'
+    const pulse = 1 + 0.06 * Math.sin(t * 10)
+    ctx.save()
+    ctx.translate(W / 2, 560)
+    ctx.scale(pulse, pulse)
+    ctx.font = '900 30px system-ui, sans-serif'
+    ctx.fillStyle = '#ffd23d'
+    ctx.fillText('上位RUSH 突入', 0, 0)
+    ctx.restore()
+    ctx.font = 'bold 15px system-ui, sans-serif'
+    ctx.fillStyle = '#fff3b0'
+    ctx.fillText(`${SPEC.ltSpins}回転 × 1/${Math.round(1 / SPEC.ltWinRate)}・16R が出やすい`, W / 2, 596)
+  }
   if (g.scene === 'rushEnd') {
     ctx.fillStyle = 'rgba(0,0,0,0.7)'
     ctx.fillRect(0, BOARD_TOP - 12, W, H)
     ctx.textAlign = 'center'
     ctx.font = '900 24px system-ui, sans-serif'
     ctx.fillStyle = '#fff'
-    ctx.fillText('RUSH 終了', W / 2, 360)
+    ctx.fillText(g.lt ? 'LUCKY TRIGGER 終了' : 'RUSH 終了', W / 2, 360)
     ctx.font = '900 54px system-ui, sans-serif'
     ctx.fillStyle = rainbowGradient(ctx, 100, 350, t)
     ctx.fillText(`${g.chain}連`, W / 2, 430)

@@ -236,6 +236,57 @@ class Audio {
     this.tone(82.4, dur, { type: 'triangle', gain: 0.05, attack: 0.5 })
   }
 
+  /** ステップアップ予告：段階ごとに1音ずつ上がる */
+  stepUp(step: number, final: boolean) {
+    const m = 72 + [0, 2, 4, 7, 9, 12][Math.min(step, 5)]
+    this.tone(midiToFreq(m), final ? 0.35 : 0.18, { type: 'square', gain: 0.07 })
+    this.tone(midiToFreq(m + 7), final ? 0.35 : 0.18, { type: 'triangle', gain: 0.04 })
+    this.noise(0.08, { gain: 0.1, from: 3000 })
+  }
+
+  /** 擬似連の「NEXT」 */
+  gijiren(count: number) {
+    for (let i = 0; i < count; i++) {
+      this.tone(midiToFreq(79 + i * 5), 0.12, { type: 'square', gain: 0.06, delay: i * 0.08 })
+    }
+    this.tone(200, 0.3, { type: 'sawtooth', gain: 0.05, slideTo: 1600 })
+  }
+
+  /** カットイン（色が上がるほど厚く） */
+  cutin(level: number) {
+    this.noise(0.35, { gain: 0.25, from: 800, to: 8000, q: 0.8 })
+    this.tone(110 * (1 + level * 0.25), 0.4, { type: 'sawtooth', gain: 0.06, slideTo: 880 * (1 + level * 0.25) })
+    if (level >= 4) this.kakutei()
+  }
+
+  /** 先読みゾーン：連続予告の1回分 */
+  zone(count: number, target: boolean) {
+    const base = 60 + Math.min(count, 5) * 2
+    ;[0, 4, 7].forEach((d, i) => this.tone(midiToFreq(base + d), 0.25, { type: 'triangle', gain: 0.07, delay: i * 0.06 }))
+    if (target) this.riser(0.8, 0.8)
+  }
+
+  /** ブラックアウト中にうっすら聞こえる「歓喜の歌」の頭 */
+  odeWhisper() {
+    const notes = [76, 76, 77, 79, 79, 77, 76, 74]
+    notes.forEach((m, i) => this.tone(midiToFreq(m), 0.34, { type: 'sine', gain: 0.05, delay: i * 0.18, attack: 0.03 }))
+  }
+
+  /** オーバー入賞：規定数を超えて入った1玉 */
+  over(count: number) {
+    this.tone(midiToFreq(91 + Math.min(count, 5) * 2), 0.18, { type: 'square', gain: 0.07 })
+    this.tone(midiToFreq(98 + Math.min(count, 5) * 2), 0.25, { type: 'sine', gain: 0.06, delay: 0.05 })
+  }
+
+  /** ラッキートリガー発動 */
+  luckyTrigger() {
+    this.impact()
+    ;[60, 67, 72, 76, 79, 84, 88, 91].forEach((m, i) =>
+      this.tone(midiToFreq(m), 0.4, { type: 'square', gain: 0.07, delay: 0.1 + i * 0.07 }),
+    )
+    this.tone(2093, 1.6, { type: 'sine', gain: 0.15, slideTo: 2349, delay: 0.7 })
+  }
+
   private ducked = false
   /** 暗転・タメの間は BGM を消す（無音で溜める） */
   duck(on: boolean) {

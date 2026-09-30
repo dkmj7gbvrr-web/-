@@ -6,7 +6,7 @@ import { RefillGate } from './ads/refillGate'
 import { Fx } from './fx'
 import { audio } from './game/audio'
 import { Game, holdLevel, type GameEvent } from './game/game'
-import type { HoldColor } from './game/odds'
+import { ltContinueRate, SIGN_COLORS, type HoldColor, type SignColor } from './game/odds'
 import { BOARD_BOTTOM, H, W } from './game/physics'
 import { mulberry32 } from './game/rng'
 import { BTN_MOTION, BTN_MUTE, BTN_REFILL, render, type Ui } from './render'
@@ -60,6 +60,15 @@ const HOLD_COLOR_CSS: Record<HoldColor, string> = {
   gold: '#ffd23d',
   rainbow: '#ffffff',
 }
+const SIGN_CSS: Record<SignColor, string> = {
+  white: '#ffffff',
+  blue: '#3d8bff',
+  green: '#27d17f',
+  red: '#ff3355',
+  gold: '#ffd23d',
+  rainbow: '#ffffff',
+}
+const signLevel = (c: SignColor) => SIGN_COLORS.indexOf(c)
 const RAINBOW = ['#ff3b3b', '#ffa53d', '#ffe23d', '#3ddc84', '#39c0ff', '#b77dff', '#ff6fb5']
 
 let lastPegSound = 0
@@ -130,8 +139,68 @@ function onEvent(e: GameEvent) {
       break
     case 'reach':
       audio.reach()
-      fx.show('リーチ!', { color: '#ffd23d', size: 62, dur: 1.1 , priority: 2 })
-      fx.shake(0.2)
+      // リーチタイトルの色も期待度のサイン（白 < 青 < 緑 < 赤 < 金 < 虹）
+      fx.show('リーチ!', {
+        color: SIGN_CSS[e.title],
+        rainbow: e.title === 'rainbow',
+        size: 62 + signLevel(e.title) * 3,
+        dur: 1.1,
+        priority: 2,
+      })
+      fx.shake(0.2 + signLevel(e.title) * 0.05)
+      if (signLevel(e.title) >= 4) fx.doFlash(0.4, SIGN_CSS[e.title])
+      break
+    case 'stepUp':
+      audio.stepUp(e.step, e.final)
+      fx.shake(0.05 * e.step)
+      if (e.step >= 4) fx.doFlash(0.15 * (e.step - 3), e.step >= 5 ? '#ffd23d' : '#ff3355')
+      break
+    case 'gijiren':
+      audio.gijiren(e.count)
+      fx.show(`NEXT ×${e.count}`, { color: e.count >= 3 ? '#ff3355' : '#39e0e0', size: 52 + e.count * 4, dur: 0.8, priority: 2 })
+      fx.doFlash(0.3, '#39e0e0')
+      fx.shake(0.15 * e.count)
+      break
+    case 'zone':
+      audio.zone(e.count, e.target)
+      fx.show(e.target ? '連続予告 MAX!!' : `連続予告 ${e.count}`, {
+        color: e.count >= 3 || e.target ? '#ff3355' : '#b77dff',
+        rainbow: e.target && e.count >= 3,
+        size: 40,
+        dur: 0.9,
+        priority: 1,
+      })
+      fx.doFlash(0.2, '#b77dff')
+      break
+    case 'cutin':
+      audio.cutin(signLevel(e.color))
+      fx.shake(0.2 + signLevel(e.color) * 0.1)
+      fx.doFlash(0.25 + signLevel(e.color) * 0.1, SIGN_CSS[e.color])
+      if (e.color === 'rainbow') fx.confettiRain(80, W)
+      break
+    case 'blackoutReveal':
+      audio.kakutei()
+      audio.impact()
+      fx.show('確定!!', { rainbow: true, size: 90, dur: 1.2, priority: 3 })
+      fx.doFlash(1)
+      fx.stop(0.3)
+      fx.shake(1)
+      break
+    case 'over':
+      audio.over(e.count)
+      fx.burst(e.x, BOARD_BOTTOM, 14, RAINBOW, 260, 'star')
+      fx.popup(e.x, BOARD_BOTTOM - 24, `OVER +${e.payout}`, '#ff6fb5', 20)
+      fx.shake(0.12)
+      break
+    case 'luckyTrigger':
+      audio.playMusic(null)
+      audio.luckyTrigger()
+      fx.show('LUCKY TRIGGER', { rainbow: true, size: 44, dur: 3.2, sub: `上位RUSH 継続率 約${Math.round(ltContinueRate() * 100)}%`, priority: 3 })
+      fx.doFlash(1, '#ffd23d')
+      fx.stop(0.4)
+      fx.shake(1)
+      fx.confettiRain(260, W)
+      fx.burst(W / 2, 300, 120, ['#ffd23d', '#fff3b0', '#ffffff', '#ffb800'], 480, 'star')
       break
     case 'escalate':
       if (e.reach === 'premium') {
@@ -225,9 +294,14 @@ function onEvent(e: GameEvent) {
       audio.tone(300, 0.6, { type: 'triangle', gain: 0.05, slideTo: 140 })
       break
     case 'blackout':
+      // 大当たり確定のブラックアウト：画面を落として無音にし、うっすら「歓喜の歌」
+      fx.rainbow = 0
+      window.setTimeout(() => audio.odeWhisper(), 900)
+      break
+    case 'darken':
       fx.rainbow = 0
       break
-    case 'blackoutEnd':
+    case 'darkenEnd':
       if (e.win) {
         audio.kakutei()
         audio.impact()
@@ -251,7 +325,7 @@ function onEvent(e: GameEvent) {
       fx.rainbow = 0
       fx.confettiRain(160, W)
       fx.burst(W / 2, 140, 80, RAINBOW, 420, 'star')
-      const chainText = e.outcome.mode === 'rush' ? `${e.chain}連!!` : `${e.outcome.shownRounds}R`
+      const chainText = e.outcome.mode !== 'normal' ? `${e.chain}連!!` : `${e.outcome.shownRounds}R`
       fx.show('大当たり!!', { rainbow: true, size: 76, dur: 2.4, sub: chainText , priority: 3 })
       ui.displayPayout = 0
       attackerCount = 0
@@ -279,8 +353,14 @@ function onEvent(e: GameEvent) {
       break
     case 'feverEnd':
       // 通常時からの大当たりは突入チャレンジ画面に獲得数を出すので、テロップは RUSH 中だけ
-      if (game.phase === 'rush' || game.fever?.fromMode === 'rush') {
-        fx.show(`+${e.payout.toLocaleString()} 玉`, { color: '#ffd23d', size: 54, dur: 1.8, priority: 2 })
+      if (game.fever && game.fever.fromMode !== 'normal') {
+        fx.show(`+${e.payout.toLocaleString()} 玉`, {
+          color: '#ffd23d',
+          size: 54,
+          dur: 1.8,
+          priority: 2,
+          sub: e.over > 0 ? `オーバー入賞 ${e.over}個` : undefined,
+        })
       }
       audio.levelUp()
       updateBest(game.chain, game.chainTotal)
@@ -304,9 +384,14 @@ function onEvent(e: GameEvent) {
       }
       break
     case 'rushStart':
-      audio.playMusic('rush', Math.min(200, 138 + e.chain * 6))
-      fx.show(e.chain <= 1 ? 'RUSH START' : `${e.chain}連 継続中!!`, { rainbow: true, size: 50, dur: 1.5 })
-      fx.doFlash(0.5, '#ff4df0')
+      audio.playMusic('rush', Math.min(210, (e.lt ? 160 : 138) + e.chain * 6))
+      fx.show(e.chain <= 1 ? 'RUSH START' : `${e.chain}連 継続中!!`, {
+        rainbow: true,
+        size: 50,
+        dur: 1.5,
+        sub: e.lt ? 'LUCKY TRIGGER 上位RUSH' : undefined,
+      })
+      fx.doFlash(0.5, e.lt ? '#ffd23d' : '#ff4df0')
       break
     case 'lastSpin':
       fx.show('LAST!', { color: '#ff3355', size: 70, dur: 1 , priority: 2 })
@@ -465,7 +550,7 @@ function frame(now: number) {
 
     // 回転中のリールの刻み音
     // 暗転・タメの間は BGM と刻み音を止めて「無音」で溜める
-    const silent = !!game.spin && (game.spin.blackout || game.spin.dark)
+    const silent = !!game.spin && (game.spin.blackout || game.spin.darken || game.spin.dark)
     audio.duck(silent)
     const spinning = !silent && game.reels.some((r) => !r.stopped && !r.stopping)
     tickTimer -= dt
@@ -476,7 +561,7 @@ function frame(now: number) {
     // リーチ中・チャレンジ中の心音：期待度が上がるほど速くなる
     const tense = (game.spin && game.spin.stage !== 'rolling' && !game.spin.done) || (game.scene === 'challenge' && game.challengeResult === null)
     heartTimer -= dt
-    if (tense && !game.spin?.blackout && heartTimer <= 0) {
+    if (tense && !game.spin?.blackout && !game.spin?.darken && heartTimer <= 0) {
       audio.heartbeat()
       const gauge = game.spin?.gauge ?? Math.min(1, game.sceneTime / 3.2) * 0.8
       heartTimer = 0.95 - gauge * 0.5

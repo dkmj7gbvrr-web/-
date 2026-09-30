@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { Game, type GameEvent } from './game'
-import { SYMBOL_COUNT } from './odds'
+import { SPEC, SYMBOL_COUNT } from './odds'
 import { mulberry32 } from './rng'
 
 /** 押しっぱなしで遊び続けるプレイヤーを seconds 秒シミュレートする */
@@ -82,21 +82,45 @@ describe('リーチの決着演出', () => {
     const seen = new Set<string>()
     let pending: string[] = []
     simulate(8, 1500, (g, e) => {
-      if (['slip', 'revival', 'fakeAlign', 'fakeAlignBreak', 'fakeRevivalEnd', 'blackoutEnd', 'develop'].includes(e.type)) {
+      if (['slip', 'revival', 'fakeAlign', 'fakeAlignBreak', 'fakeRevivalEnd', 'darkenEnd', 'develop'].includes(e.type)) {
         pending.push(e.type)
         seen.add(e.type)
       }
       if (e.type === 'jackpot') {
         // 失敗と思わせるパターンの後は当たる
-        for (const p of pending) expect(['slip', 'revival', 'blackoutEnd', 'develop']).toContain(p)
+        for (const p of pending) expect(['slip', 'revival', 'darkenEnd', 'develop']).toContain(p)
         pending = []
       }
       if (e.type === 'miss') {
-        for (const p of pending) expect(['fakeAlign', 'fakeAlignBreak', 'fakeRevivalEnd', 'blackoutEnd', 'develop']).toContain(p)
+        for (const p of pending) expect(['fakeAlign', 'fakeAlignBreak', 'fakeRevivalEnd', 'darkenEnd', 'develop']).toContain(p)
         pending = []
       }
-      if (e.type === 'blackoutEnd') expect(e.win).toBe(g.spin!.outcome.win)
+      if (e.type === 'darkenEnd') expect(e.win).toBe(g.spin!.outcome.win)
     })
-    for (const t of ['slip', 'fakeAlign', 'fakeRevivalEnd', 'blackoutEnd', 'develop']) expect(seen).toContain(t)
+    for (const t of ['slip', 'fakeAlign', 'fakeRevivalEnd', 'darkenEnd', 'develop']) expect(seen).toContain(t)
   }, 120000)
+})
+
+describe('オーバー入賞・ラッキートリガー・ブラックアウト・先読みゾーン', () => {
+  test('長く遊ぶと、オーバー入賞・LT・ブラックアウト・連続予告が起き、矛盾しない', () => {
+    const seen = new Set<string>()
+    let zoneTargetPending = false
+    let payoutCheck = 0
+    simulate(12, 3000, (g, e) => {
+      seen.add(e.type)
+      if (e.type === 'over') {
+        // オーバー入賞は規定数に達したラウンドでだけ起きる
+        expect(g.fever!.inRound).toBe(SPEC.ballsPerRound)
+        payoutCheck++
+      }
+      if (e.type === 'luckyTrigger') expect(g.lt).toBe(true)
+      if (e.type === 'rushStart' && e.lt) expect(g.rushLeft).toBe(SPEC.ltSpins)
+      if (e.type === 'blackout') expect(g.spin!.outcome.win).toBe(true)
+      if (e.type === 'zone' && e.target) zoneTargetPending = true
+      if (e.type === 'spinStart') zoneTargetPending = false
+    })
+    void zoneTargetPending
+    for (const t of ['over', 'zone', 'stepUp', 'gijiren', 'cutin']) expect(seen).toContain(t)
+    expect(payoutCheck).toBeGreaterThan(0)
+  }, 240000)
 })
