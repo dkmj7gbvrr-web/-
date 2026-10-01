@@ -323,6 +323,17 @@ export class Chara {
   wobble = 0
   /** 成長したときの光 */
   evolveFlash = 0
+  /** 始動口に入ったときなどの小さなジャンプ 0〜1 */
+  hop = 0
+  /** リーチ舞台（SUPER 以上でポッチが主役になる場面）の出現度 0〜1 と、終わったあと残す秒数 */
+  reachK = 0
+  private reachLinger = 0
+  /** 炎のビーム（ボタンを離した瞬間）の残り秒と色 */
+  beam = 0
+  beamColor = '#ffffff'
+  /** 舞台のクリスタルの結末：1 で砕けて虹（当たり）、-1 で弾かれる（ハズレ）。0 は未決 */
+  crystal = 0
+  crystalT = 0
 
   react(mood: Mood, dur: number) {
     this.mood = mood
@@ -339,7 +350,28 @@ export class Chara {
     this.centerLeft = Math.max(this.centerLeft, dur)
   }
 
+  fireBeam(color: string) {
+    this.beam = 0.35
+    this.beamColor = color
+  }
+
+  /** リーチ舞台を出すべきか（毎フレーム）。消えるときは結末が見えるよう少し残す */
+  setReachScene(on: boolean, dt: number) {
+    if (on) {
+      this.reachLinger = 0.7
+      if (this.reachK < 0.05) {
+        this.crystal = 0
+        this.crystalT = 0
+      }
+    } else this.reachLinger -= dt
+    const target = on || this.reachLinger > 0 ? 1 : 0
+    this.reachK += (target - this.reachK) * Math.min(1, dt * (target ? 8 : 5))
+    if (this.crystal !== 0) this.crystalT += dt
+  }
+
   update(dt: number) {
+    this.hop = Math.max(0, this.hop - dt * 3)
+    this.beam = Math.max(0, this.beam - dt)
     this.moodTimer -= dt
     if (this.moodTimer <= 0) this.mood = 'idle'
     this.flameTimer -= dt
