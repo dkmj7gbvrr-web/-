@@ -95,6 +95,7 @@ const HOLD_RGB: Record<HoldColor, string> = SIGN_RGB
 const RAINBOW = ['#ff3b3b', '#ffa53d', '#ffe23d', '#3ddc84', '#39c0ff', '#b77dff', '#ff6fb5']
 
 let lastPegSound = 0
+let chargeTick = 0
 let lastStage: Stage = 1
 /** ポッチの成長段階：通常時は殻から顔を出した状態、連チャンするほど育つ */
 function charaStage(): Stage {
@@ -296,12 +297,14 @@ function onEvent(e: GameEvent) {
       fx.ring(BUTTON.x, BUTTON.y, '#ff3355', 110)
       break
     case 'pushed':
+      // 溜めたぶんだけ、離した瞬間の衝撃が大きい
       audio.impact()
-      fx.stop(0.2)
-      fx.shake(0.4)
-      fx.punch(0.05)
-      fx.ring(BUTTON.x, BUTTON.y, '#ffffff', 160)
-      fx.doFlash(e.win ? 0.9 : 0.4)
+      fx.stop(0.15 + e.charge * 0.15)
+      fx.shake(0.4 + e.charge * 0.5)
+      fx.punch(0.05 + e.charge * 0.07)
+      fx.ring(BUTTON.x, BUTTON.y, '#ffffff', 160 + e.charge * 140)
+      if (e.charge > 0.3) fx.burst(BUTTON.x, BUTTON.y, Math.round(40 * e.charge), RAINBOW, 380, 'star')
+      fx.doFlash((e.win ? 0.9 : 0.4) + e.charge * 0.3)
       break
     case 'revival':
       chara.center(1)
@@ -338,17 +341,11 @@ function onEvent(e: GameEvent) {
         fx.shake(0.25)
       }
       break
-    case 'rendaStart':
-      audio.startPocket()
-      audio.riser(2.4, 0.9)
-      fx.doFlash(0.3, '#ff3355')
-      fx.ring(BUTTON.x, BUTTON.y, '#ff3355', 140)
-      break
-    case 'rendaTap':
-      audio.rendaTap(e.count)
-      fx.shake(0.06)
-      fx.ring(BUTTON.x, BUTTON.y, `hsl(${(e.count * 37) % 360},100%,65%)`, 90 + Math.min(e.count, 30) * 3)
-      fx.burst(BUTTON.x + (Math.random() - 0.5) * 160, BUTTON.y + (Math.random() - 0.5) * 60, 6, RAINBOW, 180, 'star')
+    case 'chargeStart':
+      // 長押しの溜め開始：ポッチが息を吸い込む
+      chara.react('hype', 3)
+      fx.ring(BUTTON.x, BUTTON.y, '#ffffff', 90)
+      chargeTick = 0
       break
     case 'crawlStep':
       audio.crawl(e.slow, e.last)
@@ -615,12 +612,9 @@ canvas.addEventListener('pointerdown', (ev) => {
     save()
     return
   }
-  if (game.rendaActive) {
-    game.tap()
-    return
-  }
   if (game.pushPending) {
-    game.push()
+    // 押した瞬間から溜まり始め、離すと決着（タップならすぐ決着）
+    game.pressDown()
     return
   }
   if (game.needsRefill && inside(p, BTN_REFILL)) {
@@ -635,6 +629,7 @@ canvas.addEventListener('pointermove', (ev) => {
   game.aimX = toLogical(ev).x
 })
 const release = () => {
+  game.pressUp()
   // オート発射中は指を離しても撃ち続ける
   if (!ui.autoFire) game.firing = false
 }
@@ -646,11 +641,11 @@ window.addEventListener('keydown', (ev) => {
   ev.preventDefault()
   audio.unlock()
   if (!ui.started) ui.started = true
-  else if (game.rendaActive) game.tap()
-  else if (game.pushPending) game.push()
+  else if (game.pushPending) game.pressDown()
   else game.firing = true
 })
 window.addEventListener('keyup', (ev) => {
+  if (ev.code === 'Space') game.pressUp()
   if (ev.code === 'Space' && !ui.autoFire) game.firing = false
 })
 
@@ -689,6 +684,33 @@ function frame(now: number) {
   } else if (ui.started) {
     audio.resume()
     if (ui.autoFire && game.balls > 0) game.firing = true
+    // 長押しの溜め：音が上がり、光の粒がボタンへ吸い込まれ、ポッチの炎が膨らむ
+    if (game.charging) {
+      chargeTick -= dt
+      if (chargeTick <= 0) {
+        audio.chargeTick(game.charge)
+        chargeTick = 0.075
+      }
+      for (let i = 0; i < 2; i++) {
+        const a = Math.random() * Math.PI * 2
+        const d = 120 + Math.random() * 60
+        fx.particles.push({
+          x: BUTTON.x + Math.cos(a) * d,
+          y: BUTTON.y + Math.sin(a) * d,
+          vx: -Math.cos(a) * d * 2.5,
+          vy: -Math.sin(a) * d * 2.5,
+          life: 0.4,
+          max: 0.4,
+          size: 2 + game.charge * 3,
+          color: RAINBOW[Math.floor(Math.random() * RAINBOW.length)],
+          kind: 'spark',
+          rot: 0,
+          vr: 0,
+        })
+      }
+      fx.shake(0.02 + game.charge * 0.03)
+      chara.breathe(game.charge > 0.7 ? 'rainbow' : 'rgb(255,120,60)', 0.3 + game.charge * 0.7, 0.2)
+    }
     // 連チャンでポッチが育ったら光らせる
     const stage = charaStage()
     if (stage > lastStage) {

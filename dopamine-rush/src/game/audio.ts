@@ -217,11 +217,12 @@ class Audio {
     ;[60, 64, 67].forEach((m, i) => this.tone(midiToFreq(m + 12), 0.2, { type: 'square', gain: 0.07, delay: i * 0.05 }))
   }
 
-  rendaTap(n: number) {
-    const k = Math.min(n, 24)
-    const midi = 72 + Math.floor(k / 5) * 12 + PENTA[k % 5]
-    this.tone(midiToFreq(midi), 0.08, { type: 'square', gain: 0.05 })
-    this.noise(0.04, { gain: 0.08, from: 4000 })
+  /** 長押しの溜め：溜まるほど高くなる刻み音 */
+  chargeTick(k: number) {
+    const step = Math.floor(k * 15)
+    const midi = 60 + Math.floor(step / 5) * 12 + PENTA[step % 5]
+    this.tone(midiToFreq(midi), 0.09, { type: 'square', gain: 0.04 + k * 0.04 })
+    this.tone(midiToFreq(midi + 7), 0.09, { type: 'sine', gain: 0.03 })
   }
 
   /** コマ送りの1コマ。遅いコマほど重く */
