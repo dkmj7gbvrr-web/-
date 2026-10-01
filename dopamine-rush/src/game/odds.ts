@@ -114,6 +114,20 @@ export const BLACKOUT_RATE = 0.04
  * ハズレなら LAST_CHANCE_ON_MISS の割合でボタン → 押しても復活ならず。
  */
 export const LAST_CHANCE_ON_WIN = 0.7
+
+/**
+ * 演出バランス（カスタム）。抽選結果は変えず、見せ方だけを変える。
+ *  - standard : 標準
+ *  - sakiyomi : 先読み重視。先読みゾーンが出やすく、待っている保留が育つ。変動開始後の予告は控えめ
+ *  - sakibare : 先バレ。入賞の瞬間に告知音が鳴るかどうかで「0か100か」が分かる。ほかの先読みは出ない
+ */
+export type Custom = 'standard' | 'sakiyomi' | 'sakibare'
+export const CUSTOMS: readonly Custom[] = ['standard', 'sakiyomi', 'sakibare']
+/** 先読み重視のとき、先読みゾーンの出現率を何倍にするか（当たり・ハズレとも同じ倍率なので期待度はほぼ変わらない） */
+export const SAKIYOMI_ZONE_BOOST = 2.5
+/** 先バレの告知音が鳴る割合（当たり / ハズレ） */
+export const SAKIBARE_ON_WIN = 0.8
+export const SAKIBARE_ON_MISS = 0.003
 export const LAST_CHANCE_ON_MISS = 0.4
 
 export const SYMBOL_COUNT = 7

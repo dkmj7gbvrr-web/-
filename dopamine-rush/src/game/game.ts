@@ -2,6 +2,12 @@ import {
   decideSpin,
   HOLD_COLORS,
   LAST_CHANCE_ON_MISS,
+  SAKIBARE_ON_MISS,
+  SAKIBARE_ON_WIN,
+  SAKIYOMI_ZONE_BOOST,
+  yokokuCategory,
+  ZONE_RATE,
+  type Custom,
   LAST_CHANCE_ON_WIN,
   nearMissCenter,
   nextSymbol,
@@ -28,7 +34,8 @@ export type GameEvent =
   | { type: 'gold'; peg: Peg; split: boolean }
   | { type: 'pocket'; kind: PocketKind; x: number; payout: number }
   | { type: 'holdAdded'; color: HoldColor }
-  | { type: 'holdChange'; from: HoldColor; to: HoldColor }
+  | { type: 'holdChange'; from: HoldColor; to: HoldColor; index: number }
+  | { type: 'sakibare' }
   | { type: 'spinStart'; outcome: SpinOutcome }
   | { type: 'kakutei' }
   | { type: 'reelStop'; reel: number; heavy: boolean }
@@ -160,6 +167,8 @@ export class Game {
   holds: Array<{ outcome: SpinOutcome; shown: HoldColor; zone: boolean }> = []
   /** ラッキートリガー（上位 RUSH）中か */
   lt = false
+  /** 演出バランス（見せ方だけを変える。当否・図柄・ラウンドなどの抽選結果には影響しない） */
+  custom: Custom = 'standard'
   /** 先読みゾーン：連続予告の回数（0＝ゾーン外） */
   zoneCount = 0
   spin: SpinRun | null = null
@@ -374,9 +383,22 @@ export class Game {
           const outcome = decideSpin(mode, this.rng)
           // 先読みゾーンは、この保留より前に消化される変動があるときだけ成立する
           const ahead = this.holds.length + (this.spin ? 1 : 0)
-          const zone = outcome.yokoku.zone && ahead > 0 && !this.holds.some((h) => h.zone)
-          this.holds.push({ outcome, shown: outcome.entryColor, zone })
-          this.emit({ type: 'holdAdded', color: outcome.entryColor })
+          const zoneRate =
+            this.custom === 'sakibare'
+              ? 0
+              : ZONE_RATE[yokokuCategory(outcome.win, outcome.reach)] * (this.custom === 'sakiyomi' ? SAKIYOMI_ZONE_BOOST : 1)
+          const zone = mode === 'normal' && ahead > 0 && !this.holds.some((h) => h.zone) && this.rng() < zoneRate
+          // 先バレ：保留の色は白で入り、当たりなら入賞の瞬間に告知音（ハズレでもまれに鳴る）
+          const shown: HoldColor = this.custom === 'sakibare' ? 'white' : outcome.entryColor
+          this.holds.push({ outcome, shown, zone })
+          this.emit({ type: 'holdAdded', color: shown })
+          if (
+            this.custom === 'sakibare' &&
+            mode === 'normal' &&
+            this.rng() < (outcome.win ? SAKIBARE_ON_WIN : SAKIBARE_ON_MISS)
+          ) {
+            this.emit({ type: 'sakibare' })
+          }
         }
         return
       }
@@ -472,6 +494,10 @@ export class Game {
       this.rushLeft--
       lastSpin = this.rushLeft === 0
     }
+    if (this.custom === 'sakiyomi' && mode === 'normal' && this.rng() < 0.5) {
+      // 先読み重視：変動開始後の予告（ステップアップ・擬似連）は控えめに
+      outcome = { ...outcome, yokoku: { ...outcome.yokoku, stepUp: 0, gijiren: 1 } }
+    }
     if (lastSpin && outcome.reach === 'none') {
       // RUSH 最終変動は必ずリーチにする（ハズレなら左右をそろえたニアミス目に作り直す）
       let symbols = outcome.symbols
@@ -511,7 +537,18 @@ export class Game {
     this.spin = sp
     this.emit({ type: 'spinStart', outcome })
     if (h.shown !== outcome.tell && mode === 'normal') {
-      this.emit({ type: 'holdChange', from: h.shown, to: outcome.tell })
+      this.emit({ type: 'holdChange', from: h.shown, to: outcome.tell, index: -1 })
+    }
+    if (this.custom === 'sakiyomi' && mode === 'normal') {
+      // 先読み重視：待っている保留が、本来の色へ向かって1段ずつ育つ
+      this.holds.forEach((x, i) => {
+        const cur = HOLD_COLORS.indexOf(x.shown)
+        if (cur < HOLD_COLORS.indexOf(x.outcome.tell) && this.rng() < 0.5) {
+          const to = HOLD_COLORS[cur + 1]
+          this.emit({ type: 'holdChange', from: x.shown, to, index: i })
+          x.shown = to
+        }
+      })
     }
     if (lastSpin) this.emit({ type: 'lastSpin' })
     if (outcome.iwakan === 'reverse') {
@@ -595,10 +632,13 @@ export class Game {
         t += 1.1
         add(t, () => {
           sp.developing = false
-          sp.gaugeTarget = 0.15
+          sp.gaugeTarget = 0
           this.emit({ type: 'developResult', success: false })
+          // 発展しない＝ハズレ。引っ張らずにその場で止めて次の変動へ
+          this.snapCenter(s1)
         })
-        t += 0.7
+        add(t + 0.3, () => this.resolve(sp, reach))
+        return
       }
       t = lastSpin ? this.scheduleLastChance(sp, t, k) : this.scheduleFinale(sp, t, 'normal', k)
     } else {
@@ -652,8 +692,11 @@ export class Game {
         t = this.scheduleLastChance(sp, t, k)
       } else {
         pushPrompt(t)
-        t += 0.05
-        t = this.scheduleFinale(sp, t, 'super', k)
+        t += 0.02
+        // ボタンを押したら、その瞬間に図柄がびたっと止まる（余韻なし）
+        sp.finale = 'straight'
+        add(t, () => this.snapCenter(s1))
+        t += 0.35
       }
     }
     add(t, () => this.resolve(sp, reach))
@@ -759,32 +802,37 @@ export class Game {
       sp.waitingPush = true
       this.emit({ type: 'lastChance' })
     })
-    t += 0.05
+    t += 0.02
+    // ボタンを押した瞬間に決着（余韻なし）
     if (o.win) {
       sp.finale = 'revival'
       add(t, () => {
         sp.lastChance = false
         sp.gaugeTarget = 1
-        for (const r of this.reels) {
-          r.stopping = null
-          r.stopped = false
-          r.speed = 26
-        }
+        this.snapCenter(W0)
         this.emit({ type: 'revival' })
       })
-      t += 1.0
-      add(t, () => {
-        for (let i = 0; i < 3; i++) this.stopReel(i, W0, 0.4, 4, i === 1)
-      })
-      return t + 0.8
+      return t + 0.35
     }
     sp.finale = 'fakeRevival'
-    add(t + 0.3, () => {
+    add(t, () => {
       sp.lastChance = false
       sp.gaugeTarget = 0
       this.emit({ type: 'lastChanceFail' })
     })
-    return t + 1.3
+    return t + 0.35
+  }
+
+  /** 中リールをその場で symbol に止める（アニメーションなし） */
+  private snapCenter(symbol: number) {
+    const r = this.reels[1]
+    let to = Math.round(r.pos)
+    while (((to % SYMBOL_COUNT) + SYMBOL_COUNT) % SYMBOL_COUNT !== symbol - 1) to++
+    r.pos = to
+    r.speed = 0
+    r.stopping = null
+    r.stopped = true
+    this.emit({ type: 'reelStop', reel: 1, heavy: true })
   }
 
   /** 中リールを1コマ進める（コマ送り） */

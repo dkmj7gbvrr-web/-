@@ -100,7 +100,8 @@ describe('リーチの決着演出', () => {
       }
       if (e.type === 'darkenEnd') expect(e.win).toBe(g.spin!.outcome.win)
     })
-    for (const t of ['slip', 'fakeAlign', 'fakeRevivalEnd', 'darkenEnd', 'develop']) expect(seen).toContain(t)
+    // ボタンを押した後は即決着になったので、ボタン後の決着パターン（復活失敗・暗転）は出ない
+    for (const t of ['slip', 'fakeAlign', 'develop']) expect(seen).toContain(t)
   }, 120000)
 })
 
@@ -170,5 +171,76 @@ describe('RUSH 最終変動', () => {
     })
     expect(lastSpins).toBeGreaterThan(3)
     expect(chances).toBe(chanceWin + chanceMiss)
+  }, 240000)
+})
+
+describe('ボタン後の即決着・発展失敗の即終了', () => {
+  test('PUSH を押したら0.4秒以内に決着し、その間にコマ送りやタメは挟まらない', () => {
+    let pushedAt = -1
+    let checked = 0
+    simulate(31, 1500, (g, e) => {
+      if (e.type === 'pushed') pushedAt = g.t
+      if (pushedAt >= 0 && (e.type === 'crawlStep' || e.type === 'darkPause' || e.type === 'darken')) {
+        throw new Error(`ボタン後に ${e.type} が出た`)
+      }
+      if (pushedAt >= 0 && (e.type === 'jackpot' || e.type === 'miss')) {
+        expect(g.t - pushedAt).toBeLessThan(0.4 + 1e-6)
+        pushedAt = -1
+        checked++
+      }
+    })
+    expect(checked).toBeGreaterThan(3)
+  }, 240000)
+
+  test('「SUPER に上がるか」が失敗したら0.4秒以内にハズレで終わる', () => {
+    let failAt = -1
+    let checked = 0
+    simulate(32, 1500, (g, e) => {
+      if (e.type === 'developResult' && !e.success) failAt = g.t
+      if (failAt >= 0 && e.type === 'jackpot') throw new Error('発展失敗のあとに当たった')
+      if (failAt >= 0 && e.type === 'miss') {
+        expect(g.t - failAt).toBeLessThan(0.4 + 1e-6)
+        failAt = -1
+        checked++
+      }
+    })
+    expect(checked).toBeGreaterThan(0)
+  }, 240000)
+})
+
+describe('演出バランス（カスタム）', () => {
+  const run = (custom: Game['custom'], seed: number, seconds: number, on: (g: Game, e: GameEvent) => void) => {
+    const g: Game = new Game(mulberry32(seed), (e) => on(g, e))
+    g.custom = custom
+    for (let i = 0; i < seconds * 60; i++) {
+      if (g.pushPending) g.push()
+      if (g.needsRefill) g.refill()
+      if (g.scene === 'play') g.firing = true
+      g.aimX = 225 + Math.sin(i / 60) * 150
+      g.update(1 / 60)
+    }
+  }
+
+  test('先バレ：保留は白で入り、ゾーンは出ず、告知音の後の当たりが多い', () => {
+    let rings = 0
+    let ringWins = 0
+    run('sakibare', 41, 1800, (g, e) => {
+      if (e.type === 'holdAdded') expect(e.color).toBe('white')
+      if (e.type === 'zone') throw new Error('先バレでゾーンが出た')
+      if (e.type === 'sakibare') {
+        rings++
+        if (g.holds[g.holds.length - 1].outcome.win) ringWins++
+      }
+    })
+    expect(rings).toBeGreaterThanOrEqual(2)
+    expect(ringWins / rings).toBeGreaterThan(0.6)
+  }, 240000)
+
+  test('先読み重視：待っている保留が育つ（変動中以外の保留変化が起きる）', () => {
+    let grow = 0
+    run('sakiyomi', 42, 900, (_g, e) => {
+      if (e.type === 'holdChange' && e.index >= 0) grow++
+    })
+    expect(grow).toBeGreaterThan(0)
   }, 240000)
 })

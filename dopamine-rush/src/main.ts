@@ -6,10 +6,10 @@ import { RefillGate } from './ads/refillGate'
 import { Fx } from './fx'
 import { audio } from './game/audio'
 import { Game, holdLevel, type GameEvent } from './game/game'
-import { SIGN_COLORS, type HoldColor, type SignColor } from './game/odds'
+import { CUSTOMS, SIGN_COLORS, type Custom, type HoldColor, type SignColor } from './game/odds'
 import { BOARD_BOTTOM, H, W } from './game/physics'
 import { mulberry32 } from './game/rng'
-import { BTN_MOTION, BTN_MUTE, BTN_REFILL, render, type Ui } from './render'
+import { BTN_AUTO, BTN_CUSTOM, BTN_MOTION, BTN_MUTE, BTN_REFILL, holdX, render, type Ui } from './render'
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!
 const ctx = canvas.getContext('2d')!
@@ -19,6 +19,8 @@ interface Saved {
   muted: boolean
   reducedMotion: boolean
   best: { chain: number; total: number }
+  custom: Custom
+  autoFire: boolean
 }
 function load(): Partial<Saved> {
   try {
@@ -29,7 +31,13 @@ function load(): Partial<Saved> {
 }
 function save() {
   try {
-    const s: Saved = { muted: ui.muted, reducedMotion: ui.reducedMotion, best: ui.best }
+    const s: Saved = {
+      muted: ui.muted,
+      reducedMotion: ui.reducedMotion,
+      best: ui.best,
+      custom: ui.custom,
+      autoFire: ui.autoFire,
+    }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(s))
   } catch {
     // 保存できなくても遊べる
@@ -47,6 +55,8 @@ const ui: Ui = {
   displayBalls: 0,
   best: saved.best ?? { chain: 0, total: 0 },
   displayPayout: 0,
+  custom: CUSTOMS.includes(saved.custom as Custom) ? (saved.custom as Custom) : 'standard',
+  autoFire: saved.autoFire ?? false,
 }
 const fx = new Fx()
 fx.reducedMotion = ui.reducedMotion
@@ -125,17 +135,27 @@ function onEvent(e: GameEvent) {
       break
     }
     case 'holdChange': {
-      // 当該保留が弾けて色が変わる
+      // 保留が弾けて色が変わる（index -1 は変動中の保留）
       const lvl = holdLevel(e.to)
       const colors = e.to === 'rainbow' ? RAINBOW : [HOLD_COLOR_CSS[e.to], '#fff']
+      const hx = holdX(e.index)
       audio.holdChange(lvl)
-      fx.doFlash(0.25 + lvl * 0.08, HOLD_COLOR_CSS[e.to])
-      fx.burst(262, 236, 30 + lvl * 8, colors, 220, 'star')
-      fx.ring(262, 236, HOLD_COLOR_CSS[e.to], 50 + lvl * 12)
+      fx.doFlash((0.25 + lvl * 0.08) * (e.index < 0 ? 1 : 0.5), HOLD_COLOR_CSS[e.to])
+      fx.burst(hx, 236, 30 + lvl * 8, colors, 220, 'star')
+      fx.ring(hx, 236, HOLD_COLOR_CSS[e.to], 50 + lvl * 12)
       fx.shake(0.12 + lvl * 0.05)
       if (e.to === 'rainbow') audio.kakutei()
       break
     }
+    case 'sakibare':
+      // 先バレ：入賞の瞬間に甲高い告知音と、盤面の縁が一瞬虹色に光る
+      audio.sakibare()
+      fx.doFlash(0.5)
+      fx.doTint('#ffffff', 0.15, 0.4)
+      fx.rainbow = 0.3
+      fx.ring(W / 2, BOARD_BOTTOM + 10, '#ffffff', 220)
+      fx.shake(0.3)
+      break
     case 'kakutei':
       audio.kakutei()
       fx.doFlash(1)
@@ -476,6 +496,7 @@ function updateBest(chain: number, total: number) {
 }
 
 const game = new Game(mulberry32((Math.random() * 2 ** 32) >>> 0), onEvent)
+game.custom = ui.custom
 
 // ---------------------------------------------------------------- 補給（リワード広告）
 
@@ -521,6 +542,19 @@ canvas.addEventListener('pointerdown', (ev) => {
     save()
     return
   }
+  if (inside(p, BTN_CUSTOM)) {
+    ui.custom = CUSTOMS[(CUSTOMS.indexOf(ui.custom) + 1) % CUSTOMS.length]
+    game.custom = ui.custom
+    audio.levelUp()
+    save()
+    return
+  }
+  if (inside(p, BTN_AUTO)) {
+    ui.autoFire = !ui.autoFire
+    if (!ui.autoFire) game.firing = false
+    save()
+    return
+  }
   if (inside(p, BTN_MOTION)) {
     ui.reducedMotion = !ui.reducedMotion
     fx.reducedMotion = ui.reducedMotion
@@ -547,7 +581,8 @@ canvas.addEventListener('pointermove', (ev) => {
   game.aimX = toLogical(ev).x
 })
 const release = () => {
-  game.firing = false
+  // オート発射中は指を離しても撃ち続ける
+  if (!ui.autoFire) game.firing = false
 }
 canvas.addEventListener('pointerup', release)
 canvas.addEventListener('pointercancel', release)
@@ -562,7 +597,7 @@ window.addEventListener('keydown', (ev) => {
   else game.firing = true
 })
 window.addEventListener('keyup', (ev) => {
-  if (ev.code === 'Space') game.firing = false
+  if (ev.code === 'Space' && !ui.autoFire) game.firing = false
 })
 
 // ---------------------------------------------------------------- 画面サイズ
@@ -598,6 +633,7 @@ function frame(now: number) {
     audio.suspend()
   } else if (ui.started) {
     audio.resume()
+    if (ui.autoFire && game.balls > 0) game.firing = true
     game.update(dt * fx.timeScale)
 
     // 回転中のリールの刻み音
