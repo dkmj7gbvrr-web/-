@@ -287,6 +287,13 @@ class Audio {
     this.tone(2093, 1.6, { type: 'sine', gain: 0.15, slideTo: 2349, delay: 0.7 })
   }
 
+  /** 先バレの告知音（入賞の瞬間に鳴る甲高い音） */
+  sakibare() {
+    this.tone(2637, 0.7, { type: 'sine', gain: 0.16, slideTo: 2794 })
+    this.tone(3951, 0.5, { type: 'sine', gain: 0.06, delay: 0.04 })
+    this.tone(1319, 0.25, { type: 'square', gain: 0.05 })
+  }
+
   /** ガラスが割れる音 */
   shatter() {
     for (let i = 0; i < 5; i++) {

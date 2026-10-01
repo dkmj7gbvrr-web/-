@@ -114,6 +114,20 @@ export const BLACKOUT_RATE = 0.04
  * ハズレなら LAST_CHANCE_ON_MISS の割合でボタン → 押しても復活ならず。
  */
 export const LAST_CHANCE_ON_WIN = 0.7
+
+/**
+ * 演出バランス（カスタム）。抽選結果は変えず、見せ方だけを変える。
+ *  - standard : 標準
+ *  - sakiyomi : 先読み重視。先読みゾーンが出やすく、待っている保留が育つ。変動開始後の予告は控えめ
+ *  - sakibare : 先バレ。入賞の瞬間に告知音が鳴るかどうかで「0か100か」が分かる。ほかの先読みは出ない
+ */
+export type Custom = 'standard' | 'sakiyomi' | 'sakibare'
+export const CUSTOMS: readonly Custom[] = ['standard', 'sakiyomi', 'sakibare']
+/** 先読み重視のとき、先読みゾーンの出現率を何倍にするか（当たり・ハズレとも同じ倍率なので期待度はほぼ変わらない） */
+export const SAKIYOMI_ZONE_BOOST = 2.5
+/** 先バレの告知音が鳴る割合（当たり / ハズレ） */
+export const SAKIBARE_ON_WIN = 0.8
+export const SAKIBARE_ON_MISS = 0.003
 export const LAST_CHANCE_ON_MISS = 0.4
 
 export const SYMBOL_COUNT = 7
@@ -155,14 +169,16 @@ export interface SpinOutcome {
  *  - lampOff     : 図柄パネルの枠ランプが消えている
  *  - flicker     : 変動中に盤面の釘ランプが一瞬だけ全部光る
  *  - musicStop   : RUSH 中、変動開始から BGM が一瞬止まる
+ *  - charaEye    : キャラ（ポッチ）の瞳が金色に光っている
  */
-export type Iwakan = 'bigHold' | 'silentStart' | 'reverse' | 'lampOff' | 'flicker' | 'musicStop'
+export type Iwakan = 'bigHold' | 'silentStart' | 'reverse' | 'lampOff' | 'flicker' | 'musicStop' | 'charaEye'
 export const IWAKAN_NORMAL: ReadonlyArray<readonly [Iwakan, number]> = [
   ['bigHold', 0.25],
   ['silentStart', 0.2],
   ['reverse', 0.2],
   ['lampOff', 0.2],
   ['flicker', 0.15],
+  ['charaEye', 0.15],
 ]
 export const IWAKAN_RUSH: ReadonlyArray<readonly [Iwakan, number]> = [
   ['musicStop', 0.35],
