@@ -8,7 +8,7 @@ import { Fx } from './fx'
 import { isOutdated, reloadToLatest } from './version'
 import { audio } from './game/audio'
 import { Game, holdLevel, type GameEvent } from './game/game'
-import { CUSTOMS, SIGN_COLORS, type Custom, type HoldColor, type SignColor } from './game/odds'
+import { CUSTOMS, POCHI_ACTION, POCHI_ITEM, POCHI_WHERE, SIGN_COLORS, type Custom, type HoldColor, type SignColor } from './game/odds'
 import { BOARD_BOTTOM, H, W } from './game/physics'
 import { mulberry32 } from './game/rng'
 import { BTN_AUTO, BTN_CUSTOM, BTN_MOTION, BTN_MUTE, BTN_REFILL, CHARA_X, CHARA_Y, holdX, render, type Ui } from './render'
@@ -184,6 +184,29 @@ function onEvent(e: GameEvent) {
       fx.ring(W / 2, BOARD_BOTTOM + 10, '#ffffff', 220)
       fx.shake(0.3)
       break
+    case 'pochi': {
+      // ポッチ予告：場所・行動・持ち物が上位なほど声も演出も強い
+      const tell = e.tell
+      chara.showTell(tell)
+      const lvl =
+        POCHI_WHERE.indexOf(tell.where) + POCHI_ACTION.indexOf(tell.action) + Math.min(3, POCHI_ITEM.indexOf(tell.item))
+      if (tell.where === 'giant') {
+        audio.pochiVoice('roar')
+        fx.punch(0.08)
+        fx.shake(0.7)
+        fx.doFlash(0.4)
+      } else audio.pochiVoice(lvl >= 5 ? 'excited' : lvl >= 2 ? 'happy' : 'chirp')
+      if (tell.where === 'onReel') window.setTimeout(() => fx.shake(0.35), 300)
+      if (tell.item === 'rainbowEgg') {
+        audio.kakutei()
+        fx.doFlash(0.8)
+        fx.rainbow = 0.3
+      } else if (tell.item === 'crown') {
+        audio.gold()
+        fx.doFlash(0.4, '#ffd23d')
+      }
+      break
+    }
     case 'kakutei':
       audio.kakutei()
       fx.doFlash(1)
@@ -199,6 +222,7 @@ function onEvent(e: GameEvent) {
       // リーチ：パネルの枠がタイトル色に灯り、左右の図柄が光の線で結ばれる（描画側）
       const lvl = signLevel(e.title)
       audio.reach()
+      audio.pochiVoice('chirp')
       chara.react('hype', 2.5)
       chara.breathe(SIGN_RGB[e.title], 0.35 + lvl * 0.1, 1)
       fx.punch(0.04 + lvl * 0.01)
@@ -263,6 +287,7 @@ function onEvent(e: GameEvent) {
       // 画面が金色に染まり、金の粒が降り注ぐ（続く上位 RUSH 導入画面も描画側）
       audio.playMusic(null)
       audio.luckyTrigger()
+      window.setTimeout(() => audio.pochiVoice('roar'), 500)
       chara.center(4)
       chara.react('joy', 4)
       chara.breathe('rgb(255,210,60)', 1, 4)
@@ -418,6 +443,7 @@ function onEvent(e: GameEvent) {
         // リーチ舞台の決着：炎が弾かれ、クリスタルが揺れる
         chara.crystal = -1
         chara.react('sad', 0.9)
+        audio.pochiVoice('sad')
         fx.burst(STAGE_EGG.x - 30, STAGE_EGG.y, 30, GRAY, 260, 'spark')
       }
       audio.miss()
@@ -434,6 +460,7 @@ function onEvent(e: GameEvent) {
       } else chara.center(2.4)
       chara.react('joy', 3)
       chara.breathe('rainbow', 1, 2.4)
+      window.setTimeout(() => audio.pochiVoice('excited'), 400)
       audio.fanfare()
       fx.stop(0.35)
       fx.doFlash(1)
@@ -739,6 +766,7 @@ function frame(now: number) {
     if (stage > lastStage) {
       chara.evolveFlash = 1
       chara.react('joy', 1)
+      audio.pochiVoice('happy')
       audio.levelUp()
       fx.ring(CHARA_X, CHARA_Y, game.lt ? '#ffd23d' : '#5fd18a', 120)
     }

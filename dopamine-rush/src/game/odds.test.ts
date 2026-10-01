@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'vitest'
 import {
   canFakeAlign,
+  POCHI_ACTION,
+  POCHI_ACTION_TABLE,
+  POCHI_ITEM,
+  POCHI_ITEM_TABLE,
+  POCHI_RATE,
+  POCHI_WHERE,
+  POCHI_WHERE_TABLE,
   CUTIN_TABLE,
   GIJIREN_TABLE,
   ltContinueRate,
@@ -190,5 +197,47 @@ describe('違和感演出', () => {
       else expect(['bigHold', 'silentStart']).not.toContain(o.iwakan)
     }
     expect(n).toBeGreaterThan(100)
+  })
+})
+
+describe('ポッチ予告', () => {
+  const rel = <T extends string>(value: T, table: Record<'win' | 'miss', ReadonlyArray<readonly [T, number]>>) => {
+    const p = (t: ReadonlyArray<readonly [T, number]>) => {
+      const total = t.reduce((a, [, w]) => a + w, 0)
+      return (t.find(([v]) => v === value)?.[1] ?? 0) / total
+    }
+    const missAppear = 0.76 * POCHI_RATE.missNone + 0.17 * POCHI_RATE.missNormal + 0.07 * POCHI_RATE.missSuper
+    const pw = SPEC.normalWinRate * POCHI_RATE.win * p(table.win)
+    const pm = (1 - SPEC.normalWinRate) * missAppear * p(table.miss)
+    return pw / (pw + pm)
+  }
+  test('場所・行動・持ち物は、上位ほど期待度が上がり、巨大な顔と虹の卵は確定', () => {
+    for (const [values, table] of [
+      [POCHI_WHERE, POCHI_WHERE_TABLE],
+      [POCHI_ACTION, POCHI_ACTION_TABLE],
+      [POCHI_ITEM, POCHI_ITEM_TABLE],
+    ] as const) {
+      const r = (values as readonly string[]).map((v) => rel(v, table as Record<'win' | 'miss', ReadonlyArray<readonly [string, number]>>))
+      for (let i = 1; i < r.length; i++) expect(r[i]).toBeGreaterThan(r[i - 1])
+    }
+    expect(rel('giant', POCHI_WHERE_TABLE)).toBe(1)
+    expect(rel('rainbowEgg', POCHI_ITEM_TABLE)).toBe(1)
+  })
+
+  test('通常時だけに出て、頻度は控えめ', () => {
+    const rng = mulberry32(61)
+    let n = 0
+    let shown = 0
+    for (let i = 0; i < 60000; i++) {
+      const mode = (['normal', 'rush'] as const)[i % 2]
+      const o = decideSpin(mode, rng)
+      if (mode === 'rush') expect(o.yokoku.pochi).toBeNull()
+      else {
+        n++
+        if (o.yokoku.pochi) shown++
+      }
+    }
+    expect(shown / n).toBeGreaterThan(0.02)
+    expect(shown / n).toBeLessThan(0.08)
   })
 })

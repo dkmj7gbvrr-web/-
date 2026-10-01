@@ -1,5 +1,5 @@
 import { AD_REWARD, FALLBACK_REWARD, type GateState } from './ads/refillGate'
-import { drawDragon, type Chara, type DragonLook, type Stage } from './chara'
+import { drawDragon, drawItem, TELL_SHOW, type Chara, type DragonLook, type Stage } from './chara'
 import type { Fx } from './fx'
 import { holdLevel, PUSH_AUTO, type Game } from './game/game'
 import { SPEC, SYMBOL_COUNT, type Custom, type HoldColor, type SignColor } from './game/odds'
@@ -96,6 +96,7 @@ export function render(ctx: CanvasRenderingContext2D, g: Game, fx: Fx, ui: Ui, t
   if (g.spin && g.spin.step > 0) drawStepUp(ctx, g.spin.step, g.spin.outcome.yokoku.stepUp, time)
   if (g.spin?.cutin) drawCutin(ctx, g.spin.cutin, time)
   if (g.zoneCount > 0 && g.phase === 'normal') drawZone(ctx, g.zoneCount, !!g.spin && g.holds.every((h) => !h.zone), time)
+  if (chara.tell) drawPochiTell(ctx, g, chara, stage, time)
   if (chara.centerK > 0.02) drawCharaCenter(ctx, g, chara, stage, time)
   if (g.pushPending) drawPush(ctx, g, time)
   if (g.needsRefill) drawRefill(ctx, ui.gate, time)
@@ -638,6 +639,8 @@ function dragonLook(g: Game, chara: Chara, stage: Stage): DragonLook {
 function drawCharaHome(ctx: CanvasRenderingContext2D, g: Game, chara: Chara, stage: Stage, t: number) {
   // 大当たり中は盤面の真ん中で踊っているので、液晶からはいなくなる
   if (g.phase === 'fever' && g.scene === 'fever') return
+  // ポッチ予告で外に出ている間も液晶からはいなくなる
+  if (chara.tell) return
   const a = 1 - Math.max(chara.centerK, chara.reachK)
   if (a <= 0.02) return
   const s = 40 + stage * 4
@@ -763,6 +766,69 @@ function drawReachStage(ctx: CanvasRenderingContext2D, g: Game, chara: Chara, st
     }
     ctx.shadowBlur = 0
   }
+  ctx.restore()
+}
+
+/**
+ * ポッチ予告：場所（下から覗く／横切る／図柄に乗る／巨大な顔）、行動（手を振る／踊る／炎）、
+ * 持ち物（なし／りんご／魚／赤い宝石／王冠／虹の卵）の組み合わせで期待度を示す
+ */
+function drawPochiTell(ctx: CanvasRenderingContext2D, g: Game, chara: Chara, stage: Stage, t: number) {
+  const tell = chara.tell!
+  const u = chara.tellT / TELL_SHOW
+  const ease = (x: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3)
+  // 出入り：最初の 2 割で出てきて、最後の 2 割で消える
+  const inK = ease(u / 0.2)
+  const outK = ease((u - 0.8) / 0.2)
+  let x = W / 2
+  let y = 470
+  let s = 60
+  let alpha = 1
+  switch (tell.where) {
+    case 'peek':
+      x = 90
+      y = BOARD_BOTTOM + 40 - 110 * inK + 110 * outK
+      s = 55
+      break
+    case 'flyby':
+      x = -60 + (W + 120) * u
+      y = 420 + Math.sin(u * Math.PI * 4) * 30
+      s = 55
+      break
+    case 'onReel':
+      x = 165
+      // 上から落ちてきて図柄パネルの上で弾む
+      y = -60 + 120 * inK + Math.abs(Math.sin(u * Math.PI * 6)) * -10 * (1 - outK) - 120 * outK
+      s = 42
+      break
+    case 'giant': {
+      s = 70 + 130 * inK
+      y = 500
+      alpha = 0.95 * (1 - outK)
+      // 背景を暗くして巨大な顔を際立たせる
+      ctx.fillStyle = `rgba(0,0,0,${0.5 * inK * (1 - outK)})`
+      ctx.fillRect(0, BOARD_TOP - 10, W, H)
+      break
+    }
+  }
+  const look = dragonLook(g, chara, Math.max(stage, 2) as Stage)
+  look.mood = tell.action === 'wave' ? 'joy' : 'hype'
+  if (tell.action === 'fire') {
+    const color = tell.item === 'rainbowEgg' ? 'rainbow' : tell.item === 'crown' ? 'rgb(255,210,60)' : tell.item === 'gem' ? 'rgb(255,60,80)' : 'rgb(255,140,60)'
+    look.flame = { color, power: 0.9 }
+  }
+  ctx.save()
+  ctx.globalAlpha = alpha
+  ctx.translate(x, y)
+  if (tell.action === 'wave') ctx.rotate(Math.sin(t * 10) * 0.25)
+  if (tell.action === 'dance') {
+    ctx.translate(0, -Math.abs(Math.sin(t * 9)) * s * 0.25)
+    ctx.scale(1 + Math.sin(t * 18) * 0.08, 1 - Math.sin(t * 18) * 0.08)
+  }
+  drawDragon(ctx, 0, 0, s, look, t)
+  // 持ち物：王冠は頭に、ほかは胸の前に抱える
+  if (tell.item === 'crown') drawItem(ctx, 'crown', 0, -s * 0.5, s * 0.9, t)
+  else drawItem(ctx, tell.item, 0, s * 0.42, s * 0.9, t)
   ctx.restore()
 }
 
