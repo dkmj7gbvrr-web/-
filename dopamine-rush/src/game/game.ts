@@ -51,12 +51,11 @@ export type GameEvent =
   | { type: 'luckyTrigger' }
   | { type: 'escalate'; reach: Reach }
   | { type: 'pushPrompt' }
-  | { type: 'pushed'; win: boolean }
+  | { type: 'pushed'; win: boolean; charge: number }
   | { type: 'revival' }
   | { type: 'develop' }
   | { type: 'developResult'; success: boolean }
-  | { type: 'rendaStart' }
-  | { type: 'rendaTap'; count: number }
+  | { type: 'chargeStart' }
   | { type: 'crawlStep'; slow: boolean; last: boolean }
   | { type: 'darkPause' }
   | { type: 'slip' }
@@ -115,8 +114,6 @@ export interface SpinRun {
   step: number
   /** 出ているカットインの色と経過秒 */
   cutin: { color: SignColor; t: number } | null
-  /** 連打チャンス中なら残り秒と連打数 */
-  renda: { left: number; taps: number } | null
   /** 「SUPER!?」（昇格するかどうか）の最中 */
   developing: boolean
   finale: Finale | null
@@ -147,7 +144,8 @@ export interface FeverState {
 }
 
 export const FIRE_INTERVAL = 0.14
-export const RENDA_TIME = 2.4
+/** ボタン長押しで溜めきるまでの秒数（溜めきったら自動で離したことになる） */
+export const CHARGE_TIME = 1.1
 /** コマ送りの間隔：最初は速く、最後の数コマで一気に溜める */
 const CRAWL_GAPS = [0.06, 0.06, 0.07, 0.08, 0.1, 0.13, 0.18, 0.26, 0.38, 0.55, 0.85]
 const CRAWL_GAPS_RUSH = [0.06, 0.08, 0.12, 0.2, 0.35, 0.55]
@@ -224,24 +222,39 @@ export class Game {
     this.emit({ type: 'refill', amount })
   }
 
-  get rendaActive(): boolean {
-    return !!this.spin?.renda
+  /** ボタンを長押しして溜めている最中か / 溜まり具合 0〜1（結果には影響しない） */
+  charging = false
+  charge = 0
+
+  /** ボタンを押し始めた。押している間は溜まり、離すか溜めきると決着する */
+  pressDown() {
+    if (!this.pushPending || this.charging) return
+    this.charging = true
+    this.charge = 0
+    this.emit({ type: 'chargeStart' })
   }
 
-  /** 連打チャンス中のタップ。ゲージを押し上げるだけで、結果は変わらない */
-  tap() {
-    const r = this.spin?.renda
-    if (!r || !this.spin) return
-    r.taps++
-    this.spin.gaugeTarget = Math.min(0.92, this.spin.gaugeTarget + 0.035)
-    this.emit({ type: 'rendaTap', count: r.taps })
+  /** ボタンを離した */
+  pressUp() {
+    if (!this.charging) return
+    this.push()
+  }
+
+  private updateCharge(dt: number) {
+    if (!this.charging) return
+    this.charge = Math.min(1, this.charge + dt / CHARGE_TIME)
+    if (this.spin) this.spin.gaugeTarget = Math.max(this.spin.gaugeTarget, 0.5 + this.charge * 0.45)
+    if (this.charge >= 1) this.push()
   }
 
   push() {
+    const charge = this.charging ? this.charge : 0
+    this.charging = false
+    this.charge = 0
     if (this.spin?.waitingPush) {
       this.spin.waitingPush = false
       // PUSH は決着の「始まり」。ここではまだ結果をにおわせない
-      this.emit({ type: 'pushed', win: false })
+      this.emit({ type: 'pushed', win: false, charge })
     } else if (this.challengePush) {
       this.challengePush = false
       this.resolveChallenge()
@@ -276,7 +289,8 @@ export class Game {
           this.challengePush = true
           this.emit({ type: 'pushPrompt' })
         }
-        if (this.challengePush && this.sceneTime > 3.2 + PUSH_AUTO) this.push()
+        if (this.challengePush && this.charging) this.updateCharge(dt)
+        else if (this.challengePush && this.sceneTime > 3.2 + PUSH_AUTO) this.push()
         if (this.challengeResult !== null && this.sceneTime > 2.2) {
           if (this.challengeResult) this.enterRush()
           else this.backToNormal()
@@ -458,15 +472,15 @@ export class Game {
     }
     const sp = this.spin
     if (sp.waitingPush) {
-      sp.pushWait += dt
-      if (sp.pushWait > PUSH_AUTO) this.push()
+      sp.gauge += (sp.gaugeTarget - sp.gauge) * Math.min(1, dt * 6)
+      if (this.charging) this.updateCharge(dt)
+      else {
+        sp.pushWait += dt
+        if (sp.pushWait > PUSH_AUTO) this.push()
+      }
       return
     }
     if (sp.cutin) sp.cutin.t += dt
-    if (sp.renda) {
-      sp.renda.left -= dt
-      sp.gaugeTarget = Math.min(0.92, sp.gaugeTarget + dt * 0.06)
-    }
     sp.gauge += (sp.gaugeTarget - sp.gauge) * Math.min(1, dt * 2.5)
     sp.t += dt
     while (sp.actions.length > 0 && sp.actions[0].at <= sp.t && !sp.waitingPush) {
@@ -528,7 +542,6 @@ export class Game {
       blackout: false,
       step: 0,
       cutin: null,
-      renda: null,
       developing: false,
       finale: null,
       lastChance: false,
@@ -673,20 +686,7 @@ export class Game {
         })
         t += 0.2 * k
       }
-      if (!rush) {
-        t += 1.3
-        add(t, () => {
-          sp.renda = { left: RENDA_TIME, taps: 0 }
-          this.emit({ type: 'rendaStart' })
-        })
-        t += RENDA_TIME
-        add(t, () => {
-          sp.renda = null
-        })
-        t += 0.2
-      } else {
-        t += 1.0
-      }
+      t += rush ? 1.0 : 1.6
       if (lastSpin) {
         // RUSH 最終変動はリーチ中に PUSH を出さず、いったん止めてから復活チャンスへ
         t = this.scheduleLastChance(sp, t, k)

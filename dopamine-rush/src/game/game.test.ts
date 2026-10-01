@@ -244,3 +244,43 @@ describe('演出バランス（カスタム）', () => {
     expect(grow).toBeGreaterThan(0)
   }, 240000)
 })
+
+describe('長押しチャージ', () => {
+  /** PUSH 待ちになるまで進める */
+  const untilPush = (g: Game) => {
+    for (let i = 0; i < 60 * 3000 && !(g.spin?.waitingPush); i++) {
+      if (g.challengePush) g.push()
+      if (g.needsRefill) g.refill()
+      if (g.scene === 'play') g.firing = true
+      g.update(1 / 60)
+    }
+    expect(g.spin?.waitingPush).toBe(true)
+  }
+
+  test('押して離すと、溜めた量つきで決着する', () => {
+    const events: GameEvent[] = []
+    const g = new Game(mulberry32(51), (e) => events.push(e))
+    untilPush(g)
+    g.pressDown()
+    for (let i = 0; i < 30; i++) g.update(1 / 60)
+    g.pressUp()
+    const pushed = events.filter((e) => e.type === 'pushed').at(-1)
+    expect(pushed && pushed.type === 'pushed' && pushed.charge).toBeGreaterThan(0.3)
+    expect(g.spin?.waitingPush ?? false).toBe(false)
+  }, 120000)
+
+  test('押しっぱなしなら溜めきった時点で自動で決着し、押している間は自動 PUSH の時間切れにならない', () => {
+    const events: GameEvent[] = []
+    const g = new Game(mulberry32(52), (e) => events.push(e))
+    untilPush(g)
+    g.pressDown()
+    let n = 0
+    while (g.charging && n < 600) {
+      g.update(1 / 60)
+      n++
+    }
+    const pushed = events.filter((e) => e.type === 'pushed').at(-1)
+    expect(pushed && pushed.type === 'pushed' && pushed.charge).toBe(1)
+    expect(n / 60).toBeCloseTo(1.1, 1)
+  }, 120000)
+})

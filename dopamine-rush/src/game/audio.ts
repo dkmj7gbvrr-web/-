@@ -6,7 +6,12 @@
  *  - 大当たり中は「歓喜の歌」（ベートーヴェン、パブリックドメイン）を合成して流す
  */
 
+import { scheduleKyupon, type KyuponVariant } from './kyupon'
+
 type Voice = 'square' | 'triangle' | 'sine' | 'sawtooth'
+
+/** 先バレの告知音（kyupon.ts の候補 a〜f のうち採用したもの） */
+const SAKIBARE_SOUND: KyuponVariant = 'f'
 
 const PENTA = [0, 2, 4, 7, 9]
 const midiToFreq = (m: number) => 440 * Math.pow(2, (m - 69) / 12)
@@ -217,11 +222,12 @@ class Audio {
     ;[60, 64, 67].forEach((m, i) => this.tone(midiToFreq(m + 12), 0.2, { type: 'square', gain: 0.07, delay: i * 0.05 }))
   }
 
-  rendaTap(n: number) {
-    const k = Math.min(n, 24)
-    const midi = 72 + Math.floor(k / 5) * 12 + PENTA[k % 5]
-    this.tone(midiToFreq(midi), 0.08, { type: 'square', gain: 0.05 })
-    this.noise(0.04, { gain: 0.08, from: 4000 })
+  /** 長押しの溜め：溜まるほど高くなる刻み音 */
+  chargeTick(k: number) {
+    const step = Math.floor(k * 15)
+    const midi = 60 + Math.floor(step / 5) * 12 + PENTA[step % 5]
+    this.tone(midiToFreq(midi), 0.09, { type: 'square', gain: 0.04 + k * 0.04 })
+    this.tone(midiToFreq(midi + 7), 0.09, { type: 'sine', gain: 0.03 })
   }
 
   /** コマ送りの1コマ。遅いコマほど重く */
@@ -289,9 +295,9 @@ class Audio {
 
   /** 先バレの告知音（入賞の瞬間に鳴る甲高い音） */
   sakibare() {
-    this.tone(2637, 0.7, { type: 'sine', gain: 0.16, slideTo: 2794 })
-    this.tone(3951, 0.5, { type: 'sine', gain: 0.06, delay: 0.04 })
-    this.tone(1319, 0.25, { type: 'square', gain: 0.05 })
+    if (!this.ready) return
+    // 重い「バ」→ 2本の音がうなる太い「キューン」（候補から選ばれた F 案）
+    scheduleKyupon(this.ctx!, this.master!, this.ctx!.currentTime, SAKIBARE_SOUND, 0.6)
   }
 
   /** ガラスが割れる音 */

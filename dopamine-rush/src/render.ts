@@ -1,7 +1,7 @@
 import { AD_REWARD, FALLBACK_REWARD, type GateState } from './ads/refillGate'
 import { drawDragon, type Chara, type DragonLook, type Stage } from './chara'
 import type { Fx } from './fx'
-import { holdLevel, PUSH_AUTO, RENDA_TIME, type Game } from './game/game'
+import { holdLevel, PUSH_AUTO, type Game } from './game/game'
 import { SPEC, SYMBOL_COUNT, type Custom, type HoldColor, type SignColor } from './game/odds'
 import { BALL_R, BOARD_BOTTOM, BOARD_TOP, H, PEG_R, W, WALL_L, WALL_R } from './game/physics'
 import { ATTACKER, BONUS_POCKETS, startPocket } from './game/pockets'
@@ -92,7 +92,6 @@ export function render(ctx: CanvasRenderingContext2D, g: Game, fx: Fx, ui: Ui, t
   if (g.spin?.cutin) drawCutin(ctx, g.spin.cutin, time)
   if (g.zoneCount > 0 && g.phase === 'normal') drawZone(ctx, g.zoneCount, !!g.spin && g.holds.every((h) => !h.zone), time)
   if (chara.centerK > 0.02) drawCharaCenter(ctx, g, chara, stage, time)
-  if (g.spin?.renda) drawRenda(ctx, g, time)
   if (g.pushPending) drawPush(ctx, g, time)
   if (g.needsRefill) drawRefill(ctx, ui.gate, time)
   ctx.restore()
@@ -801,35 +800,6 @@ function drawZone(ctx: CanvasRenderingContext2D, count: number, target: boolean,
   }
 }
 
-/** 連打チャンス：大きなボタンが叩かれるように脈打ち、残り時間が縮んでいく */
-function drawRenda(ctx: CanvasRenderingContext2D, g: Game, t: number) {
-  const r = g.spin!.renda!
-  const cx = W / 2
-  const cy = 600
-  const hit = Math.abs(Math.sin(t * 22))
-  drawButton(ctx, cx, cy, 58 * (0.9 + 0.12 * hit), '#ff3355', '#ff8aa0', t)
-  // 叩く手の代わりに、上から降ってくる山形
-  ctx.strokeStyle = '#ffffff'
-  ctx.lineWidth = 5
-  for (let i = 0; i < 3; i++) {
-    const yy = cy - 120 + ((t * 260 + i * 22) % 60)
-    ctx.globalAlpha = 1 - ((t * 260 + i * 22) % 60) / 60
-    ctx.beginPath()
-    ctx.moveTo(cx - 18, yy)
-    ctx.lineTo(cx, yy + 14)
-    ctx.lineTo(cx + 18, yy)
-    ctx.stroke()
-  }
-  ctx.globalAlpha = 1
-  const k = Math.max(0, r.left / RENDA_TIME)
-  ctx.fillStyle = 'rgba(255,255,255,0.15)'
-  roundRect(ctx, cx - 100, cy + 76, 200, 8, 4)
-  ctx.fill()
-  ctx.fillStyle = rainbowGradient(ctx, cx - 100, cx + 100, t)
-  roundRect(ctx, cx - 100, cy + 76, Math.max(8, 200 * k), 8, 4)
-  ctx.fill()
-}
-
 /** 押しボタン（文字なし）。ドーム状に光る */
 function drawButton(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, base: string, light: string, t: number) {
   ctx.save()
@@ -860,8 +830,17 @@ function drawPush(ctx: CanvasRenderingContext2D, g: Game, t: number) {
   const waited = g.spin?.waitingPush ? g.spin.pushWait : g.sceneTime - 3.2
   const remain = Math.max(0, 1 - waited / PUSH_AUTO)
   const revive = !!g.spin?.lastChance
-  const pulse = 1 + 0.08 * Math.sin(t * 14)
-  drawButton(ctx, cx, cy, 58 * pulse, revive ? '#d99a00' : '#d0002a', revive ? '#fff3b0' : '#ff8aa0', t)
+  // 長押し中はボタンが沈み込み、溜まるほど光が強くなる
+  const pressed = g.charging ? 0.86 - g.charge * 0.06 : 1
+  const pulse = g.charging ? 1 + 0.04 * Math.sin(t * 40) * g.charge : 1 + 0.08 * Math.sin(t * 14)
+  if (g.charging) {
+    const glow = ctx.createRadialGradient(cx, cy, 30, cx, cy, 90 + g.charge * 80)
+    glow.addColorStop(0, `rgba(255,255,255,${0.25 + g.charge * 0.45})`)
+    glow.addColorStop(1, 'rgba(255,255,255,0)')
+    ctx.fillStyle = glow
+    ctx.fillRect(cx - 200, cy - 200, 400, 400)
+  }
+  drawButton(ctx, cx, cy, 58 * pulse * pressed, revive ? '#d99a00' : '#d0002a', revive ? '#fff3b0' : '#ff8aa0', t)
   if (revive) {
     // ヒビの入った金の輪
     ctx.strokeStyle = '#fff3b0'
@@ -874,6 +853,15 @@ function drawPush(ctx: CanvasRenderingContext2D, g: Game, t: number) {
       ctx.lineTo(cx + Math.cos(a + 0.05) * 92, cy + Math.sin(a + 0.05) * 92)
       ctx.stroke()
     }
+  }
+  if (g.charging) {
+    // 溜まり具合の輪（虹色に満ちていく）
+    ctx.strokeStyle = rainbowGradient(ctx, cx - 70, cx + 70, t * 3)
+    ctx.lineWidth = 8
+    ctx.beginPath()
+    ctx.arc(cx, cy, 70, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * g.charge)
+    ctx.stroke()
+    return
   }
   // 残り時間の輪
   ctx.strokeStyle = '#fff'
