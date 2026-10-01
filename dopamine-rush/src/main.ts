@@ -8,7 +8,7 @@ import { Fx } from './fx'
 import { isOutdated, reloadToLatest } from './version'
 import { audio } from './game/audio'
 import { Game, holdLevel, type GameEvent } from './game/game'
-import { CUSTOMS, SIGN_COLORS, type Custom, type HoldColor, type SignColor } from './game/odds'
+import { CUSTOMS, POCHI_ACTION, POCHI_ITEM, POCHI_WHERE, SIGN_COLORS, type Custom, type HoldColor, type SignColor } from './game/odds'
 import { BOARD_BOTTOM, H, W } from './game/physics'
 import { mulberry32 } from './game/rng'
 import { BTN_AUTO, BTN_CUSTOM, BTN_MOTION, BTN_MUTE, BTN_REFILL, CHARA_X, CHARA_Y, holdX, render, type Ui } from './render'
@@ -106,8 +106,10 @@ let attackerCount = 0
 let clock = 0
 
 /** 図柄パネルの位置（演出の中心） */
-const PANEL = { x: 26, y: 58, w: W - 52, h: 156, cx: W / 2, cy: 136 }
+const PANEL = { x: 26, y: 58, w: W - 52, h: 156, cx: 165, cy: 136 }
 const BUTTON = { x: W / 2, y: 600, r: 58 }
+/** リーチ舞台のクリスタルの位置（render.ts の drawReachStage と同じ） */
+const STAGE_EGG = { x: 330, y: 470 }
 const GRAY = ['#8890a8', '#5a6078', '#c0c6d8']
 
 function onEvent(e: GameEvent) {
@@ -117,7 +119,8 @@ function onEvent(e: GameEvent) {
         audio.peg(e.ball.hits - 1)
         lastPegSound = clock
       }
-      if (!e.ball.free || Math.random() < 0.3) fx.burst(e.peg.x, e.peg.y, 3, ['#9ff', '#fff'], 90)
+      // リーチ舞台が出ている間は盤面が空に変わっているので、釘の火花は出さない
+      if (chara.reachK < 0.5 && (!e.ball.free || Math.random() < 0.3)) fx.burst(e.peg.x, e.peg.y, 3, ['#9ff', '#fff'], 90)
       break
     }
     case 'gold':
@@ -136,6 +139,7 @@ function onEvent(e: GameEvent) {
       break
     case 'pocket':
       if (e.kind === 'start') {
+        chara.hop = 1
         audio.startPocket()
         fx.burst(e.x, BOARD_BOTTOM + 10, 20, ['#ffdd33', '#fff'], 260)
         fx.ring(e.x, BOARD_BOTTOM + 10, '#ffdd33', 50)
@@ -180,6 +184,29 @@ function onEvent(e: GameEvent) {
       fx.ring(W / 2, BOARD_BOTTOM + 10, '#ffffff', 220)
       fx.shake(0.3)
       break
+    case 'pochi': {
+      // ポッチ予告：場所・行動・持ち物が上位なほど声も演出も強い
+      const tell = e.tell
+      chara.showTell(tell)
+      const lvl =
+        POCHI_WHERE.indexOf(tell.where) + POCHI_ACTION.indexOf(tell.action) + Math.min(3, POCHI_ITEM.indexOf(tell.item))
+      if (tell.where === 'giant') {
+        audio.pochiVoice('roar')
+        fx.punch(0.08)
+        fx.shake(0.7)
+        fx.doFlash(0.4)
+      } else audio.pochiVoice(lvl >= 5 ? 'excited' : lvl >= 2 ? 'happy' : 'chirp')
+      if (tell.where === 'onReel') window.setTimeout(() => fx.shake(0.35), 300)
+      if (tell.item === 'rainbowEgg') {
+        audio.kakutei()
+        fx.doFlash(0.8)
+        fx.rainbow = 0.3
+      } else if (tell.item === 'crown') {
+        audio.gold()
+        fx.doFlash(0.4, '#ffd23d')
+      }
+      break
+    }
     case 'kakutei':
       audio.kakutei()
       fx.doFlash(1)
@@ -195,6 +222,7 @@ function onEvent(e: GameEvent) {
       // リーチ：パネルの枠がタイトル色に灯り、左右の図柄が光の線で結ばれる（描画側）
       const lvl = signLevel(e.title)
       audio.reach()
+      audio.pochiVoice('chirp')
       chara.react('hype', 2.5)
       chara.breathe(SIGN_RGB[e.title], 0.35 + lvl * 0.1, 1)
       fx.punch(0.04 + lvl * 0.01)
@@ -227,7 +255,7 @@ function onEvent(e: GameEvent) {
       break
     case 'cutin':
       audio.cutin(signLevel(e.color))
-      chara.center(1.3)
+      // SUPER 以上はポッチが舞台の主役（中央への飛び出しはしない）
       chara.react('hype', 1.3)
       chara.breathe(SIGN_RGB[e.color], 0.6 + signLevel(e.color) * 0.1, 1.3)
       fx.shake(0.2 + signLevel(e.color) * 0.1)
@@ -259,6 +287,7 @@ function onEvent(e: GameEvent) {
       // 画面が金色に染まり、金の粒が降り注ぐ（続く上位 RUSH 導入画面も描画側）
       audio.playMusic(null)
       audio.luckyTrigger()
+      window.setTimeout(() => audio.pochiVoice('roar'), 500)
       chara.center(4)
       chara.react('joy', 4)
       chara.breathe('rgb(255,210,60)', 1, 4)
@@ -271,7 +300,6 @@ function onEvent(e: GameEvent) {
       fx.burst(W / 2, 300, 120, ['#ffd23d', '#fff3b0', '#ffffff', '#ffb800'], 480, 'star')
       break
     case 'escalate':
-      chara.center(1.4)
       chara.react('hype', 1.6)
       if (e.reach === 'premium') {
         chara.breathe('rainbow', 1, 1.4)
@@ -297,6 +325,8 @@ function onEvent(e: GameEvent) {
       fx.ring(BUTTON.x, BUTTON.y, '#ff3355', 110)
       break
     case 'pushed':
+      // リーチ舞台ではポッチがクリスタルへ炎のビームを放つ
+      if (chara.reachK > 0.3) chara.fireBeam(e.charge > 0.7 ? 'rainbow' : '#ffd2a0')
       // 溜めたぶんだけ、離した瞬間の衝撃が大きい
       audio.impact()
       fx.stop(0.15 + e.charge * 0.15)
@@ -409,14 +439,28 @@ function onEvent(e: GameEvent) {
       break
     case 'miss':
       if (e.reach !== 'none') chara.react('sad', 0.6)
+      if (chara.reachK > 0.3) {
+        // リーチ舞台の決着：炎が弾かれ、クリスタルが揺れる
+        chara.crystal = -1
+        chara.react('sad', 0.9)
+        audio.pochiVoice('sad')
+        fx.burst(STAGE_EGG.x - 30, STAGE_EGG.y, 30, GRAY, 260, 'spark')
+      }
       audio.miss()
       fx.rainbow = 0
       break
     case 'jackpot':
       // 大当たり：ヒットストップ → 白飛び → 図柄から虹の衝撃波と星、紙吹雪、画面が迫る
-      chara.center(2.4)
+      if (chara.reachK > 0.3) {
+        // リーチ舞台の決着：クリスタルが虹色に砕け、少し遅れてポッチが中央へ
+        chara.crystal = 1
+        fx.burst(STAGE_EGG.x, STAGE_EGG.y, 90, RAINBOW, 480, 'star')
+        fx.ring(STAGE_EGG.x, STAGE_EGG.y, '#ffffff', 220)
+        window.setTimeout(() => chara.center(2), 650)
+      } else chara.center(2.4)
       chara.react('joy', 3)
       chara.breathe('rainbow', 1, 2.4)
+      window.setTimeout(() => audio.pochiVoice('excited'), 400)
       audio.fanfare()
       fx.stop(0.35)
       fx.doFlash(1)
@@ -675,6 +719,12 @@ function frame(now: number) {
   clock += dt
   fx.update(dt)
   chara.update(dt)
+  // SUPER 以上のリーチ中はポッチの舞台を出す（暗転・ブラックアウト中は出さない）
+  const sp = game.spin
+  chara.setReachScene(
+    !!sp && !sp.done && (sp.stage === 'super' || sp.stage === 'premium') && !sp.dark && !sp.darken && !sp.blackout,
+    dt,
+  )
   gate.update(dt, game.needsRefill)
   ui.gate = gate.state
   if (gate.paused) {
@@ -716,6 +766,7 @@ function frame(now: number) {
     if (stage > lastStage) {
       chara.evolveFlash = 1
       chara.react('joy', 1)
+      audio.pochiVoice('happy')
       audio.levelUp()
       fx.ring(CHARA_X, CHARA_Y, game.lt ? '#ffd23d' : '#5fd18a', 120)
     }

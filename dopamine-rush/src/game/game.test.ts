@@ -138,7 +138,8 @@ describe('RUSH 最終変動', () => {
     let chanceWin = 0
     let chanceMiss = 0
     let chanceOpen = false
-    simulate(21, 2400, (g, e) => {
+    // 最終変動の回数は運に左右されるので、2つのシードの合計で見る
+    for (const seed of [21, 22]) simulate(seed, 2400, (g, e) => {
       if (e.type === 'lastSpin') {
         inLast = true
         sawReach = false

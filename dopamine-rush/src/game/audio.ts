@@ -7,6 +7,7 @@
  */
 
 import { scheduleKyupon, type KyuponVariant } from './kyupon'
+import { schedulePochiVoice, type PochiVoice } from './voice'
 
 type Voice = 'square' | 'triangle' | 'sine' | 'sawtooth'
 
@@ -298,6 +299,12 @@ class Audio {
     if (!this.ready) return
     // 重い「バ」→ 2本の音がうなる太い「キューン」（候補から選ばれた F 案）
     scheduleKyupon(this.ctx!, this.master!, this.ctx!.currentTime, SAKIBARE_SOUND, 0.6)
+  }
+
+  /** ポッチの声（voice.ts。言葉ではなく生き物の鳴き声として合成） */
+  pochiVoice(kind: PochiVoice) {
+    if (!this.ready) return
+    schedulePochiVoice(this.ctx!, this.master!, this.ctx!.currentTime, kind)
   }
 
   /** ガラスが割れる音 */

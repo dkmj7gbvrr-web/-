@@ -19,6 +19,7 @@ import {
   type FinaleTier,
   type HoldColor,
   type Mode,
+  type PochiTell,
   type Reach,
   type SignColor,
   type SpinOutcome,
@@ -36,6 +37,7 @@ export type GameEvent =
   | { type: 'holdAdded'; color: HoldColor }
   | { type: 'holdChange'; from: HoldColor; to: HoldColor; index: number }
   | { type: 'sakibare' }
+  | { type: 'pochi'; tell: PochiTell }
   | { type: 'spinStart'; outcome: SpinOutcome }
   | { type: 'kakutei' }
   | { type: 'reelStop'; reel: number; heavy: boolean }
@@ -144,6 +146,8 @@ export interface FeverState {
 }
 
 export const FIRE_INTERVAL = 0.14
+/** ポッチ予告を見せる秒数 */
+export const POCHI_TELL_TIME = 1.6
 /** ボタン長押しで溜めきるまでの秒数（溜めきったら自動で離したことになる） */
 export const CHARGE_TIME = 1.1
 /** コマ送りの間隔：最初は速く、最後の数コマで一気に溜める */
@@ -711,6 +715,15 @@ export class Game {
     if (sp.outcome.mode !== 'normal') return 0
     const add = (at: number, fn: () => void) => sp.actions.push({ at, fn })
     let t = 0.15
+    // ポッチ予告：場所・行動・持ち物で期待度を示す（見せている間はリールを止めない）
+    const pochi = y.pochi
+    if (pochi) {
+      add(t, () => {
+        sp.gaugeTarget = Math.max(sp.gaugeTarget, 0.15)
+        this.emit({ type: 'pochi', tell: pochi })
+      })
+      t += POCHI_TELL_TIME
+    }
     for (let step = 1; step <= y.stepUp; step++) {
       const st = step
       add(t, () => {

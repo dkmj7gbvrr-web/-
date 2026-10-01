@@ -1,5 +1,5 @@
 import { AD_REWARD, FALLBACK_REWARD, type GateState } from './ads/refillGate'
-import { drawDragon, type Chara, type DragonLook, type Stage } from './chara'
+import { drawDragon, drawItem, TELL_SHOW, type Chara, type DragonLook, type Stage } from './chara'
 import type { Fx } from './fx'
 import { holdLevel, PUSH_AUTO, type Game } from './game/game'
 import { SPEC, SYMBOL_COUNT, type Custom, type HoldColor, type SignColor } from './game/odds'
@@ -47,8 +47,11 @@ const HOLD_FILL: Record<HoldColor, string> = {
 
 const REEL_Y = 66
 const REEL_H = 140
-const REEL_X = [44, 170, 296]
-const REEL_W = 110
+/** 図柄は液晶の左側に寄せ、右側をポッチの居場所にする */
+const REEL_X = [36, 124, 212]
+const REEL_W = 82
+/** 液晶の中のポッチの居場所 */
+const HOME = { x: 360, y: 150, x0: 300, x1: W - 28 }
 
 function rainbowGradient(ctx: CanvasRenderingContext2D, x0: number, x1: number, t: number) {
   const g = ctx.createLinearGradient(x0, 0, x1, 0)
@@ -65,9 +68,9 @@ function holdFill(ctx: CanvasRenderingContext2D, c: HoldColor, x: number, t: num
   return c === 'rainbow' ? rainbowGradient(ctx, x - 12, x + 12, t) : HOLD_FILL[c]
 }
 
-/** ポッチの定位置（図柄パネルの右下） */
-export const CHARA_X = 392
-export const CHARA_Y = 222
+/** ポッチの定位置（液晶の右側） */
+export const CHARA_X = HOME.x
+export const CHARA_Y = HOME.y
 
 export function render(ctx: CanvasRenderingContext2D, g: Game, fx: Fx, ui: Ui, time: number, chara: Chara, stage: Stage) {
   ctx.save()
@@ -80,10 +83,12 @@ export function render(ctx: CanvasRenderingContext2D, g: Game, fx: Fx, ui: Ui, t
   ctx.translate(-W / 2, -H / 2)
 
   drawBackground(ctx, g, fx, time)
+  if (g.phase === 'fever' && g.scene === 'fever') drawFeverPochi(ctx, g, chara, stage, time)
   drawBoard(ctx, g, time)
+  if (chara.reachK > 0.02) drawReachStage(ctx, g, chara, stage, time)
   drawReels(ctx, g, time)
   drawHolds(ctx, g, time)
-  drawCharaCorner(ctx, g, chara, stage, time)
+  drawCharaHome(ctx, g, chara, stage, time)
   drawHud(ctx, g, ui, fx, time)
   drawParticles(ctx, fx)
   drawSceneOverlay(ctx, g, ui, time)
@@ -91,6 +96,7 @@ export function render(ctx: CanvasRenderingContext2D, g: Game, fx: Fx, ui: Ui, t
   if (g.spin && g.spin.step > 0) drawStepUp(ctx, g.spin.step, g.spin.outcome.yokoku.stepUp, time)
   if (g.spin?.cutin) drawCutin(ctx, g.spin.cutin, time)
   if (g.zoneCount > 0 && g.phase === 'normal') drawZone(ctx, g.zoneCount, !!g.spin && g.holds.every((h) => !h.zone), time)
+  if (chara.tell) drawPochiTell(ctx, g, chara, stage, time)
   if (chara.centerK > 0.02) drawCharaCenter(ctx, g, chara, stage, time)
   if (g.pushPending) drawPush(ctx, g, time)
   if (g.needsRefill) drawRefill(ctx, ui.gate, time)
@@ -312,7 +318,7 @@ function drawSymbol(ctx: CanvasRenderingContext2D, idx: number, cx: number, cy: 
   const n = idx + 1
   const baseAlpha = ctx.globalAlpha
   ctx.globalAlpha = baseAlpha * alpha
-  ctx.font = `900 ${Math.round(78 * scale)}px system-ui, sans-serif`
+  ctx.font = `900 ${Math.round(70 * scale)}px system-ui, sans-serif`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.lineWidth = 7 * scale
@@ -629,21 +635,214 @@ function dragonLook(g: Game, chara: Chara, stage: Stage): DragonLook {
   }
 }
 
-/** 定位置のポッチ（中央に大きく出ている間は消える） */
-function drawCharaCorner(ctx: CanvasRenderingContext2D, g: Game, chara: Chara, stage: Stage, t: number) {
-  const a = 1 - chara.centerK
+/** 液晶の中のポッチ（舞台や中央に出ている間は消える）。始動口に入るたびに跳ねる */
+function drawCharaHome(ctx: CanvasRenderingContext2D, g: Game, chara: Chara, stage: Stage, t: number) {
+  // 大当たり中は盤面の真ん中で踊っているので、液晶からはいなくなる
+  if (g.phase === 'fever' && g.scene === 'fever') return
+  // ポッチ予告で外に出ている間も液晶からはいなくなる
+  if (chara.tell) return
+  const a = 1 - Math.max(chara.centerK, chara.reachK)
   if (a <= 0.02) return
-  const s = 34 + stage * 6
+  const s = 40 + stage * 4
+  const hop = -Math.abs(Math.sin(chara.hop * Math.PI)) * 18
   ctx.save()
+  // 液晶の枠の中だけに描く
+  roundRect(ctx, HOME.x0, REEL_Y - 4, HOME.x1 - HOME.x0, REEL_H + 8, 12)
+  ctx.clip()
+  // 足元のスポットライト
+  const spot = ctx.createRadialGradient(HOME.x, HOME.y + s * 0.6, 4, HOME.x, HOME.y + s * 0.6, s * 1.4)
+  spot.addColorStop(0, g.lt ? 'rgba(255,210,60,0.35)' : 'rgba(120,255,170,0.22)')
+  spot.addColorStop(1, 'rgba(0,0,0,0)')
+  ctx.fillStyle = spot
+  ctx.fillRect(HOME.x0, REEL_Y - 4, HOME.x1 - HOME.x0, REEL_H + 8)
   ctx.globalAlpha = a
   if (chara.evolveFlash > 0) {
     const k = chara.evolveFlash
     ctx.fillStyle = `rgba(255,255,255,${0.6 * k})`
     ctx.beginPath()
-    ctx.arc(CHARA_X, CHARA_Y, s * (1.2 + (1 - k) * 1.5), 0, Math.PI * 2)
+    ctx.arc(HOME.x, HOME.y, s * (1.2 + (1 - k) * 1.5), 0, Math.PI * 2)
     ctx.fill()
   }
-  drawDragon(ctx, CHARA_X, CHARA_Y - stage * 3, s, dragonLook(g, chara, stage), t)
+  drawDragon(ctx, HOME.x, HOME.y + hop - stage * 2, s, dragonLook(g, chara, stage), t)
+  ctx.restore()
+}
+
+/**
+ * リーチ舞台：SUPER 以上では盤面が空になり、ポッチがクリスタルの卵に向かって構える。
+ * ボタンで溜めて離すと炎のビーム。当たりならクリスタルが虹色に砕け、ハズレなら弾かれる。
+ */
+function drawReachStage(ctx: CanvasRenderingContext2D, g: Game, chara: Chara, stage: Stage, t: number) {
+  const k = chara.reachK
+  const premium = g.spin?.stage === 'premium'
+  const top = BOARD_TOP - 10
+  const h = BOARD_BOTTOM - top
+  ctx.save()
+  ctx.globalAlpha = Math.min(1, k * 1.2)
+  // 空
+  const sky = ctx.createLinearGradient(0, top, 0, BOARD_BOTTOM)
+  if (premium) {
+    sky.addColorStop(0, `hsl(${(t * 40) % 360},70%,28%)`)
+    sky.addColorStop(1, `hsl(${(t * 40 + 120) % 360},70%,12%)`)
+  } else {
+    sky.addColorStop(0, '#3a0a2a')
+    sky.addColorStop(0.6, '#5a1530')
+    sky.addColorStop(1, '#14040e')
+  }
+  ctx.fillStyle = sky
+  ctx.fillRect(WALL_L, top, WALL_R - WALL_L, h)
+  // 流れる雲
+  ctx.fillStyle = premium ? 'rgba(255,255,255,0.12)' : 'rgba(255,160,180,0.1)'
+  for (let i = 0; i < 6; i++) {
+    const x = ((i * 97 - t * (40 + i * 12)) % (W + 160)) + W + 80
+    const xx = (x % (W + 160)) - 80
+    const y = top + 40 + ((i * 67) % (h - 80))
+    ctx.beginPath()
+    ctx.ellipse(xx, y, 70 + (i % 3) * 20, 16 + (i % 2) * 6, 0, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  // クリスタルの卵（色＝カットイン色、なければタイトル色）
+  const yk = g.spin?.outcome.yokoku
+  const sign: SignColor = (yk?.cutin ?? yk?.title ?? 'red') as SignColor
+  const ex = 330
+  const ey = 470
+  const burst = chara.crystal !== 0 ? Math.min(1, chara.crystalT / 0.35) : 0
+  if (chara.crystal >= 0 || burst < 1) {
+    ctx.save()
+    ctx.translate(ex, ey)
+    const shake = chara.crystal === -1 ? Math.sin(t * 60) * 6 * (1 - burst) : 0
+    ctx.translate(shake, 0)
+    const sc = chara.crystal === 1 ? 1 + burst * 0.6 : 1
+    ctx.scale(sc, sc)
+    ctx.globalAlpha = Math.min(1, k * 1.2) * (chara.crystal === 1 ? 1 - burst : 1)
+    const fill = sign === 'rainbow' ? rainbowGradient(ctx, -40, 40, t) : SIGN_FILL[sign]
+    ctx.shadowColor = sign === 'rainbow' ? '#ffffff' : SIGN_FILL[sign]
+    ctx.shadowBlur = 25 + 15 * Math.sin(t * 6)
+    ctx.fillStyle = fill
+    ctx.beginPath()
+    ctx.ellipse(0, 0, 42, 54, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.shadowBlur = 0
+    // ファセット（カット面）
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.moveTo(0, -54)
+    ctx.lineTo(-24, -6)
+    ctx.lineTo(0, 54)
+    ctx.lineTo(24, -6)
+    ctx.closePath()
+    ctx.moveTo(-42, 0)
+    ctx.lineTo(42, 0)
+    ctx.stroke()
+    ctx.fillStyle = 'rgba(255,255,255,0.55)'
+    ctx.beginPath()
+    ctx.ellipse(-14, -24, 7, 14, -0.4, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  }
+  // ポッチ（左向きに反転して、クリスタルへ炎を吐く）
+  ctx.save()
+  ctx.translate(140, 500)
+  ctx.scale(-1, 1)
+  drawDragon(ctx, 0, Math.sin(t * 2.4) * 6, 80, dragonLook(g, chara, Math.max(stage, 2) as Stage), t)
+  ctx.restore()
+  // 炎のビーム
+  if (chara.beam > 0) {
+    const b = chara.beam / 0.35
+    ctx.strokeStyle = chara.beamColor === 'rainbow' ? rainbowGradient(ctx, 160, ex, t * 4) : chara.beamColor
+    ctx.shadowColor = '#ffffff'
+    ctx.shadowBlur = 30
+    ctx.lineCap = 'round'
+    for (const [w, a] of [
+      [26, 0.5],
+      [12, 1],
+    ] as const) {
+      ctx.globalAlpha = a * b
+      ctx.lineWidth = w * (0.5 + b * 0.5)
+      ctx.beginPath()
+      ctx.moveTo(165, 488)
+      ctx.lineTo(ex - 20, ey)
+      ctx.stroke()
+    }
+    ctx.shadowBlur = 0
+  }
+  ctx.restore()
+}
+
+/**
+ * ポッチ予告：場所（下から覗く／横切る／図柄に乗る／巨大な顔）、行動（手を振る／踊る／炎）、
+ * 持ち物（なし／りんご／魚／赤い宝石／王冠／虹の卵）の組み合わせで期待度を示す
+ */
+function drawPochiTell(ctx: CanvasRenderingContext2D, g: Game, chara: Chara, stage: Stage, t: number) {
+  const tell = chara.tell!
+  const u = chara.tellT / TELL_SHOW
+  const ease = (x: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3)
+  // 出入り：最初の 2 割で出てきて、最後の 2 割で消える
+  const inK = ease(u / 0.2)
+  const outK = ease((u - 0.8) / 0.2)
+  let x = W / 2
+  let y = 470
+  let s = 60
+  let alpha = 1
+  switch (tell.where) {
+    case 'peek':
+      x = 90
+      y = BOARD_BOTTOM + 40 - 110 * inK + 110 * outK
+      s = 55
+      break
+    case 'flyby':
+      x = -60 + (W + 120) * u
+      y = 420 + Math.sin(u * Math.PI * 4) * 30
+      s = 55
+      break
+    case 'onReel':
+      x = 165
+      // 上から落ちてきて図柄パネルの上で弾む
+      y = -60 + 120 * inK + Math.abs(Math.sin(u * Math.PI * 6)) * -10 * (1 - outK) - 120 * outK
+      s = 42
+      break
+    case 'giant': {
+      s = 70 + 130 * inK
+      y = 500
+      alpha = 0.95 * (1 - outK)
+      // 背景を暗くして巨大な顔を際立たせる
+      ctx.fillStyle = `rgba(0,0,0,${0.5 * inK * (1 - outK)})`
+      ctx.fillRect(0, BOARD_TOP - 10, W, H)
+      break
+    }
+  }
+  const look = dragonLook(g, chara, Math.max(stage, 2) as Stage)
+  look.mood = tell.action === 'wave' ? 'joy' : 'hype'
+  if (tell.action === 'fire') {
+    const color = tell.item === 'rainbowEgg' ? 'rainbow' : tell.item === 'crown' ? 'rgb(255,210,60)' : tell.item === 'gem' ? 'rgb(255,60,80)' : 'rgb(255,140,60)'
+    look.flame = { color, power: 0.9 }
+  }
+  ctx.save()
+  ctx.globalAlpha = alpha
+  ctx.translate(x, y)
+  if (tell.action === 'wave') ctx.rotate(Math.sin(t * 10) * 0.25)
+  if (tell.action === 'dance') {
+    ctx.translate(0, -Math.abs(Math.sin(t * 9)) * s * 0.25)
+    ctx.scale(1 + Math.sin(t * 18) * 0.08, 1 - Math.sin(t * 18) * 0.08)
+  }
+  drawDragon(ctx, 0, 0, s, look, t)
+  // 持ち物：王冠は頭に、ほかは胸の前に抱える
+  if (tell.item === 'crown') drawItem(ctx, 'crown', 0, -s * 0.5, s * 0.9, t)
+  else drawItem(ctx, tell.item, 0, s * 0.42, s * 0.9, t)
+  ctx.restore()
+}
+
+/** 大当たり中：盤面の真ん中、降ってくる玉の後ろでポッチが踊る */
+function drawFeverPochi(ctx: CanvasRenderingContext2D, g: Game, chara: Chara, stage: Stage, t: number) {
+  ctx.save()
+  ctx.globalAlpha = 0.85
+  const sway = Math.sin(t * 5) * 0.12
+  ctx.translate(W / 2, 520)
+  ctx.rotate(sway)
+  const look = dragonLook(g, chara, Math.max(stage, 2) as Stage)
+  look.mood = 'joy'
+  if (Math.sin(t * 2) > 0.6) look.flame = { color: 'rainbow', power: 0.8 }
+  drawDragon(ctx, 0, -Math.abs(Math.sin(t * 5)) * 16, 85, look, t)
   ctx.restore()
 }
 
@@ -713,23 +912,27 @@ function drawStepUp(ctx: CanvasRenderingContext2D, step: number, finalStep: numb
   ctx.lineWidth = 3 + step
   ctx.strokeStyle = fill(x, x + w)
   ctx.stroke()
-  if (max) {
-    drawStar(ctx, W / 2, 470, h * 0.42, rainbowGradient(ctx, W / 2 - 60, W / 2 + 60, t), t)
-  } else {
-    ctx.strokeStyle = fill(x, x + w)
-    ctx.lineWidth = 3
-    for (let i = 1; i <= step; i++) {
-      const r = 6 + i * 6
-      ctx.globalAlpha = 0.4 + (0.6 * i) / step
-      ctx.beginPath()
-      ctx.moveTo(W / 2, 470 - r)
-      ctx.lineTo(W / 2 + r, 470)
-      ctx.lineTo(W / 2, 470 + r)
-      ctx.lineTo(W / 2 - r, 470)
-      ctx.closePath()
-      ctx.stroke()
-    }
+  // ポッチが段階ごとに孵っていく：卵 → ヒビ → 顔を出す → 翼を広げる → 金の竜
+  const hatch: Array<Partial<DragonLook>> = [
+    {},
+    { stage: 0, cracks: 0, wobble: 0.6 },
+    { stage: 0, cracks: 3, wobble: 1 },
+    { stage: 1, mood: 'hype' },
+    { stage: 2, mood: 'hype' },
+    { stage: 4, mood: 'joy', gold: true },
+  ]
+  const look: DragonLook = {
+    mood: 'idle',
+    stage: 0,
+    gold: false,
+    cracks: 0,
+    wobble: 0,
+    flame: null,
+    eyeGold: false,
+    ...hatch[Math.min(step, 5)],
   }
+  if (max) drawStar(ctx, W / 2, 470, h * 0.6, rainbowGradient(ctx, W / 2 - 60, W / 2 + 60, t), t)
+  drawDragon(ctx, W / 2, 462, 20 + step * 5, look, t)
   ctx.restore()
 }
 
