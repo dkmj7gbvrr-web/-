@@ -3,13 +3,14 @@ import { AdSenseRewardProvider, configureAdSense, loadAdSense } from './ads/adse
 import { AD_CLIENT, AD_FREQUENCY_HINT, AD_TEST } from './ads/config'
 import { resolveOwner } from './ads/owner'
 import { RefillGate } from './ads/refillGate'
+import { Chara, stageForChain, type Stage } from './chara'
 import { Fx } from './fx'
 import { audio } from './game/audio'
 import { Game, holdLevel, type GameEvent } from './game/game'
 import { CUSTOMS, SIGN_COLORS, type Custom, type HoldColor, type SignColor } from './game/odds'
 import { BOARD_BOTTOM, H, W } from './game/physics'
 import { mulberry32 } from './game/rng'
-import { BTN_AUTO, BTN_CUSTOM, BTN_MOTION, BTN_MUTE, BTN_REFILL, holdX, render, type Ui } from './render'
+import { BTN_AUTO, BTN_CUSTOM, BTN_MOTION, BTN_MUTE, BTN_REFILL, CHARA_X, CHARA_Y, holdX, render, type Ui } from './render'
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!
 const ctx = canvas.getContext('2d')!
@@ -59,6 +60,7 @@ const ui: Ui = {
   autoFire: saved.autoFire ?? false,
 }
 const fx = new Fx()
+const chara = new Chara()
 fx.reducedMotion = ui.reducedMotion
 audio.muted = ui.muted
 
@@ -79,9 +81,25 @@ const SIGN_CSS: Record<SignColor, string> = {
   rainbow: '#ffffff',
 }
 const signLevel = (c: SignColor) => SIGN_COLORS.indexOf(c)
+/** ポッチの炎の色（期待度の色）。'rainbow' は虹 */
+const SIGN_RGB: Record<SignColor, string> = {
+  white: 'rgb(255,200,120)',
+  blue: 'rgb(80,150,255)',
+  green: 'rgb(60,220,130)',
+  red: 'rgb(255,60,80)',
+  gold: 'rgb(255,210,60)',
+  rainbow: 'rainbow',
+}
+const HOLD_RGB: Record<HoldColor, string> = SIGN_RGB
 const RAINBOW = ['#ff3b3b', '#ffa53d', '#ffe23d', '#3ddc84', '#39c0ff', '#b77dff', '#ff6fb5']
 
 let lastPegSound = 0
+let lastStage: Stage = 1
+/** ポッチの成長段階：通常時は殻から顔を出した状態、連チャンするほど育つ */
+function charaStage(): Stage {
+  const inChain = game.phase === 'rush' || (game.phase === 'fever' && game.chain > 0) || game.scene === 'ltIntro'
+  return inChain ? stageForChain(game.chain, game.lt) : 1
+}
 let attackerCount = 0
 let clock = 0
 
@@ -129,6 +147,7 @@ function onEvent(e: GameEvent) {
     case 'holdAdded': {
       const lvl = holdLevel(e.color)
       if (lvl >= 3) {
+        chara.react('hype', 0.8)
         audio.holdChange(lvl)
         fx.shake(0.1 * lvl)
       }
@@ -143,6 +162,8 @@ function onEvent(e: GameEvent) {
       fx.doFlash((0.25 + lvl * 0.08) * (e.index < 0 ? 1 : 0.5), HOLD_COLOR_CSS[e.to])
       fx.burst(hx, 236, 30 + lvl * 8, colors, 220, 'star')
       fx.ring(hx, 236, HOLD_COLOR_CSS[e.to], 50 + lvl * 12)
+      chara.breathe(HOLD_RGB[e.to], 0.4 + lvl * 0.1, 0.8)
+      chara.react(lvl >= 3 ? 'hype' : 'idle', 0.8)
       fx.shake(0.12 + lvl * 0.05)
       if (e.to === 'rainbow') audio.kakutei()
       break
@@ -150,6 +171,7 @@ function onEvent(e: GameEvent) {
     case 'sakibare':
       // 先バレ：入賞の瞬間に甲高い告知音と、盤面の縁が一瞬虹色に光る
       audio.sakibare()
+      chara.react('joy', 0.8)
       fx.doFlash(0.5)
       fx.doTint('#ffffff', 0.15, 0.4)
       fx.rainbow = 0.3
@@ -171,6 +193,8 @@ function onEvent(e: GameEvent) {
       // リーチ：パネルの枠がタイトル色に灯り、左右の図柄が光の線で結ばれる（描画側）
       const lvl = signLevel(e.title)
       audio.reach()
+      chara.react('hype', 2.5)
+      chara.breathe(SIGN_RGB[e.title], 0.35 + lvl * 0.1, 1)
       fx.punch(0.04 + lvl * 0.01)
       fx.doTint(SIGN_CSS[e.title], 0.12 + lvl * 0.04, 1.2)
       fx.ring(PANEL.cx, PANEL.cy, SIGN_CSS[e.title], 180)
@@ -195,17 +219,24 @@ function onEvent(e: GameEvent) {
     case 'zone':
       // 先読みゾーン：盤面の両脇に紫の炎が立ち、回を重ねるごとに高くなる（描画側）
       audio.zone(e.count, e.target)
+      chara.wobble = e.target ? 1 : 0.6
       fx.doTint(e.target ? '#ff3355' : '#7a2cff', e.target ? 0.3 : 0.18, 0.9)
       if (e.target) fx.punch(0.05)
       break
     case 'cutin':
       audio.cutin(signLevel(e.color))
+      chara.center(1.3)
+      chara.react('hype', 1.3)
+      chara.breathe(SIGN_RGB[e.color], 0.6 + signLevel(e.color) * 0.1, 1.3)
       fx.shake(0.2 + signLevel(e.color) * 0.1)
       fx.doFlash(0.25 + signLevel(e.color) * 0.1, SIGN_CSS[e.color])
       fx.punch(0.03 + signLevel(e.color) * 0.01)
       if (e.color === 'rainbow') fx.confettiRain(80, W)
       break
     case 'blackoutReveal':
+      chara.center(1.4)
+      chara.react('joy', 2)
+      chara.breathe('rainbow', 1, 1.4)
       audio.kakutei()
       audio.impact()
       fx.doFlash(1)
@@ -226,6 +257,9 @@ function onEvent(e: GameEvent) {
       // 画面が金色に染まり、金の粒が降り注ぐ（続く上位 RUSH 導入画面も描画側）
       audio.playMusic(null)
       audio.luckyTrigger()
+      chara.center(4)
+      chara.react('joy', 4)
+      chara.breathe('rgb(255,210,60)', 1, 4)
       fx.doFlash(1, '#ffd23d')
       fx.doTint('#ffb800', 0.45, 3)
       fx.stop(0.4)
@@ -235,7 +269,10 @@ function onEvent(e: GameEvent) {
       fx.burst(W / 2, 300, 120, ['#ffd23d', '#fff3b0', '#ffffff', '#ffb800'], 480, 'star')
       break
     case 'escalate':
+      chara.center(1.4)
+      chara.react('hype', 1.6)
       if (e.reach === 'premium') {
+        chara.breathe('rainbow', 1, 1.4)
         audio.riser(1.4, 1.4)
         fx.doFlash(0.7)
         fx.shake(0.45)
@@ -244,6 +281,7 @@ function onEvent(e: GameEvent) {
         fx.confettiRain(60, W)
       } else {
         // SUPER：画面が赤く沈み、パネルが迫る
+        chara.breathe(SIGN_RGB.red, 0.8, 1.4)
         audio.riser(2.2)
         fx.doFlash(0.35, '#ff3355')
         fx.doTint('#ff1030', 0.25, 1.6)
@@ -265,6 +303,8 @@ function onEvent(e: GameEvent) {
       fx.doFlash(e.win ? 0.9 : 0.4)
       break
     case 'revival':
+      chara.center(1)
+      chara.react('joy', 1.5)
       audio.kakutei()
       audio.impact()
       fx.doFlash(1)
@@ -278,6 +318,7 @@ function onEvent(e: GameEvent) {
     case 'develop':
       // SUPER に上がるか：パネルの枠が赤と金で激しく明滅（描画側）＋縁から火花
       audio.develop()
+      chara.react('hype', 1.2)
       fx.shake(0.25)
       fx.doTint('#ffb800', 0.15, 1.1)
       fx.burst(PANEL.x, PANEL.cy, 20, ['#ffd23d', '#ff3355'], 220)
@@ -289,6 +330,7 @@ function onEvent(e: GameEvent) {
         fx.stop(0.12)
       } else {
         // 上がらなかった：パネルの枠がガラスのように砕け、画面が一瞬くすむ
+        chara.react('sad', 0.9)
         audio.shatter()
         fx.shatterRect(PANEL.x, PANEL.y, PANEL.w, PANEL.h, ['#ffd23d', '#ff3355', '#ffffff'])
         fx.doTint('#30334a', 0.35, 0.8)
@@ -317,6 +359,7 @@ function onEvent(e: GameEvent) {
       fx.rainbow = 0
       break
     case 'slip':
+      chara.react('joy', 1.2)
       audio.kakutei()
       audio.impact()
       fx.doFlash(1)
@@ -333,6 +376,7 @@ function onEvent(e: GameEvent) {
       fx.burst(W / 2, 140, 30, RAINBOW, 260, 'star')
       break
     case 'fakeAlignBreak':
+      chara.react('sad', 0.9)
       audio.fall()
       fx.rainbow = 0
       fx.doTint('#30334a', 0.35, 0.9)
@@ -366,11 +410,15 @@ function onEvent(e: GameEvent) {
       }
       break
     case 'miss':
+      if (e.reach !== 'none') chara.react('sad', 0.6)
       audio.miss()
       fx.rainbow = 0
       break
     case 'jackpot':
       // 大当たり：ヒットストップ → 白飛び → 図柄から虹の衝撃波と星、紙吹雪、画面が迫る
+      chara.center(2.4)
+      chara.react('joy', 3)
+      chara.breathe('rainbow', 1, 2.4)
       audio.fanfare()
       fx.stop(0.35)
       fx.doFlash(1)
@@ -421,6 +469,8 @@ function onEvent(e: GameEvent) {
     case 'challengeResult':
       if (e.success) {
         // ゲージが虹色に満ちて弾ける
+        chara.center(1.6)
+        chara.react('joy', 2)
         audio.fanfare()
         audio.kakutei()
         fx.doFlash(1)
@@ -432,6 +482,7 @@ function onEvent(e: GameEvent) {
         fx.confettiRain(200, W)
       } else {
         // ゲージが砕け、画面が灰色にくすむ
+        chara.react('sad', 2)
         audio.shatter()
         audio.miss()
         fx.shatterRect(60, 390, W - 120, 22, ['#ff3355', ...GRAY], 90)
@@ -446,6 +497,7 @@ function onEvent(e: GameEvent) {
       break
     case 'lastChance':
       // 復活チャンス：画面にヒビが走り、金色のボタンがせり上がる
+      chara.react('hype', 4)
       audio.kakutei()
       audio.develop()
       fx.crack(BUTTON.x, BUTTON.y, 1.8)
@@ -457,6 +509,7 @@ function onEvent(e: GameEvent) {
       break
     case 'lastChanceFail':
       // ボタンが砕け散る
+      chara.react('sad', 1.5)
       audio.shatter()
       audio.fall()
       fx.shatterRect(BUTTON.x - BUTTON.r, BUTTON.y - BUTTON.r, BUTTON.r * 2, BUTTON.r * 2, ['#ffd23d', ...GRAY], 90)
@@ -625,6 +678,7 @@ function frame(now: number) {
   prev = now
   clock += dt
   fx.update(dt)
+  chara.update(dt)
   gate.update(dt, game.needsRefill)
   ui.gate = gate.state
   if (gate.paused) {
@@ -634,6 +688,15 @@ function frame(now: number) {
   } else if (ui.started) {
     audio.resume()
     if (ui.autoFire && game.balls > 0) game.firing = true
+    // 連チャンでポッチが育ったら光らせる
+    const stage = charaStage()
+    if (stage > lastStage) {
+      chara.evolveFlash = 1
+      chara.react('joy', 1)
+      audio.levelUp()
+      fx.ring(CHARA_X, CHARA_Y, game.lt ? '#ffd23d' : '#5fd18a', 120)
+    }
+    lastStage = stage
     game.update(dt * fx.timeScale)
 
     // 回転中のリールの刻み音
@@ -666,7 +729,7 @@ function frame(now: number) {
   }
   ctx.save()
   ctx.clearRect(0, 0, W, H)
-  render(ctx, game, fx, ui, clock)
+  render(ctx, game, fx, ui, clock, chara, charaStage())
   ctx.restore()
   requestAnimationFrame(frame)
 }

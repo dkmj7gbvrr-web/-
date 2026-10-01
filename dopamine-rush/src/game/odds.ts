@@ -169,14 +169,16 @@ export interface SpinOutcome {
  *  - lampOff     : 図柄パネルの枠ランプが消えている
  *  - flicker     : 変動中に盤面の釘ランプが一瞬だけ全部光る
  *  - musicStop   : RUSH 中、変動開始から BGM が一瞬止まる
+ *  - charaEye    : キャラ（ポッチ）の瞳が金色に光っている
  */
-export type Iwakan = 'bigHold' | 'silentStart' | 'reverse' | 'lampOff' | 'flicker' | 'musicStop'
+export type Iwakan = 'bigHold' | 'silentStart' | 'reverse' | 'lampOff' | 'flicker' | 'musicStop' | 'charaEye'
 export const IWAKAN_NORMAL: ReadonlyArray<readonly [Iwakan, number]> = [
   ['bigHold', 0.25],
   ['silentStart', 0.2],
   ['reverse', 0.2],
   ['lampOff', 0.2],
   ['flicker', 0.15],
+  ['charaEye', 0.15],
 ]
 export const IWAKAN_RUSH: ReadonlyArray<readonly [Iwakan, number]> = [
   ['musicStop', 0.35],

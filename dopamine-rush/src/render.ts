@@ -1,4 +1,5 @@
 import { AD_REWARD, FALLBACK_REWARD, type GateState } from './ads/refillGate'
+import { drawDragon, type Chara, type DragonLook, type Stage } from './chara'
 import type { Fx } from './fx'
 import { holdLevel, PUSH_AUTO, RENDA_TIME, type Game } from './game/game'
 import { SPEC, SYMBOL_COUNT, type Custom, type HoldColor, type SignColor } from './game/odds'
@@ -64,7 +65,11 @@ function holdFill(ctx: CanvasRenderingContext2D, c: HoldColor, x: number, t: num
   return c === 'rainbow' ? rainbowGradient(ctx, x - 12, x + 12, t) : HOLD_FILL[c]
 }
 
-export function render(ctx: CanvasRenderingContext2D, g: Game, fx: Fx, ui: Ui, time: number) {
+/** ポッチの定位置（図柄パネルの右下） */
+export const CHARA_X = 392
+export const CHARA_Y = 222
+
+export function render(ctx: CanvasRenderingContext2D, g: Game, fx: Fx, ui: Ui, time: number, chara: Chara, stage: Stage) {
   ctx.save()
   const sh = fx.shakeOffset(time)
   ctx.translate(W / 2 + sh.x, H / 2 + sh.y)
@@ -78,6 +83,7 @@ export function render(ctx: CanvasRenderingContext2D, g: Game, fx: Fx, ui: Ui, t
   drawBoard(ctx, g, time)
   drawReels(ctx, g, time)
   drawHolds(ctx, g, time)
+  drawCharaCorner(ctx, g, chara, stage, time)
   drawHud(ctx, g, ui, fx, time)
   drawParticles(ctx, fx)
   drawSceneOverlay(ctx, g, ui, time)
@@ -85,6 +91,7 @@ export function render(ctx: CanvasRenderingContext2D, g: Game, fx: Fx, ui: Ui, t
   if (g.spin && g.spin.step > 0) drawStepUp(ctx, g.spin.step, g.spin.outcome.yokoku.stepUp, time)
   if (g.spin?.cutin) drawCutin(ctx, g.spin.cutin, time)
   if (g.zoneCount > 0 && g.phase === 'normal') drawZone(ctx, g.zoneCount, !!g.spin && g.holds.every((h) => !h.zone), time)
+  if (chara.centerK > 0.02) drawCharaCenter(ctx, g, chara, stage, time)
   if (g.spin?.renda) drawRenda(ctx, g, time)
   if (g.pushPending) drawPush(ctx, g, time)
   if (g.needsRefill) drawRefill(ctx, ui.gate, time)
@@ -611,6 +618,53 @@ function drawPopups(ctx: CanvasRenderingContext2D, fx: Fx) {
   ctx.globalAlpha = 1
 }
 
+function dragonLook(g: Game, chara: Chara, stage: Stage): DragonLook {
+  return {
+    mood: chara.mood,
+    stage,
+    gold: g.lt && (g.phase === 'rush' || g.phase === 'fever' || g.scene === 'ltIntro'),
+    cracks: g.phase === 'normal' ? g.zoneCount : 0,
+    wobble: chara.wobble,
+    flame: chara.flame,
+    eyeGold: g.spin?.outcome.iwakan === 'charaEye',
+  }
+}
+
+/** 定位置のポッチ（中央に大きく出ている間は消える） */
+function drawCharaCorner(ctx: CanvasRenderingContext2D, g: Game, chara: Chara, stage: Stage, t: number) {
+  const a = 1 - chara.centerK
+  if (a <= 0.02) return
+  const s = 34 + stage * 6
+  ctx.save()
+  ctx.globalAlpha = a
+  if (chara.evolveFlash > 0) {
+    const k = chara.evolveFlash
+    ctx.fillStyle = `rgba(255,255,255,${0.6 * k})`
+    ctx.beginPath()
+    ctx.arc(CHARA_X, CHARA_Y, s * (1.2 + (1 - k) * 1.5), 0, Math.PI * 2)
+    ctx.fill()
+  }
+  drawDragon(ctx, CHARA_X, CHARA_Y - stage * 3, s, dragonLook(g, chara, stage), t)
+  ctx.restore()
+}
+
+/** 画面中央に大きく出るポッチ（SUPER・カットイン・大当たり・LT など） */
+function drawCharaCenter(ctx: CanvasRenderingContext2D, g: Game, chara: Chara, stage: Stage, t: number) {
+  const k = chara.centerK
+  // 出現時に少し行き過ぎて戻る
+  const pop = k < 0.98 ? k * (1 + 0.25 * Math.sin(k * Math.PI)) : 1
+  const look = dragonLook(g, chara, Math.max(stage, 2) as Stage)
+  ctx.save()
+  const glow = ctx.createRadialGradient(W / 2, 470, 10, W / 2, 470, 190)
+  glow.addColorStop(0, look.gold ? `rgba(255,210,60,${0.5 * k})` : `rgba(255,255,255,${0.35 * k})`)
+  glow.addColorStop(1, 'rgba(0,0,0,0)')
+  ctx.fillStyle = glow
+  ctx.fillRect(0, 280, W, 380)
+  ctx.globalAlpha = Math.min(1, k * 1.5)
+  drawDragon(ctx, W / 2, 450, 95 * pop, look, t)
+  ctx.restore()
+}
+
 function drawVignette(ctx: CanvasRenderingContext2D, color: string) {
   const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.75)
   g.addColorStop(0, 'rgba(0,0,0,0)')
@@ -969,8 +1023,6 @@ function drawSceneOverlay(ctx: CanvasRenderingContext2D, g: Game, ui: Ui, t: num
       ctx.fill()
     }
     ctx.restore()
-    const grow = Math.min(1, g.sceneTime / 1.2)
-    drawStar(ctx, W / 2, 500, (40 + 60 * grow) * (1 + 0.06 * Math.sin(t * 10)), '#ffd23d', t * 0.5)
   }
   if (g.scene === 'rushEnd') {
     ctx.fillStyle = 'rgba(0,0,0,0.7)'
