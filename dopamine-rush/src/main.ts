@@ -5,6 +5,7 @@ import { resolveOwner } from './ads/owner'
 import { RefillGate } from './ads/refillGate'
 import { Chara, stageForChain, type Stage } from './chara'
 import { Fx } from './fx'
+import { isOutdated, reloadToLatest } from './version'
 import { audio } from './game/audio'
 import { Game, holdLevel, type GameEvent } from './game/game'
 import { CUSTOMS, SIGN_COLORS, type Custom, type HoldColor, type SignColor } from './game/odds'
@@ -734,4 +735,22 @@ function frame(now: number) {
   requestAnimationFrame(frame)
 }
 requestAnimationFrame(frame)
+
+// ---------------------------------------------------------------- 新しい版の自動反映
+
+/** 遊んでいる途中（大当たり・RUSH・変動中）は読み込み直さない */
+const safeToReload = () =>
+  !ui.started || (game.phase === 'normal' && game.scene === 'play' && !game.spin && game.holds.length === 0)
+let pendingUpdate = false
+async function checkForUpdate() {
+  if (pendingUpdate || (await isOutdated())) {
+    pendingUpdate = true
+    if (safeToReload()) reloadToLatest()
+  }
+}
+void checkForUpdate()
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') void checkForUpdate()
+})
+window.setInterval(() => void checkForUpdate(), 60_000)
 
