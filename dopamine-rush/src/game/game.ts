@@ -24,6 +24,7 @@ import {
   type SignColor,
   type SpinOutcome,
 } from './odds'
+import { entryVx, launch, type RailBall } from './launch'
 import { createPegs, reachedBottom, spawnBall, stepBall, W, type Ball, type Peg } from './physics'
 import { classifyPocket, type BoardPhase, type PocketKind } from './pockets'
 import type { Rng } from './rng'
@@ -79,6 +80,8 @@ export type GameEvent =
   | { type: 'lastChanceFail' }
   | { type: 'rushEnd'; chain: number; total: number; lt: boolean }
   | { type: 'refill'; amount: number }
+  | { type: 'launch' }
+  | { type: 'foul' }
 
 export interface Reel {
   /** 図柄位置（整数部 mod 7 が表示中の図柄インデックス） */
@@ -166,6 +169,8 @@ export class Game {
   phase: BoardPhase = 'normal'
   pegs: Peg[] = createPegs()
   flying: Ball[] = []
+  /** 発射レールを駆け上がっている途中の玉 */
+  rail: RailBall[] = []
   holds: Array<{ outcome: SpinOutcome; shown: HoldColor; zone: boolean }> = []
   /** ラッキートリガー（上位 RUSH）中か */
   lt = false
@@ -179,7 +184,7 @@ export class Game {
   chain = 0
   chainTotal = 0
   fever: FeverState | null = null
-  /** 盤面の時計（始動口の往復などに使う） */
+  /** 盤面の時計 */
   t = 0
   sceneTime = 0
   /** RUSH 突入チャレンジで PUSH 待ちか */
@@ -189,7 +194,8 @@ export class Game {
   private fireCooldown = 0
   private goldRespawn = 0
   firing = false
-  aimX = W / 2
+  /** 発射の強さ 0〜1（ハンドルの回し具合） */
+  strength = 0.5
   private readonly rng: Rng
   private readonly emit: (e: GameEvent) => void
 
@@ -213,6 +219,7 @@ export class Game {
     return (
       this.balls <= 0 &&
       this.flying.length === 0 &&
+      this.rail.length === 0 &&
       this.scene === 'play' &&
       this.phase === 'normal' &&
       !this.spin &&
@@ -268,6 +275,7 @@ export class Game {
   update(dt: number) {
     this.t += dt
     this.sceneTime += dt
+    this.updateRail(dt)
     this.updateBalls(dt)
     this.updateReels(dt)
     for (const p of this.pegs) p.glow = Math.max(0, p.glow - dt)
@@ -324,7 +332,26 @@ export class Game {
     if (!this.firing || this.fireCooldown > 0 || this.balls <= 0) return
     this.fireCooldown = FIRE_INTERVAL
     this.balls -= 1
-    this.flying.push(spawnBall(this.nextId++, this.aimX, this.rng))
+    this.rail.push(launch(this.nextId++, this.strength, this.rng))
+    this.emit({ type: 'launch' })
+  }
+
+  private updateRail(dt: number) {
+    for (const rb of this.rail) rb.t += dt
+    const done = this.rail.filter((rb) => rb.t >= rb.dur)
+    if (done.length === 0) return
+    this.rail = this.rail.filter((rb) => rb.t < rb.dur)
+    for (const rb of done) {
+      if (rb.foul) {
+        // 届かなかった玉は受け皿に戻ってくる
+        this.balls += 1
+        this.emit({ type: 'foul' })
+        continue
+      }
+      const b = spawnBall(rb.id, rb.entryX, this.rng)
+      b.vx = entryVx(this.strength, this.rng)
+      this.flying.push(b)
+    }
   }
 
   private updateBalls(dt: number) {
@@ -371,9 +398,9 @@ export class Game {
     const res =
       this.phase === 'fever'
         ? this.feverOpen()
-          ? classifyPocket(ball.x, 'fever', this.t)
+          ? classifyPocket(ball.x, 'fever')
           : { kind: 'out' as const, payout: 0 }
-        : classifyPocket(ball.x, this.phase, this.t)
+        : classifyPocket(ball.x, this.phase)
     switch (res.kind) {
       case 'attacker': {
         const f = this.fever!

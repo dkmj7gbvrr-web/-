@@ -12,7 +12,7 @@ function simulate(seed: number, seconds: number, onEvent?: (g: Game, e: GameEven
   })
   const dt = 1 / 60
   for (let i = 0; i < seconds * 60; i++) {
-    g.aimX = 225 + Math.sin(i * dt * 0.7) * 150
+    g.strength = 0.5 + Math.sin(i * dt * 0.7) * 0.4
     if (g.pushPending) g.push()
     if (g.needsRefill) g.refill()
     if (g.scene === 'play') g.firing = true
@@ -84,22 +84,26 @@ describe('リーチの決着演出', () => {
   test('失敗→成功 / 成功→失敗 のパターンが実際に出て、結果と矛盾しない', () => {
     const seen = new Set<string>()
     let pending: string[] = []
-    simulate(8, 1500, (g, e) => {
-      if (['slip', 'revival', 'fakeAlign', 'fakeAlignBreak', 'fakeRevivalEnd', 'darkenEnd', 'develop'].includes(e.type)) {
-        pending.push(e.type)
-        seen.add(e.type)
-      }
-      if (e.type === 'jackpot') {
-        // 失敗と思わせるパターンの後は当たる
-        for (const p of pending) expect(['slip', 'revival', 'darkenEnd', 'develop']).toContain(p)
-        pending = []
-      }
-      if (e.type === 'miss') {
-        for (const p of pending) expect(['fakeAlign', 'fakeAlignBreak', 'fakeRevivalEnd', 'darkenEnd', 'develop']).toContain(p)
-        pending = []
-      }
-      if (e.type === 'darkenEnd') expect(e.win).toBe(g.spin!.outcome.win)
-    })
+    // まれなパターンもあるので、すべて見えるまで最大3シード試す
+    for (let seed = 8; seed < 11 && !['slip', 'fakeAlign', 'develop'].every((t) => seen.has(t)); seed++) {
+      pending = []
+      simulate(seed, 1500, (g, e) => {
+        if (['slip', 'revival', 'fakeAlign', 'fakeAlignBreak', 'fakeRevivalEnd', 'darkenEnd', 'develop'].includes(e.type)) {
+          pending.push(e.type)
+          seen.add(e.type)
+        }
+        if (e.type === 'jackpot') {
+          // 失敗と思わせるパターンの後は当たる
+          for (const p of pending) expect(['slip', 'revival', 'darkenEnd', 'develop']).toContain(p)
+          pending = []
+        }
+        if (e.type === 'miss') {
+          for (const p of pending) expect(['fakeAlign', 'fakeAlignBreak', 'fakeRevivalEnd', 'darkenEnd', 'develop']).toContain(p)
+          pending = []
+        }
+        if (e.type === 'darkenEnd') expect(e.win).toBe(g.spin!.outcome.win)
+      })
+    }
     // ボタンを押した後は即決着になったので、ボタン後の決着パターン（復活失敗・暗転）は出ない
     for (const t of ['slip', 'fakeAlign', 'develop']) expect(seen).toContain(t)
   }, 120000)
@@ -194,17 +198,20 @@ describe('ボタン後の即決着・発展失敗の即終了', () => {
   }, 240000)
 
   test('「SUPER に上がるか」が失敗したら0.4秒以内にハズレで終わる', () => {
-    let failAt = -1
     let checked = 0
-    simulate(32, 1500, (g, e) => {
-      if (e.type === 'developResult' && !e.success) failAt = g.t
-      if (failAt >= 0 && e.type === 'jackpot') throw new Error('発展失敗のあとに当たった')
-      if (failAt >= 0 && e.type === 'miss') {
-        expect(g.t - failAt).toBeLessThan(0.4 + 1e-6)
-        failAt = -1
-        checked++
-      }
-    })
+    // 発展失敗はまれなので、起きるまで最大4シード試す
+    for (let seed = 32; seed < 36 && checked === 0; seed++) {
+      let failAt = -1
+      simulate(seed, 1500, (g, e) => {
+        if (e.type === 'developResult' && !e.success) failAt = g.t
+        if (failAt >= 0 && e.type === 'jackpot') throw new Error('発展失敗のあとに当たった')
+        if (failAt >= 0 && e.type === 'miss') {
+          expect(g.t - failAt).toBeLessThan(0.4 + 1e-6)
+          failAt = -1
+          checked++
+        }
+      })
+    }
     expect(checked).toBeGreaterThan(0)
   }, 240000)
 })
@@ -217,7 +224,7 @@ describe('演出バランス（カスタム）', () => {
       if (g.pushPending) g.push()
       if (g.needsRefill) g.refill()
       if (g.scene === 'play') g.firing = true
-      g.aimX = 225 + Math.sin(i / 60) * 150
+      g.strength = 0.5 + Math.sin(i / 60) * 0.4
       g.update(1 / 60)
     }
   }
@@ -225,14 +232,17 @@ describe('演出バランス（カスタム）', () => {
   test('先バレ：保留は白で入り、ゾーンは出ず、告知音の後の当たりが多い', () => {
     let rings = 0
     let ringWins = 0
-    run('sakibare', 41, 1800, (g, e) => {
-      if (e.type === 'holdAdded') expect(e.color).toBe('white')
-      if (e.type === 'zone') throw new Error('先バレでゾーンが出た')
-      if (e.type === 'sakibare') {
-        rings++
-        if (g.holds[g.holds.length - 1].outcome.win) ringWins++
-      }
-    })
+    // 告知音の回数はシードの運に左右されるので、2シード分を合算して見る
+    for (const seed of [41, 42]) {
+      run('sakibare', seed, 1800, (g, e) => {
+        if (e.type === 'holdAdded') expect(e.color).toBe('white')
+        if (e.type === 'zone') throw new Error('先バレでゾーンが出た')
+        if (e.type === 'sakibare') {
+          rings++
+          if (g.holds[g.holds.length - 1].outcome.win) ringWins++
+        }
+      })
+    }
     expect(rings).toBeGreaterThanOrEqual(2)
     expect(ringWins / rings).toBeGreaterThan(0.6)
   }, 240000)

@@ -37,14 +37,15 @@ describe('physics', () => {
 })
 
 describe('pockets', () => {
-  test('始動口の中心に落ちれば start', () => {
-    for (const t of [0, 1.1, 2.3, 3.7]) {
-      const sp = startPocket('normal', t)
-      expect(classifyPocket(sp.x, 'normal', t).kind).toBe('start')
-    }
+  test('始動口は中央に固定され、中心に落ちれば start', () => {
+    const sp = startPocket('normal')
+    expect(sp.x).toBe(225)
+    expect(classifyPocket(sp.x, 'normal').kind).toBe('start')
+    expect(startPocket('rush').x).toBe(225)
+    expect(startPocket('rush').w).toBeGreaterThan(sp.w)
   })
   test('大当たり中は中央がアタッカー、端はアウト', () => {
-    expect(classifyPocket(225, 'fever', 0).kind).toBe('attacker')
-    expect(classifyPocket(20, 'fever', 0).kind).toBe('out')
+    expect(classifyPocket(225, 'fever').kind).toBe('attacker')
+    expect(classifyPocket(20, 'fever').kind).toBe('out')
   })
 })

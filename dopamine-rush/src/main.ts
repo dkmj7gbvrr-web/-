@@ -11,7 +11,7 @@ import { Game, holdLevel, type GameEvent } from './game/game'
 import { CUSTOMS, POCHI_ACTION, POCHI_ITEM, POCHI_WHERE, SIGN_COLORS, type Custom, type HoldColor, type SignColor } from './game/odds'
 import { BOARD_BOTTOM, H, W } from './game/physics'
 import { mulberry32 } from './game/rng'
-import { BTN_AUTO, BTN_CUSTOM, BTN_MOTION, BTN_MUTE, BTN_REFILL, CHARA_X, CHARA_Y, holdX, render, type Ui } from './render'
+import { BTN_AUTO, BTN_CUSTOM, BTN_MOTION, BTN_MUTE, BTN_REFILL, CHARA_X, CHARA_Y, HANDLE, HANDLE_SWEEP, holdX, render, type Ui } from './render'
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!
 const ctx = canvas.getContext('2d')!
@@ -23,6 +23,7 @@ interface Saved {
   best: { chain: number; total: number }
   custom: Custom
   autoFire: boolean
+  strength: number
 }
 function load(): Partial<Saved> {
   try {
@@ -39,6 +40,7 @@ function save() {
       best: ui.best,
       custom: ui.custom,
       autoFire: ui.autoFire,
+      strength: game.strength,
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(s))
   } catch {
@@ -569,6 +571,12 @@ function onEvent(e: GameEvent) {
       audio.levelUp()
       updateBest(e.chain, e.total)
       break
+    case 'launch':
+      audio.launch(game.strength)
+      break
+    case 'foul':
+      audio.foul()
+      break
     case 'refill':
       fx.ring(W / 2, 32, '#3ddc84', 120)
       fx.burst(60, 36, 40, ['#3ddc84', '#ffffff'], 200, 'coin')
@@ -611,12 +619,24 @@ void resolveOwner()
     gate = new RefillGate(new AdSenseRewardProvider(), grant)
   })
 ui.displayBalls = game.balls
+if (typeof saved.strength === 'number' && Number.isFinite(saved.strength)) game.strength = clampStrength(saved.strength)
 
 // ---------------------------------------------------------------- 入力
 
 function toLogical(ev: PointerEvent) {
   const r = canvas.getBoundingClientRect()
   return { x: ((ev.clientX - r.left) / r.width) * W, y: ((ev.clientY - r.top) / r.height) * H }
+}
+/** ハンドルの指の角度（中心に近すぎると角度が定まらないので null） */
+let grabbing = false
+let grabAngle: number | null = null
+function handleAngle(p: { x: number; y: number }): number | null {
+  const dx = p.x - HANDLE.x
+  const dy = p.y - HANDLE.y
+  return Math.hypot(dx, dy) < 6 ? null : Math.atan2(dy, dx)
+}
+function clampStrength(s: number) {
+  return Math.min(1, Math.max(0, s))
 }
 const inside = (p: { x: number; y: number }, b: { x: number; y: number; w: number; h: number }) =>
   p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h
@@ -665,14 +685,30 @@ canvas.addEventListener('pointerdown', (ev) => {
     gate.press()
     return
   }
-  game.aimX = p.x
+  // ハンドルをつかむと、回した角度で強さが変わる（つかんだ瞬間には変わらない）
+  if (Math.hypot(p.x - HANDLE.x, p.y - HANDLE.y) <= HANDLE.r + 18) {
+    grabbing = true
+    grabAngle = handleAngle(p)
+  }
+  // 盤面のどこを押しても、いまの強さで発射する
   game.firing = true
 })
 canvas.addEventListener('pointermove', (ev) => {
-  if (!ui.started) return
-  game.aimX = toLogical(ev).x
+  if (!ui.started || !grabbing) return
+  const a = handleAngle(toLogical(ev))
+  if (a === null) return
+  if (grabAngle !== null) {
+    let d = a - grabAngle
+    if (d > Math.PI) d -= Math.PI * 2
+    if (d < -Math.PI) d += Math.PI * 2
+    game.strength = clampStrength(game.strength + d / HANDLE_SWEEP)
+  }
+  grabAngle = a
 })
 const release = () => {
+  if (grabbing) save()
+  grabbing = false
+  grabAngle = null
   game.pressUp()
   // オート発射中は指を離しても撃ち続ける
   if (!ui.autoFire) game.firing = false
@@ -681,6 +717,13 @@ canvas.addEventListener('pointerup', release)
 canvas.addEventListener('pointercancel', release)
 window.addEventListener('blur', release)
 window.addEventListener('keydown', (ev) => {
+  // ↑→ で強く、↓← で弱く（押しっぱなしで連続して回る）
+  const step = { ArrowUp: 0.02, ArrowRight: 0.02, ArrowDown: -0.02, ArrowLeft: -0.02 }[ev.code]
+  if (step !== undefined) {
+    ev.preventDefault()
+    game.strength = clampStrength(game.strength + step)
+    return
+  }
   if (ev.code !== 'Space' || ev.repeat) return
   ev.preventDefault()
   audio.unlock()
@@ -689,6 +732,7 @@ window.addEventListener('keydown', (ev) => {
   else game.firing = true
 })
 window.addEventListener('keyup', (ev) => {
+  if (ev.code.startsWith('Arrow')) save()
   if (ev.code === 'Space') game.pressUp()
   if (ev.code === 'Space' && !ui.autoFire) game.firing = false
 })

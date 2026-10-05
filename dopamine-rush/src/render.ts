@@ -5,6 +5,7 @@ import { holdLevel, PUSH_AUTO, type Game } from './game/game'
 import { SPEC, SYMBOL_COUNT, type Custom, type HoldColor, type SignColor } from './game/odds'
 import { BALL_R, BOARD_BOTTOM, BOARD_TOP, H, PEG_R, W, WALL_L, WALL_R } from './game/physics'
 import { ATTACKER, BONUS_POCKETS, startPocket } from './game/pockets'
+import { ENTRY_JITTER, ENTRY_MAX, FOUL_BELOW, RAIL_BOTTOM, RAIL_R, RAIL_TOP, RAIL_X, RAIL_Y, railPosition } from './game/launch'
 
 export interface Ui {
   /** 補給ボタンの状態（広告） */
@@ -33,6 +34,10 @@ export const BTN_AUTO = { x: W - 164, y: 12, w: 34, h: 30 }
 export function holdX(index: number): number {
   return index < 0 ? 262 : 90 + index * 34
 }
+/** 発射ハンドル（右下）。0 時の向き HANDLE_A0 から時計回りに HANDLE_SWEEP 回すと最大 */
+export const HANDLE = { x: 404, y: 706, r: 30 }
+export const HANDLE_A0 = Math.PI * 0.75
+export const HANDLE_SWEEP = Math.PI * 1.5
 export const BTN_REFILL = { x: W / 2 - 90, y: 470, w: 180, h: 56 }
 
 const SYMBOL_COLORS = ['#4da3ff', '#3ddc84', '#ffa53d', '#39e0e0', '#b77dff', '#ff6fb5', '#ff3b3b']
@@ -90,6 +95,7 @@ export function render(ctx: CanvasRenderingContext2D, g: Game, fx: Fx, ui: Ui, t
   drawHolds(ctx, g, time)
   drawCharaHome(ctx, g, chara, stage, time)
   drawHud(ctx, g, ui, fx, time)
+  drawHandle(ctx, g, time)
   drawParticles(ctx, fx)
   drawSceneOverlay(ctx, g, ui, time)
   drawPopups(ctx, fx)
@@ -200,20 +206,17 @@ function drawBoard(ctx: CanvasRenderingContext2D, g: Game, t: number) {
   ctx.lineWidth = 2
   ctx.strokeRect(WALL_L, BOARD_TOP - 10, WALL_R - WALL_L, H - BOARD_TOP + 4)
 
-  // 狙い位置
-  if (g.scene === 'play' && g.phase !== 'fever') {
-    ctx.setLineDash([4, 6])
-    ctx.strokeStyle = 'rgba(255,255,255,0.25)'
-    ctx.beginPath()
-    ctx.moveTo(g.aimX, BOARD_TOP - 8)
-    ctx.lineTo(g.aimX, BOARD_TOP + 26)
-    ctx.stroke()
-    ctx.setLineDash([])
-    ctx.fillStyle = g.firing ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)'
-    ctx.beginPath()
-    ctx.arc(g.aimX, BOARD_TOP - 4, BALL_R, 0, Math.PI * 2)
-    ctx.fill()
-  }
+  // 発射レール：左端を上がって、左上の弧を回り、盤面の上を右へ
+  ctx.strokeStyle = 'rgba(200,215,255,0.16)'
+  ctx.lineWidth = BALL_R * 2 + 4
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  ctx.moveTo(RAIL_X, RAIL_BOTTOM)
+  ctx.lineTo(RAIL_X, RAIL_TOP)
+  ctx.arc(RAIL_X + RAIL_R, RAIL_TOP, RAIL_R, Math.PI, Math.PI * 1.5)
+  ctx.lineTo(ENTRY_MAX + ENTRY_JITTER, RAIL_Y)
+  ctx.stroke()
+  ctx.lineCap = 'butt'
 
   // 釘
   for (const p of g.pegs) {
@@ -281,7 +284,7 @@ function drawBoard(ctx: CanvasRenderingContext2D, g: Game, t: number) {
       ctx.textAlign = 'center'
       ctx.fillText(`+${b.payout}`, (b.x0 + b.x1) / 2, py + 23)
     }
-    const sp = startPocket(g.phase, g.t)
+    const sp = startPocket(g.phase)
     const glow = 0.6 + 0.4 * Math.sin(t * 8)
     ctx.shadowColor = g.phase === 'rush' ? '#ff4df0' : '#ffdd33'
     ctx.shadowBlur = 16 * glow
@@ -312,6 +315,83 @@ function drawBoard(ctx: CanvasRenderingContext2D, g: Game, t: number) {
     ctx.arc(b.x, b.y, BALL_R, 0, Math.PI * 2)
     ctx.fill()
   }
+  // レールを駆け上がる玉
+  for (const rb of g.rail) {
+    const p = railPosition(rb)
+    const bg = ctx.createRadialGradient(p.x - 2, p.y - 2, 1, p.x, p.y, BALL_R)
+    bg.addColorStop(0, '#ffffff')
+    bg.addColorStop(1, rb.foul ? '#6a7080' : '#9aa8c0')
+    ctx.fillStyle = bg
+    ctx.beginPath()
+    ctx.arc(p.x, p.y, BALL_R, 0, Math.PI * 2)
+    ctx.fill()
+  }
+}
+
+/** 発射ハンドル：回すほど強く打ち出す（強さはゲージの長さと色だけで見せる） */
+function drawHandle(ctx: CanvasRenderingContext2D, g: Game, t: number) {
+  const { x, y, r } = HANDLE
+  const s = g.strength
+  const a = HANDLE_A0 + HANDLE_SWEEP * s
+  ctx.save()
+  // ゲージの溝
+  ctx.lineCap = 'round'
+  ctx.lineWidth = 7
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)'
+  ctx.beginPath()
+  ctx.arc(x, y, r + 9, HANDLE_A0, HANDLE_A0 + HANDLE_SWEEP)
+  ctx.stroke()
+  // 届かない区間は暗い赤
+  ctx.lineWidth = 4
+  ctx.strokeStyle = 'rgba(255,60,80,0.45)'
+  ctx.beginPath()
+  ctx.arc(x, y, r + 9, HANDLE_A0, HANDLE_A0 + HANDLE_SWEEP * FOUL_BELOW)
+  ctx.stroke()
+  // 強さ：青 → 黄 → 赤
+  if (s > 0.005) {
+    ctx.strokeStyle = `hsl(${210 - 210 * s},100%,${g.firing ? 62 : 52}%)`
+    ctx.shadowColor = ctx.strokeStyle
+    ctx.shadowBlur = g.firing ? 12 : 4
+    ctx.lineWidth = 5
+    ctx.beginPath()
+    ctx.arc(x, y, r + 9, HANDLE_A0, a)
+    ctx.stroke()
+    ctx.shadowBlur = 0
+  }
+  // ノブ本体
+  const body = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.1, x, y, r)
+  body.addColorStop(0, '#f4f7ff')
+  body.addColorStop(0.55, '#a9b3c9')
+  body.addColorStop(1, '#4b5468')
+  ctx.globalAlpha = 0.92
+  ctx.fillStyle = body
+  ctx.beginPath()
+  ctx.arc(x, y, r, 0, Math.PI * 2)
+  ctx.fill()
+  // 回した分だけ回るグリップの溝
+  ctx.strokeStyle = 'rgba(40,46,60,0.5)'
+  ctx.lineWidth = 2
+  for (let i = 0; i < 10; i++) {
+    const ga = a + (i / 10) * Math.PI * 2
+    ctx.beginPath()
+    ctx.moveTo(x + Math.cos(ga) * r * 0.78, y + Math.sin(ga) * r * 0.78)
+    ctx.lineTo(x + Math.cos(ga) * r * 0.97, y + Math.sin(ga) * r * 0.97)
+    ctx.stroke()
+  }
+  // 指示針
+  ctx.globalAlpha = 1
+  ctx.strokeStyle = g.firing ? '#fff' : 'rgba(255,255,255,0.8)'
+  ctx.lineWidth = 4
+  ctx.beginPath()
+  ctx.moveTo(x + Math.cos(a) * r * 0.2, y + Math.sin(a) * r * 0.2)
+  ctx.lineTo(x + Math.cos(a) * r * 0.72, y + Math.sin(a) * r * 0.72)
+  ctx.stroke()
+  // 打っている間は中心が脈打つ
+  ctx.fillStyle = g.firing ? `rgba(255,255,255,${0.6 + 0.4 * Math.sin(t * 20)})` : 'rgba(255,255,255,0.35)'
+  ctx.beginPath()
+  ctx.arc(x, y, r * 0.16, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.restore()
 }
 
 function drawSymbol(ctx: CanvasRenderingContext2D, idx: number, cx: number, cy: number, scale: number, alpha: number) {
@@ -1247,8 +1327,9 @@ function drawTitle(ctx: CanvasRenderingContext2D, ui: Ui, t: number) {
   ctx.font = 'bold 15px system-ui, sans-serif'
   ctx.fillStyle = '#cfd6ff'
   const lines = [
-    '画面を押しっぱなしで玉を発射（指の位置に落ちる）。',
-    '動く「START」に入れるとデジタル抽選。',
+    '画面を押しっぱなしで玉を発射。',
+    '右下のハンドルを回して強さを調整（PCは↑↓）。',
+    '中央の「START」に入れるとデジタル抽選。',
     '保留の色・光・音が期待度のサイン。',
     '光るボタンが出たら、自分の手で結果を開けよう。',
     '右上：▶▶ オート発射 ／ ● 演出バランス',
@@ -1259,13 +1340,13 @@ function drawTitle(ctx: CanvasRenderingContext2D, ui: Ui, t: number) {
   ctx.globalAlpha = a
   ctx.font = '900 24px system-ui, sans-serif'
   ctx.fillStyle = '#fff'
-  ctx.fillText('TAP TO START', W / 2, 560)
+  ctx.fillText('TAP TO START', W / 2, 582)
   ctx.globalAlpha = 1
   ctx.font = '11px system-ui, sans-serif'
   ctx.fillStyle = 'rgba(200,210,255,0.5)'
   ctx.fillText('玉はゲーム内だけの数値です。現金・景品との交換価値はありません。', W / 2, 740)
   ctx.fillText('音が出ます 🔊 / 強い光が苦手な方は右上の ✦ で演出を控えめに', W / 2, 760)
   if (ui.best.chain > 0) {
-    ctx.fillText(`自己ベスト ${ui.best.chain}連 / ${ui.best.total.toLocaleString()}玉`, W / 2, 610)
+    ctx.fillText(`自己ベスト ${ui.best.chain}連 / ${ui.best.total.toLocaleString()}玉`, W / 2, 625)
   }
 }
