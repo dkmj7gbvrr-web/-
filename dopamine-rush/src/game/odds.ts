@@ -289,6 +289,56 @@ export interface Yokoku {
   cutin: SignColor | null
   /** 先読みゾーン（この保留より前の変動で連続予告を出す）の対象になり得るか */
   zone: boolean
+  /** ポッチ予告（変動開始時にポッチが現れる。null＝出ない） */
+  pochi: PochiTell | null
+}
+
+// ---------------------------------------------------------------- ポッチ予告
+
+/** ポッチが現れる場所：下から覗く / 盤面を横切って飛ぶ / 図柄の上に乗る / 画面いっぱいの巨大な顔 */
+export const POCHI_WHERE = ['peek', 'flyby', 'onReel', 'giant'] as const
+/** ポッチの行動：手（翼）を振る / 踊る / 空に向かって炎を吐く */
+export const POCHI_ACTION = ['wave', 'dance', 'fire'] as const
+/** ポッチの持ち物：なし / りんご / 魚 / 赤い宝石 / 王冠 / 虹色の卵 */
+export const POCHI_ITEM = ['none', 'apple', 'fish', 'gem', 'crown', 'rainbowEgg'] as const
+export type PochiWhere = (typeof POCHI_WHERE)[number]
+export type PochiAction = (typeof POCHI_ACTION)[number]
+export type PochiItem = (typeof POCHI_ITEM)[number]
+export interface PochiTell {
+  where: PochiWhere
+  action: PochiAction
+  item: PochiItem
+}
+
+/** ポッチ予告が出る割合（頻度は控えめ） */
+export const POCHI_RATE: Record<YokokuCategory, number> = {
+  win: 0.45,
+  missSuper: 0.2,
+  missNormal: 0.08,
+  missNone: 0.025,
+}
+/** 場所・行動・持ち物は、当たりかハズレかでそれぞれ独立に選ぶ（重なるほど期待度が上がる） */
+export const POCHI_WHERE_TABLE: Record<'win' | 'miss', Table<PochiWhere>> = {
+  win: [['peek', 0.2], ['flyby', 0.3], ['onReel', 0.3], ['giant', 0.2]],
+  miss: [['peek', 0.55], ['flyby', 0.35], ['onReel', 0.1], ['giant', 0]],
+}
+export const POCHI_ACTION_TABLE: Record<'win' | 'miss', Table<PochiAction>> = {
+  win: [['wave', 0.25], ['dance', 0.35], ['fire', 0.4]],
+  miss: [['wave', 0.6], ['dance', 0.3], ['fire', 0.1]],
+}
+export const POCHI_ITEM_TABLE: Record<'win' | 'miss', Table<PochiItem>> = {
+  win: [['none', 0.2], ['apple', 0.15], ['fish', 0.15], ['gem', 0.2], ['crown', 0.18], ['rainbowEgg', 0.12]],
+  miss: [['none', 0.5], ['apple', 0.3], ['fish', 0.14], ['gem', 0.05], ['crown', 0.01], ['rainbowEgg', 0]],
+}
+
+export function decidePochi(cat: YokokuCategory, rng: Rng): PochiTell | null {
+  if (rng() >= POCHI_RATE[cat]) return null
+  const k = cat === 'win' ? 'win' : 'miss'
+  return {
+    where: pickWeighted(POCHI_WHERE_TABLE[k], rng),
+    action: pickWeighted(POCHI_ACTION_TABLE[k], rng),
+    item: pickWeighted(POCHI_ITEM_TABLE[k], rng),
+  }
 }
 
 type Table<T extends string | number> = ReadonlyArray<readonly [T, number]>
@@ -341,6 +391,7 @@ export function decideYokoku(mode: Mode, win: boolean, reach: Reach, rng: Rng): 
     title: pickWeighted(TITLE_TABLE[cat], rng),
     cutin: reach === 'super' || reach === 'premium' ? pickWeighted(CUTIN_TABLE[win ? 'win' : 'miss'], rng) : null,
     zone: normal && rng() < ZONE_RATE[cat],
+    pochi: normal ? decidePochi(cat, rng) : null,
   }
 }
 

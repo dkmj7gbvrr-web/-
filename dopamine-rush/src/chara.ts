@@ -23,6 +23,8 @@ export interface DragonLook {
   eyeGold: boolean
 }
 
+import type { PochiItem, PochiTell } from './game/odds'
+
 const TAU = Math.PI * 2
 
 function star(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, inner = 0.45) {
@@ -302,6 +304,96 @@ export function drawDragon(ctx: CanvasRenderingContext2D, x: number, y: number, 
   ctx.restore()
 }
 
+/** ポッチの持ち物（ポッチ予告）。x, y は持ち物の中心、s は大きさの基準 */
+export function drawItem(ctx: CanvasRenderingContext2D, item: PochiItem, x: number, y: number, s: number, t: number) {
+  if (item === 'none') return
+  ctx.save()
+  ctx.translate(x, y)
+  if (item === 'apple') {
+    ctx.fillStyle = '#e8243c'
+    ctx.beginPath()
+    ctx.arc(-s * 0.12, 0, s * 0.22, 0, TAU)
+    ctx.arc(s * 0.12, 0, s * 0.22, 0, TAU)
+    ctx.fill()
+    ctx.fillStyle = '#5fd18a'
+    ctx.beginPath()
+    ctx.ellipse(s * 0.08, -s * 0.28, s * 0.1, s * 0.05, -0.5, 0, TAU)
+    ctx.fill()
+    ctx.fillStyle = 'rgba(255,255,255,0.6)'
+    ctx.beginPath()
+    ctx.arc(-s * 0.18, -s * 0.08, s * 0.05, 0, TAU)
+    ctx.fill()
+  } else if (item === 'fish') {
+    ctx.fillStyle = '#ff9a3d'
+    ctx.beginPath()
+    ctx.ellipse(0, 0, s * 0.32, s * 0.16, 0, 0, TAU)
+    ctx.fill()
+    ctx.beginPath()
+    ctx.moveTo(s * 0.26, 0)
+    ctx.lineTo(s * 0.48, -s * 0.16)
+    ctx.lineTo(s * 0.48, s * 0.16)
+    ctx.closePath()
+    ctx.fill()
+    ctx.fillStyle = '#1a1030'
+    ctx.beginPath()
+    ctx.arc(-s * 0.18, -s * 0.03, s * 0.04, 0, TAU)
+    ctx.fill()
+  } else if (item === 'gem') {
+    ctx.shadowColor = '#ff3355'
+    ctx.shadowBlur = 16 + 8 * Math.sin(t * 8)
+    ctx.fillStyle = '#ff3355'
+    ctx.beginPath()
+    ctx.moveTo(0, -s * 0.3)
+    ctx.lineTo(s * 0.24, -s * 0.05)
+    ctx.lineTo(0, s * 0.3)
+    ctx.lineTo(-s * 0.24, -s * 0.05)
+    ctx.closePath()
+    ctx.fill()
+    ctx.shadowBlur = 0
+    ctx.fillStyle = 'rgba(255,255,255,0.6)'
+    ctx.beginPath()
+    ctx.moveTo(-s * 0.06, -s * 0.2)
+    ctx.lineTo(s * 0.04, -s * 0.05)
+    ctx.lineTo(-s * 0.1, -s * 0.05)
+    ctx.closePath()
+    ctx.fill()
+  } else if (item === 'crown') {
+    ctx.shadowColor = '#ffd23d'
+    ctx.shadowBlur = 18
+    ctx.fillStyle = '#ffd23d'
+    ctx.beginPath()
+    ctx.moveTo(-s * 0.3, s * 0.12)
+    ctx.lineTo(-s * 0.3, -s * 0.12)
+    ctx.lineTo(-s * 0.15, 0)
+    ctx.lineTo(0, -s * 0.2)
+    ctx.lineTo(s * 0.15, 0)
+    ctx.lineTo(s * 0.3, -s * 0.12)
+    ctx.lineTo(s * 0.3, s * 0.12)
+    ctx.closePath()
+    ctx.fill()
+    ctx.shadowBlur = 0
+    ctx.fillStyle = '#ff3355'
+    ctx.beginPath()
+    ctx.arc(0, s * 0.03, s * 0.05, 0, TAU)
+    ctx.fill()
+  } else if (item === 'rainbowEgg') {
+    const g = ctx.createLinearGradient(-s * 0.25, -s * 0.3, s * 0.25, s * 0.3)
+    for (let i = 0; i <= 6; i++) g.addColorStop(i / 6, `hsl(${(i * 60 + t * 240) % 360},100%,60%)`)
+    ctx.shadowColor = '#ffffff'
+    ctx.shadowBlur = 24
+    ctx.fillStyle = g
+    ctx.beginPath()
+    ctx.ellipse(0, 0, s * 0.24, s * 0.31, 0, 0, TAU)
+    ctx.fill()
+    ctx.shadowBlur = 0
+    ctx.fillStyle = 'rgba(255,255,255,0.7)'
+    ctx.beginPath()
+    ctx.ellipse(-s * 0.08, -s * 0.13, s * 0.05, s * 0.09, -0.4, 0, TAU)
+    ctx.fill()
+  }
+  ctx.restore()
+}
+
 /** RUSH の連チャン数から成長段階を決める（文字を出さずに「伸びている」を見せる） */
 export function stageForChain(chain: number, lt: boolean): Stage {
   if (lt) return 4
@@ -310,6 +402,9 @@ export function stageForChain(chain: number, lt: boolean): Stage {
   if (chain <= 5) return 3
   return 4
 }
+
+/** ポッチ予告の表示秒数（game.ts の POCHI_TELL_TIME と揃える） */
+export const TELL_SHOW = 1.6
 
 /** 演出イベントに反応するキャラの状態（見た目だけ。ゲームの結果には関与しない） */
 export class Chara {
@@ -323,6 +418,20 @@ export class Chara {
   wobble = 0
   /** 成長したときの光 */
   evolveFlash = 0
+  /** 始動口に入ったときなどの小さなジャンプ 0〜1 */
+  hop = 0
+  /** リーチ舞台（SUPER 以上でポッチが主役になる場面）の出現度 0〜1 と、終わったあと残す秒数 */
+  reachK = 0
+  private reachLinger = 0
+  /** 炎のビーム（ボタンを離した瞬間）の残り秒と色 */
+  beam = 0
+  beamColor = '#ffffff'
+  /** ポッチ予告：表示中の内容と経過秒 */
+  tell: PochiTell | null = null
+  tellT = 0
+  /** 舞台のクリスタルの結末：1 で砕けて虹（当たり）、-1 で弾かれる（ハズレ）。0 は未決 */
+  crystal = 0
+  crystalT = 0
 
   react(mood: Mood, dur: number) {
     this.mood = mood
@@ -339,7 +448,37 @@ export class Chara {
     this.centerLeft = Math.max(this.centerLeft, dur)
   }
 
+  showTell(tell: PochiTell) {
+    this.tell = tell
+    this.tellT = 0
+  }
+
+  fireBeam(color: string) {
+    this.beam = 0.35
+    this.beamColor = color
+  }
+
+  /** リーチ舞台を出すべきか（毎フレーム）。消えるときは結末が見えるよう少し残す */
+  setReachScene(on: boolean, dt: number) {
+    if (on) {
+      this.reachLinger = 0.7
+      if (this.reachK < 0.05) {
+        this.crystal = 0
+        this.crystalT = 0
+      }
+    } else this.reachLinger -= dt
+    const target = on || this.reachLinger > 0 ? 1 : 0
+    this.reachK += (target - this.reachK) * Math.min(1, dt * (target ? 8 : 5))
+    if (this.crystal !== 0) this.crystalT += dt
+  }
+
   update(dt: number) {
+    if (this.tell) {
+      this.tellT += dt
+      if (this.tellT > TELL_SHOW) this.tell = null
+    }
+    this.hop = Math.max(0, this.hop - dt * 3)
+    this.beam = Math.max(0, this.beam - dt)
     this.moodTimer -= dt
     if (this.moodTimer <= 0) this.mood = 'idle'
     this.flameTimer -= dt
