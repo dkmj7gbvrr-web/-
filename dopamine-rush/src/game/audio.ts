@@ -120,6 +120,16 @@ class Audio {
     this.tone(midiToFreq(midi + 12), 0.08, { type: 'sine', gain: 0.025 })
   }
 
+  /** 発射：金属レールを玉が弾かれる短い「カチッ」（連射されるのでごく小さく） */
+  launch(strength: number) {
+    this.noise(0.03, { gain: 0.035, from: 3200 + strength * 2400, q: 6 })
+  }
+
+  /** ファール：届かなかった玉が戻ってくる鈍い音 */
+  foul() {
+    this.tone(220, 0.09, { type: 'triangle', gain: 0.05, slideTo: 150 })
+  }
+
   gold() {
     this.tone(1318.5, 0.5, { type: 'sine', gain: 0.12 })
     this.tone(1975.5, 0.6, { type: 'sine', gain: 0.08, delay: 0.05 })

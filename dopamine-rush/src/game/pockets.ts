@@ -10,12 +10,9 @@ export interface PocketHit {
 
 export type BoardPhase = 'normal' | 'fever' | 'rush'
 
-/** 始動口は盤面下部を左右にゆっくり往復する。狙って落とせる＝自分で操作している感覚を残す。 */
-export const START_PERIOD = 4.6
-export function startPocket(phase: BoardPhase, t: number): { x: number; w: number } {
-  const w = phase === 'rush' ? 110 : 48
-  const amp = phase === 'rush' ? 80 : 120
-  return { x: W / 2 + Math.sin((t / START_PERIOD) * Math.PI * 2) * amp, w }
+/** 始動口は盤面下部の中央に固定。狙いは発射の強さ（ストローク）で合わせる。RUSH 中は電チューが開いて広くなる。 */
+export function startPocket(phase: BoardPhase): { x: number; w: number } {
+  return { x: W / 2, w: phase === 'rush' ? 110 : 48 }
 }
 
 /** 常設の小当たりポケット（こまめに小さな報酬を返す） */
@@ -28,12 +25,12 @@ export const BONUS_POCKETS: ReadonlyArray<{ x0: number; x1: number; payout: numb
 
 export const ATTACKER = { x0: 80, x1: W - 80 }
 
-export function classifyPocket(x: number, phase: BoardPhase, t: number): PocketHit {
+export function classifyPocket(x: number, phase: BoardPhase): PocketHit {
   if (phase === 'fever') {
     if (x >= ATTACKER.x0 && x <= ATTACKER.x1) return { kind: 'attacker', payout: 0 }
     return { kind: 'out', payout: 0 }
   }
-  const sp = startPocket(phase, t)
+  const sp = startPocket(phase)
   if (Math.abs(x - sp.x) <= sp.w / 2) return { kind: 'start', payout: 0 }
   for (const b of BONUS_POCKETS) {
     if (x >= b.x0 && x <= b.x1) return { kind: 'bonus', payout: b.payout }
