@@ -421,8 +421,9 @@ export class Game {
         return
       }
       case 'start': {
-        this.balls += SPEC.startPocketPayout
-        this.emit({ type: 'pocket', kind: 'start', x: ball.x, payout: SPEC.startPocketPayout })
+        const payout = this.phase === 'rush' ? SPEC.rushStartPayout : SPEC.startPocketPayout
+        this.balls += payout
+        this.emit({ type: 'pocket', kind: 'start', x: ball.x, payout })
         if (this.holds.length < SPEC.maxHolds) {
           const mode = this.boardMode()
           const outcome = decideSpin(mode, this.rng)
