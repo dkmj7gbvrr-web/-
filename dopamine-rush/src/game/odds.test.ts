@@ -30,6 +30,11 @@ import { mulberry32 } from './rng'
 
 const idx = (c: (typeof HOLD_COLORS)[number]) => HOLD_COLORS.indexOf(c)
 
+
+/** 表の中で value が占める割合 */
+const share = <T,>(t: ReadonlyArray<readonly [T, number]>, value: T) =>
+  (t.find(([v]) => v === value)?.[1] ?? 0) / t.reduce((a, [, w]) => a + w, 0)
+
 describe('decideSpin', () => {
   test('表示図柄は当否・リーチと常に矛盾しない', () => {
     const rng = mulberry32(42)
@@ -122,7 +127,11 @@ describe('決着パターン（pickFinale）', () => {
 describe('保留以外の期待度サイン（予告）', () => {
   const rel = (value: string | number, table: Record<YokokuCategory, ReadonlyArray<readonly [string | number, number]>>) => {
     // ハズレの内訳（リーチなし / ノーマル / SUPER 以上）の比率で重み付けしてハズレ時の出現率を出す
-    const missMix: Record<Exclude<YokokuCategory, 'win'>, number> = { missNone: 0.76, missNormal: 0.17, missSuper: 0.07 }
+    const missMix: Record<Exclude<YokokuCategory, 'win'>, number> = {
+      missNone: share(REACH_ON_MISS, 'none'),
+      missNormal: share(REACH_ON_MISS, 'normal'),
+      missSuper: share(REACH_ON_MISS, 'super') + share(REACH_ON_MISS, 'premium'),
+    }
     const p = (t: ReadonlyArray<readonly [string | number, number]>) => {
       const total = t.reduce((a, [, w]) => a + w, 0)
       return (t.find(([v]) => v === value)?.[1] ?? 0) / total
@@ -206,7 +215,10 @@ describe('ポッチ予告', () => {
       const total = t.reduce((a, [, w]) => a + w, 0)
       return (t.find(([v]) => v === value)?.[1] ?? 0) / total
     }
-    const missAppear = 0.76 * POCHI_RATE.missNone + 0.17 * POCHI_RATE.missNormal + 0.07 * POCHI_RATE.missSuper
+    const missAppear =
+      share(REACH_ON_MISS, 'none') * POCHI_RATE.missNone +
+      share(REACH_ON_MISS, 'normal') * POCHI_RATE.missNormal +
+      (share(REACH_ON_MISS, 'super') + share(REACH_ON_MISS, 'premium')) * POCHI_RATE.missSuper
     const pw = SPEC.normalWinRate * POCHI_RATE.win * p(table.win)
     const pm = (1 - SPEC.normalWinRate) * missAppear * p(table.miss)
     return pw / (pw + pm)
