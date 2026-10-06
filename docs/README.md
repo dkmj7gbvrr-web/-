@@ -1,4 +1,4 @@
-# わりかん家計簿（共有版・Web）
+# ふたりの家計簿（共有版・Web）
 
 `docs/index.html` は、2人でリアルタイムにデータを共有できる Web 版アプリです。
 [WarikanKakeibo](../WarikanKakeibo)（iOSネイティブ版）と同じ「5パターンの負担割合」

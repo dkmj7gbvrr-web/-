@@ -2,11 +2,11 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<title>わりかん家計簿</title>
+<title>ふたりの家計簿</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="わりかん家計簿">
+<meta name="apple-mobile-web-app-title" content="ふたりの家計簿">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#EAE7DC" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#14181D" media="(prefers-color-scheme: dark)">
@@ -1016,7 +1016,7 @@
 
 <div id="onboarding" class="onboarding" hidden>
   <div class="onboarding-card" id="onboarding-start">
-    <h1>わりかん家計簿</h1>
+    <h1>ふたりの家計簿</h1>
     <p class="onboarding-lead">2人でデータを共有するには「世帯コード」を使います。<br>どちらか1人が新しく作り、そのコードをもう1人に伝えてください。</p>
     <button class="btn btn-primary" data-action="create-household">新しく世帯を作る</button>
     <div class="onboarding-divider">または</div>
@@ -1483,7 +1483,7 @@
 
       <div class="manual-section">
         <h3>精算</h3>
-        <p>精算タブで、締め日ごとの請求サイクルの負担額・実際の立替額・精算額を確認できます。「共有カード用口座への振り込み」「共有口座への積立」「AB間の精算」は、それぞれ該当するカードの「完了にする」ボタンで独立に記録でき、すべて完了すると支出タブの見出しに「精算済み」の印が付きます。家計簿としての予算・可視化機能は集計タブにまとまっています。</p>
+        <p>精算タブで、締め日ごとの請求サイクルの負担額・実際の立替額・精算額を確認できます。「共有カード用口座への振り込み」「共有口座への積立」「AB間の精算」は、それぞれ該当するカードの「完了にする」ボタンで独立に記録でき、すべて完了すると支出タブの見出しに「精算済み」の印が付きます。精算済みのサイクルに後から支出を追加しようとした場合（カード会社の反映が遅れて、本来の締め日の支出が翌締め日に計上されるケースなど）は、自動的に次の未精算サイクルの支出として扱われます（支出一覧には「翌月請求分」と表示されます）。家計簿としての予算・可視化機能は集計タブにまとまっています。</p>
       </div>
 
       <div class="manual-section">
@@ -1712,6 +1712,24 @@ import {
     return cycleForStatement(ym, closingDay);
   }
 
+  function nextCycleAfter(cycle, closingDay) {
+    const dayAfterEnd = new Date(cycle.end.getFullYear(), cycle.end.getMonth(), cycle.end.getDate() + 1);
+    return cycleContaining(dayAfterEnd, closingDay);
+  }
+
+  // An expense normally belongs to whichever cycle its own date falls
+  // into, but a card issuer sometimes doesn't report a transaction until
+  // the FOLLOWING statement even though its purchase date falls inside a
+  // period that's already closed -- billingYm (set once, at save time, by
+  // determineExpenseBillingCycle() below) overrides that for exactly
+  // those late-arriving expenses, so they land in whichever cycle is
+  // actually still open instead of silently disappearing into one that's
+  // already been settled.
+  function expenseCycle(e, closingDay) {
+    if (e.billingYm) return cycleForStatement(e.billingYm, closingDay);
+    return cycleContaining(parseLocalDate(e.date), closingDay);
+  }
+
   // An income period covers `months` consecutive months starting at
   // (startYear, startMonth); its aPercent was computed once, at save time,
   // from whatever income was entered for that period, and applies unchanged
@@ -1754,7 +1772,7 @@ import {
       case 'bOnly': return { a: 0, b: amount };
       case 'equal': return splitByPercent(amount, 50);
       case 'incomeRatio': {
-        const cycle = cycleContaining(parseLocalDate(expense.date), closingDay);
+        const cycle = expenseCycle(expense, closingDay);
         const p = incomeAPercent(cycle.ym, incomePeriods);
         return splitByPercent(amount, p);
       }
@@ -1809,12 +1827,16 @@ import {
 
   // isInitialCost expenses are managed entirely separately (see
   // initialCostSummary()) and never count toward a billing cycle's
-  // burden/settlement, regardless of their date.
+  // burden/settlement, regardless of their date. Membership goes through
+  // expenseCycle() rather than a raw date-range check, so an expense
+  // that was routed to a later cycle via billingYm (see above) shows up
+  // where it was actually routed, not where its date alone would place it.
   function expensesInCycle(expenses, cycle) {
+    const closingDay = state.settings.cardClosingDay;
+    const key = cycleKey(cycle.ym);
     return expenses.filter(function (e) {
       if (e.isInitialCost) return false;
-      const d = parseLocalDate(e.date);
-      return d >= cycle.start && d <= cycle.end;
+      return cycleKey(expenseCycle(e, closingDay).ym) === key;
     });
   }
 
@@ -1987,6 +2009,29 @@ import {
     const applicable = cycleLegApplicability(sharedPlan, savings, direct);
     const flags = cycleSettleFlags(key);
     return (!applicable.shared || flags.shared) && (!applicable.savings || flags.savings) && (!applicable.direct || flags.direct);
+  }
+
+  // Decides which cycle a NEW (or re-dated) expense should actually bill
+  // to. Normally that's just its own date's natural cycle -- but if that
+  // cycle is already fully settled, the money for it has already changed
+  // hands, so this expense (almost certainly a late-arriving charge the
+  // card issuer didn't report until the next statement) rolls forward to
+  // the next cycle instead, cascading past any number of already-settled
+  // cycles in a row. Stops at the first cycle that's either not fully
+  // settled OR genuinely empty (nothing to have been settled at all,
+  // i.e. the real "still open" cycle) -- isCycleFullySettled() alone
+  // would read a nonexistent future cycle as vacuously "settled" since
+  // none of its legs apply yet, which would send the walk sailing past
+  // the actual open cycle. Capped at 24 steps so a pathological run of
+  // settled cycles can't loop forever.
+  function determineExpenseBillingCycle(date, closingDay) {
+    let cycle = cycleContaining(date, closingDay);
+    for (let i = 0; i < 24; i++) {
+      if (expensesInCycle(state.expenses, cycle).length === 0) break;
+      if (!isCycleFullySettled(cycle)) break;
+      cycle = nextCycleAfter(cycle, closingDay);
+    }
+    return cycle;
   }
 
   // The actual running balance of the joint savings pot: unlike
@@ -2718,7 +2763,7 @@ import {
     for (let i = 0; i < state.expenses.length; i++) {
       const e = state.expenses[i];
       if (e.isInitialCost) continue;
-      const cyc = cycleContaining(parseLocalDate(e.date), closingDay);
+      const cyc = expenseCycle(e, closingDay);
       const key = cycleKey(cyc.ym);
       if (!map.has(key)) map.set(key, { cycle: cyc, items: [] });
       map.get(key).items.push(e);
@@ -2761,6 +2806,7 @@ import {
             '<span>立替: ' + escapeHtml(paidByLabel(e.paidBy, names)) + '</span><span>・</span>' +
             categoryChipHtml(e.category) +
             (e.isSpecial ? '<span class="special-chip">特別費</span>' : '') +
+            (e.billingYm ? '<span class="special-chip">翌月請求分</span>' : '') +
             (e.note ? '<span>・</span><span>' + escapeHtml(e.note) + '</span>' : '') +
           '</div>' +
         '</div>' +
@@ -3919,6 +3965,23 @@ import {
     closeSheet('expense-sheet-backdrop');
     try {
       const withTimestamp = Object.assign({}, payload, { updatedAt: Date.now() });
+      // Only recompute which cycle this bills to when the expense is brand
+      // new or its date actually changed -- re-deriving it on every edit
+      // (e.g. fixing a typo in the memo) would let a cycle that got
+      // settled in the meantime silently roll an already-correctly-placed
+      // expense forward out of a settlement it was legitimately part of.
+      const existing = editingExpenseId ? state.expenses.find(function (x) { return x.id === editingExpenseId; }) : null;
+      if (!currentIsInitialCost && (!existing || existing.date !== date)) {
+        const closingDay = state.settings.cardClosingDay;
+        const parsedDate = parseLocalDate(date);
+        const naturalCycle = cycleContaining(parsedDate, closingDay);
+        const billingCycle = determineExpenseBillingCycle(parsedDate, closingDay);
+        if (cycleKey(billingCycle.ym) !== cycleKey(naturalCycle.ym)) {
+          withTimestamp.billingYm = billingCycle.ym;
+        } else if (existing && existing.billingYm) {
+          withTimestamp.billingYm = deleteField();
+        }
+      }
       if (editingExpenseId) {
         await updateDoc(doc(expensesCol(currentCode), editingExpenseId), withTimestamp);
       } else {
@@ -4278,18 +4341,21 @@ import {
   }
 
   function cleanOcrText(text) {
-    let s = String(text || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
-    s = stripLeadingOcrNoise(s).trim();
+    // OCR routinely inserts spurious spaces between characters (Japanese
+    // text has none between a merchant name's own characters), so spaces
+    // are dropped entirely rather than just collapsed -- not reflected
+    // into the memo at all, not even as a single space.
+    let s = String(text || '').replace(/\s+/g, '');
+    s = stripLeadingOcrNoise(s);
     // A trailing amount (optionally followed by OCR noise from a cut-off
     // digit or stray character at the crop's right edge).
-    s = s.replace(/[¥￥]?[\d,.]{2,}\s*円?\s*\S{0,3}\s*$/, '').trim();
+    s = s.replace(/[¥￥]?[\d,.]{2,}円?\S{0,3}$/, '');
     // A leading date, month/day only (no year, matching what the crop
-    // actually contains) -- OCR often inserts spaces between every token
-    // ("7 月 2 日"), so each separator tolerates surrounding whitespace.
-    s = s.replace(/^(?:\d{1,4}\s*[年\/]\s*)?\d{1,2}\s*[月\/]\s*\d{1,2}\s*日?\s*/, '').trim();
-    // The date-strip above can leave a fresh 。／．／space run exposed at
-    // the new start (e.g. "7/2。マクドナルド"), so sweep again.
-    s = stripLeadingOcrNoise(s).trim();
+    // actually contains).
+    s = s.replace(/^(?:\d{1,4}[年\/])?\d{1,2}[月\/]\d{1,2}日?/, '');
+    // The date-strip above can leave a fresh 。／．run exposed at the new
+    // start (e.g. "7/2。マクドナルド"), so sweep again.
+    s = stripLeadingOcrNoise(s);
     s = stripTrailingAddress(s).trim();
     return s.length > 40 ? s.slice(0, 40) : s;
   }
@@ -4722,13 +4788,24 @@ import {
     if (toCommit.length === 0) { toast('追加する項目を選んでください'); return; }
     try {
       const batch = writeBatch(db);
+      const closingDay = state.settings.cardClosingDay;
       toCommit.forEach(function (item) {
         const ref = doc(expensesCol(currentCode));
-        batch.set(ref, {
+        const doc_ = {
           date: item.date, amount: item.amount, memo: item.memo, note: item.note || '',
           splitType: item.splitType, customAPercent: item.customAPercent,
           paidBy: item.paidBy, category: item.category, isInitialCost: item.isInitialCost || false, updatedAt: Date.now()
-        });
+        };
+        // Same late-arriving-charge handling as a manually-added expense
+        // (see saveExpense()): a PDF statement can itself carry a charge
+        // whose date falls in a period that's already been settled.
+        if (!item.isInitialCost) {
+          const parsedDate = parseLocalDate(item.date);
+          const naturalCycle = cycleContaining(parsedDate, closingDay);
+          const billingCycle = determineExpenseBillingCycle(parsedDate, closingDay);
+          if (cycleKey(billingCycle.ym) !== cycleKey(naturalCycle.ym)) doc_.billingYm = billingCycle.ym;
+        }
+        batch.set(ref, doc_);
       });
       await batch.commit();
       toCommit.forEach(function (item) {
