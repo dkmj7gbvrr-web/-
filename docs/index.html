@@ -759,6 +759,24 @@
     margin: 4px 0;
   }
   .garbled-hint { color: var(--red); }
+  /* .row .title truncates to one line via nowrap/ellipsis, which also
+     swallows the 登録済みかも chip when the memo text alone fills the
+     line. Import rows use their own flex layout instead so the memo
+     text truncates on its own and the chip always stays visible. */
+  .import-row-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: normal;
+    overflow: visible;
+  }
+  .import-row-title-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .import-row-title .chip { flex: none; }
   .import-row-body {
     display: flex;
     align-items: center;
@@ -4253,8 +4271,15 @@ import {
     return lastIndex === -1 ? text : text.slice(0, lastIndex);
   }
 
+  // 店名が空白や句点(。／．)から始まることは実際には無いので、OCRが
+  // 行頭によく誤挿入するこれらの文字はありえないものとして削除する。
+  function stripLeadingOcrNoise(text) {
+    return text.replace(/^[\s。．]+/, '');
+  }
+
   function cleanOcrText(text) {
     let s = String(text || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+    s = stripLeadingOcrNoise(s).trim();
     // A trailing amount (optionally followed by OCR noise from a cut-off
     // digit or stray character at the crop's right edge).
     s = s.replace(/[¥￥]?[\d,.]{2,}\s*円?\s*\S{0,3}\s*$/, '').trim();
@@ -4262,6 +4287,9 @@ import {
     // actually contains) -- OCR often inserts spaces between every token
     // ("7 月 2 日"), so each separator tolerates surrounding whitespace.
     s = s.replace(/^(?:\d{1,4}\s*[年\/]\s*)?\d{1,2}\s*[月\/]\s*\d{1,2}\s*日?\s*/, '').trim();
+    // The date-strip above can leave a fresh 。／．／space run exposed at
+    // the new start (e.g. "7/2。マクドナルド"), so sweep again.
+    s = stripLeadingOcrNoise(s).trim();
     s = stripTrailingAddress(s).trim();
     return s.length > 40 ? s.slice(0, 40) : s;
   }
@@ -4658,8 +4686,9 @@ import {
           '<input type="checkbox" class="import-checkbox" data-action="toggle-import-item" data-index="' + index + '"' + (item.included ? ' checked' : '') + '>' +
           '<button type="button" class="import-row-body" data-action="edit-import-item" data-index="' + index + '">' +
             '<div class="main">' +
-              '<div class="title">' + escapeHtml(item.memo) +
-                (item.isDuplicate ? '<span class="chip chip-settled" style="margin-left:6px;">登録済みかも</span>' : '') +
+              '<div class="title import-row-title">' +
+                '<span class="import-row-title-text">' + escapeHtml(item.memo) + '</span>' +
+                (item.isDuplicate ? '<span class="chip chip-settled">登録済みかも</span>' : '') +
               '</div>' +
               (item.isGarbled ?
                 (item.rowImageUrl
