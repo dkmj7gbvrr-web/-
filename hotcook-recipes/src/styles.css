@@ -889,3 +889,26 @@ code {
 .claude-card {
   border-color: color-mix(in srgb, var(--auto) 45%, var(--line));
 }
+
+.ai-card {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+}
+
+.ai-steps {
+  margin: 0;
+  padding-left: 1.3em;
+  font-size: 0.9rem;
+}
+
+.ai-steps li {
+  padding: 3px 0;
+}
+
+.ai-steps .row-buttons {
+  margin-top: 6px;
+}
+
+details textarea {
+  margin-top: 6px;
+  font-size: 0.8rem;
+}

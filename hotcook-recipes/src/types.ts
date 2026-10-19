@@ -47,6 +47,7 @@ export interface RecipeDraft {
   steps: string[]
   modes: HotcookMode[]
   source?: string
-  /** どの方法で読み取れたか（画面で「構造化データから」「本文から推測」と出し分ける） */
-  method: 'jsonld' | 'heuristic' | 'manual'
+  memo?: string
+  /** どの方法で読み取れたか（画面で「構造化データから」「本文から推測」「AI の結果から」と出し分ける） */
+  method: 'jsonld' | 'heuristic' | 'manual' | 'ai'
 }
