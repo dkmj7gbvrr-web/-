@@ -129,19 +129,30 @@
 
 .game-header__info {
   display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.game-header__stat {
+  display: flex;
   flex-direction: column;
   align-items: center;
   line-height: 1.3;
 }
 
-.game-header__difficulty {
-  font-weight: 700;
+.game-header__stat-label {
+  font-size: 10px;
+  color: var(--text-muted);
 }
 
-.game-header__timer {
-  font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
+.game-header__stat-value {
+  font-weight: 700;
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.game-header__stat-value--mistake {
+  color: var(--error);
 }
 
 /* ---------- 招待リンク ---------- */
@@ -338,6 +349,10 @@
   justify-content: center;
   gap: 8px;
   color: #fff;
+}
+
+.solved-overlay--gameover {
+  background: rgba(80, 20, 20, 0.8);
 }
 
 .solved-overlay__title {

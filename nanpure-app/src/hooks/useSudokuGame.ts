@@ -50,6 +50,7 @@ export interface Mistake {
 }
 
 const MISTAKE_FLASH_MS = 500
+export const MAX_MISTAKES = 3
 
 export const useSudokuGame = () => {
   const [difficulty, setDifficulty] = useState<Difficulty | null>(null)
@@ -62,6 +63,7 @@ export const useSudokuGame = () => {
   const [hint, setHint] = useState<HintDisplay | null>(null)
   const [history, setHistory] = useState<CellState[][]>([])
   const [mistake, setMistake] = useState<Mistake | null>(null)
+  const [mistakeCount, setMistakeCount] = useState(0)
 
   const hintCandidatesRef = useRef<CandidateMap | null>(null)
   const timerRef = useRef<number | null>(null)
@@ -79,6 +81,8 @@ export const useSudokuGame = () => {
     return gridsEqual(boardValues(board), puzzle.solution)
   }, [board, puzzle])
 
+  const isGameOver = mistakeCount >= MAX_MISTAKES
+
   const conflicts = useMemo(() => computeConflicts(board), [board])
 
   useEffect(() => {
@@ -86,7 +90,7 @@ export const useSudokuGame = () => {
       window.clearInterval(timerRef.current)
       timerRef.current = null
     }
-    if (puzzle && !isSolved) {
+    if (puzzle && !isSolved && !isGameOver) {
       timerRef.current = window.setInterval(() => {
         setElapsedSeconds((s) => s + 1)
       }, 1000)
@@ -95,25 +99,25 @@ export const useSudokuGame = () => {
       if (timerRef.current !== null) window.clearInterval(timerRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [puzzle, isSolved])
+  }, [puzzle, isSolved, isGameOver])
 
   useEffect(() => clearMistakeTimeout, [])
 
   // 途中経過を自動保存する（タスクキルやタブを閉じたあとも再開できるように）
   useEffect(() => {
-    if (difficulty === null || !puzzle || board.length === 0 || isSolved) return
-    saveGame({ difficulty, puzzle, board, elapsedSeconds, memoMode })
-  }, [difficulty, puzzle, board, elapsedSeconds, memoMode, isSolved])
+    if (difficulty === null || !puzzle || board.length === 0 || isSolved || isGameOver) return
+    saveGame({ difficulty, puzzle, board, elapsedSeconds, memoMode, mistakeCount })
+  }, [difficulty, puzzle, board, elapsedSeconds, memoMode, mistakeCount, isSolved, isGameOver])
 
   // ↑の自動保存はReactのエフェクトなので、操作直後に即タスクキルされると
   // 間に合わない可能性がある。タブが非表示になった瞬間（バックグラウンド化・
   // タスクスイッチ等、実際にOSに強制終了される直前に必ず先に起きるタイミング）
   // にも同期的に保存し直すことで取りこぼしを防ぐ。
   useEffect(() => {
-    if (difficulty === null || !puzzle || board.length === 0 || isSolved) return
+    if (difficulty === null || !puzzle || board.length === 0 || isSolved || isGameOver) return
     const flush = () => {
       if (document.visibilityState === 'hidden') {
-        saveGame({ difficulty, puzzle, board, elapsedSeconds, memoMode })
+        saveGame({ difficulty, puzzle, board, elapsedSeconds, memoMode, mistakeCount })
       }
     }
     document.addEventListener('visibilitychange', flush)
@@ -122,12 +126,12 @@ export const useSudokuGame = () => {
       document.removeEventListener('visibilitychange', flush)
       window.removeEventListener('pagehide', flush)
     }
-  }, [difficulty, puzzle, board, elapsedSeconds, memoMode, isSolved])
+  }, [difficulty, puzzle, board, elapsedSeconds, memoMode, mistakeCount, isSolved, isGameOver])
 
-  // クリア済みなら再開する意味がないので保存データを消しておく
+  // クリア済み・ゲームオーバーなら再開する意味がないので保存データを消しておく
   useEffect(() => {
-    if (isSolved) clearSavedGame()
-  }, [isSolved])
+    if (isSolved || isGameOver) clearSavedGame()
+  }, [isSolved, isGameOver])
 
   const startNewGame = useCallback((level: Difficulty, seed?: number) => {
     setIsGenerating(true)
@@ -136,6 +140,7 @@ export const useSudokuGame = () => {
     hintCandidatesRef.current = null
     clearMistakeTimeout()
     setMistake(null)
+    setMistakeCount(0)
     // 生成中はUIをブロックしすぎないよう次のタスクに回す
     window.setTimeout(() => {
       const generated = generatePuzzle(level, { seed })
@@ -158,6 +163,7 @@ export const useSudokuGame = () => {
     hintCandidatesRef.current = null
     clearMistakeTimeout()
     setMistake(null)
+    setMistakeCount(0)
     clearSavedGame()
   }, [])
 
@@ -175,6 +181,7 @@ export const useSudokuGame = () => {
     setBoard(saved.board)
     setElapsedSeconds(saved.elapsedSeconds)
     setMemoMode(saved.memoMode)
+    setMistakeCount(saved.mistakeCount ?? 0)
     setSelected(null)
     setHistory([])
     setHint(null)
@@ -200,6 +207,7 @@ export const useSudokuGame = () => {
         // 本入力が不正解: 盤面には反映せず、一瞬だけ間違いを表示して弾く
         clearMistakeTimeout()
         setMistake({ index, digit })
+        setMistakeCount((c) => Math.min(c + 1, MAX_MISTAKES))
         mistakeTimeoutRef.current = window.setTimeout(() => {
           setMistake(null)
           mistakeTimeoutRef.current = null
@@ -352,8 +360,10 @@ export const useSudokuGame = () => {
     elapsedSeconds,
     hint,
     isSolved,
+    isGameOver,
     conflicts,
     mistake,
+    mistakeCount,
     remainingCounts,
     setSelected,
     setMemoMode,

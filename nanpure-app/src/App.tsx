@@ -6,7 +6,7 @@ import { HintPanel } from './components/HintPanel'
 import { InviteShare } from './components/InviteShare'
 import { NumberPad } from './components/NumberPad'
 import { Toolbar } from './components/Toolbar'
-import { useSudokuGame } from './hooks/useSudokuGame'
+import { MAX_MISTAKES, useSudokuGame } from './hooks/useSudokuGame'
 import { DIFFICULTIES } from './sudoku/types'
 import type { Difficulty, Digit } from './sudoku/types'
 
@@ -45,8 +45,10 @@ function App() {
     elapsedSeconds,
     hint,
     isSolved,
+    isGameOver,
     conflicts,
     mistake,
+    mistakeCount,
     remainingCounts,
     setSelected,
     setMemoMode,
@@ -64,7 +66,7 @@ function App() {
   } = game
 
   useEffect(() => {
-    if (!puzzle || isSolved) return
+    if (!puzzle || isSolved || isGameOver) return
     const handler = (e: KeyboardEvent) => {
       if (e.key >= '1' && e.key <= '9') {
         inputDigit(Number(e.key) as Digit)
@@ -89,7 +91,7 @@ function App() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [puzzle, isSolved, selected, inputDigit, eraseSelected, undo, setSelected])
+  }, [puzzle, isSolved, isGameOver, selected, inputDigit, eraseSelected, undo, setSelected])
 
   useEffect(() => {
     const shared = parseSharedPuzzle()
@@ -132,8 +134,20 @@ function App() {
           ← 難易度選択
         </button>
         <div className="game-header__info">
-          <span className="game-header__difficulty">{difficultyInfo.label}</span>
-          <span className="game-header__timer">{formatTime(elapsedSeconds)}</span>
+          <div className="game-header__stat">
+            <span className="game-header__stat-label">難易度</span>
+            <span className="game-header__stat-value">{difficultyInfo.label}</span>
+          </div>
+          <div className="game-header__stat">
+            <span className="game-header__stat-label">間違い</span>
+            <span className={'game-header__stat-value' + (mistakeCount > 0 ? ' game-header__stat-value--mistake' : '')}>
+              {mistakeCount}/{MAX_MISTAKES}
+            </span>
+          </div>
+          <div className="game-header__stat">
+            <span className="game-header__stat-label">タイム</span>
+            <span className="game-header__stat-value">{formatTime(elapsedSeconds)}</span>
+          </div>
         </div>
         <button type="button" className="game-header__new" onClick={() => startNewGame(difficulty)}>
           新しい問題
@@ -166,6 +180,20 @@ function App() {
               </div>
             </div>
           )}
+          {isGameOver && (
+            <div className="solved-overlay solved-overlay--gameover">
+              <p className="solved-overlay__title">ゲームオーバー</p>
+              <p className="solved-overlay__time">{MAX_MISTAKES}回間違えました</p>
+              <div className="solved-overlay__actions">
+                <button type="button" onClick={() => startNewGame(difficulty)}>
+                  もう一度
+                </button>
+                <button type="button" onClick={backToMenu}>
+                  難易度を変える
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="side-area">
@@ -177,7 +205,7 @@ function App() {
             onErase={eraseSelected}
             onToggleMemo={() => setMemoMode((m) => !m)}
             onHint={requestHint}
-            disabled={isSolved}
+            disabled={isSolved || isGameOver}
           />
           <HintPanel
             hint={hint}
@@ -185,7 +213,7 @@ function App() {
             onApplyElimination={applyHintElimination}
             onClose={clearHint}
           />
-          <NumberPad remainingCounts={remainingCounts} onDigit={inputDigit} disabled={isSolved} />
+          <NumberPad remainingCounts={remainingCounts} onDigit={inputDigit} disabled={isSolved || isGameOver} />
         </div>
       </main>
     </div>
