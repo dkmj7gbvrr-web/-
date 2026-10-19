@@ -5,7 +5,7 @@ import { parseRecipeHtml, parseRecipeText } from '../parse'
 import { emptyDraft, findUrl, normalizeUrl } from '../recipeUtils'
 import { recognizeImages } from '../ocr'
 import { aiPrompt, parseAiRecipe, type Capacity } from '../parse/aiRecipe'
-import { CLAUDE_NEW_SESSION_URL, CLAUDE_SESSION_URL, RECIPE_REPO, claudePrompt, isMasterCode } from '../claudeLink'
+import { CLAUDE_NEW_SESSION_URL, CLAUDE_SESSION_URL, claudePrompt, isMasterCode } from '../claudeLink'
 import { RecipeEditor, type EditorValue } from './RecipeEditor'
 
 type Tab = 'url' | 'image' | 'text' | 'manual'
@@ -32,7 +32,8 @@ export function AddRecipe({
   onCancel: () => void
   onOpenExisting: (id: string) => void
 }) {
-  const [tab, setTab] = useState<Tab>('url')
+  // 基本は AI 読み取り。共有メニューから URL 付きで開かれたときだけ URL タブ
+  const [tab, setTab] = useState<Tab>(initialUrl ? 'url' : 'image')
   const [url, setUrl] = useState(initialUrl ?? '')
   const [text, setText] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
@@ -205,33 +206,11 @@ export function AddRecipe({
   return (
     <section className="page">
       <h2 className="page-title">レシピを追加</h2>
-      {isMaster && (
-        <div className="card stack claude-card">
-          <strong>🤖 Claude で登録</strong>
-          <p className="hint">
-            Claude のチャットを開きます。依頼文（共有コード入り）をコピーするので、チャットに貼り付けてからスクショを貼ってください。
-            Claude が読み取って、このレシピ帳に直接登録します。
-          </p>
-          <div className="row-buttons">
-            <button className="primary" onClick={() => openClaude(CLAUDE_NEW_SESSION_URL)}>
-              新しいチャットで開く
-            </button>
-            <button className="ghost small" onClick={() => openClaude(CLAUDE_SESSION_URL)}>
-              作成者のチャットを開く
-            </button>
-          </div>
-          {claudeNote && <p className="notice ok">{claudeNote}</p>}
-          <p className="hint">
-            「新しいチャットで開く」はどの Claude アカウントからでも使えます。依頼文に手順書の場所（リポジトリ {RECIPE_REPO}）も入っているので、そのまま貼れば大丈夫です。
-            「作成者のチャットを開く」は、このアプリを作った人のアカウントでだけ開けます。
-          </p>
-        </div>
-      )}
       <div className="tabs" role="tablist">
         {(
           [
+            ['image', 'AI読み取り'],
             ['url', 'URL'],
-            ['image', '画像'],
             ['text', 'テキスト'],
             ['manual', '手入力'],
           ] as const
@@ -286,7 +265,7 @@ export function AddRecipe({
       {tab === 'image' && (
         <>
         <div className="card stack ai-card">
-          <strong>AI チャットで読み取る（おすすめ・無料版の Claude でも可）</strong>
+          <strong>スクショを AI チャットで読み取る（無料版の Claude でも可）</strong>
           <ol className="ai-steps">
             <li>
               下のボタンで依頼文をコピーして Claude を開く
@@ -316,8 +295,11 @@ export function AddRecipe({
           {!capacity && <p className="hint">設定で「お使いのホットクックの容量」を選ぶと、容量ごとに時間が違うレシピはその容量の分だけ書いてもらえます。</p>}
         </div>
 
-        <div className="card stack">
-          <strong>この端末で読み取る（精度は低め）</strong>
+        <details className="card ocr-fallback">
+          <summary>
+            <strong>この端末だけで読み取る（AI を使わない・精度は低め）</strong>
+          </summary>
+          <div className="stack">
           <label className="file-pick">
             <input
               type="file"
@@ -355,7 +337,21 @@ export function AddRecipe({
             レシピが複数枚にまたがるときは、上から順にまとめて選んでください（選んだ順につなげて読みます）。
             文字の読み取りはこの端末の中だけで行い、画像はどこにも送りません。
           </p>
-        </div>
+          </div>
+        </details>
+
+        {isMaster && (
+          <div className="claude-direct">
+            <span className="hint">作成者向け：Claude Code のチャットで直接登録 →</span>
+            <button className="link small-link" onClick={() => openClaude(CLAUDE_NEW_SESSION_URL)}>
+              新しいチャット
+            </button>
+            <button className="link small-link" onClick={() => openClaude(CLAUDE_SESSION_URL)}>
+              作成者のチャット
+            </button>
+            {claudeNote && <p className="hint">{claudeNote}</p>}
+          </div>
+        )}
         </>
       )}
 

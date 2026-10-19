@@ -886,10 +886,6 @@ code {
   border-color: var(--accent);
 }
 
-.claude-card {
-  border-color: color-mix(in srgb, var(--auto) 45%, var(--line));
-}
-
 .ai-card {
   border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
 }
@@ -911,4 +907,30 @@ code {
 details textarea {
   margin-top: 6px;
   font-size: 0.8rem;
+}
+
+.ocr-fallback summary {
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.ocr-fallback[open] summary {
+  margin-bottom: 10px;
+}
+
+.claude-direct {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 4px 4px 12px;
+}
+
+.small-link {
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.claude-direct p {
+  flex-basis: 100%;
 }

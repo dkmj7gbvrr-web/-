@@ -73,7 +73,7 @@ export function RecipeList({ recipes, onOpen, onAdd }: { recipes: Recipe[]; onOp
           🍲
         </div>
         <h2>まだレシピがありません</h2>
-        <p>気になるホットクックのレシピのURLを貼ると、料理名・材料・工程・使うモードをまとめて保存できます。</p>
+        <p>気になるホットクックのレシピのスクショを AI チャットで読み取って、料理名・材料・工程・使うモードをまとめて保存できます。URL や文章からも登録できます。</p>
         <button className="primary big" onClick={onAdd}>
           ＋ 最初のレシピを追加
         </button>
