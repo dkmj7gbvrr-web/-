@@ -755,3 +755,67 @@ code {
   border-radius: 4px;
   word-break: break-all;
 }
+
+/* 共有 */
+.sync-pill {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  vertical-align: middle;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.sync-pill.live {
+  background: var(--ok-soft);
+  color: var(--ok-ink);
+}
+
+.sync-pill.error {
+  background: var(--error-soft);
+  color: var(--error-ink);
+}
+
+.sync-pill.offline {
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+}
+
+.share-code {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-align: center;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  user-select: all;
+  word-break: break-all;
+}
+
+.share-option {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.share-option > * + * {
+  margin-top: 8px;
+}
+
+.check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+.check input {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  accent-color: var(--accent);
+}

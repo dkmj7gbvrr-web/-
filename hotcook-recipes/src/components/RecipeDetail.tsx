@@ -7,11 +7,13 @@ export function RecipeDetail({
   onEdit,
   onDelete,
   onUpdate,
+  onCooked,
 }: {
   recipe: Recipe
   onEdit: () => void
   onDelete: () => void
   onUpdate: (patch: Partial<Recipe>) => void
+  onCooked: (delta: number) => void
 }) {
   const [checked, setChecked] = useState<Set<number>>(new Set())
   const toggle = (i: number) =>
@@ -139,11 +141,11 @@ export function RecipeDetail({
         </div>
         <div className="row-buttons">
           {recipe.cookedCount > 0 && (
-            <button className="ghost small" onClick={() => onUpdate({ cookedCount: recipe.cookedCount - 1 })} aria-label="作った回数を1減らす">
+            <button className="ghost small" onClick={() => onCooked(-1)} aria-label="作った回数を1減らす">
               −1
             </button>
           )}
-          <button className="primary" onClick={() => onUpdate({ cookedCount: recipe.cookedCount + 1, lastCookedAt: new Date().toISOString() })}>
+          <button className="primary" onClick={() => onCooked(1)}>
             作った！
           </button>
         </div>
