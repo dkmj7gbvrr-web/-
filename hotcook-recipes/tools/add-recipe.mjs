@@ -4,7 +4,7 @@
  * Claude Code のチャットに貼られたスクショなどを Claude が読み取って JSON にし、このスクリプトで登録する想定。
  * 手順は .claude/skills/hotcook-add-recipe/SKILL.md を参照。
  *
- *   node hotcook-recipes/tools/add-recipe.mjs <共有コード> <recipe.json> [--dry-run] [--force]
+ *   node hotcook-recipes/tools/add-recipe.mjs <共有コード> <recipe.json> [--dry-run] [--force] [--update=<レシピID>]
  *
  * recipe.json の形（アプリの Recipe 型のうち、入力するもの）:
  *   { "title": "...", "url": "", "image": "", "servings": "2人分",
@@ -15,6 +15,8 @@
  *
  * --dry-run: 書き込まずに、登録する内容と重複チェックの結果だけ表示する
  * --force:   同じ料理（同じURL、またはURLなしで同じ料理名・出典）が登録済みでも書き込む
+ * --update=<レシピID>: 新しく追加せず、登録済みのレシピの中身を recipe.json の内容で置き換える
+ *            （評価・作った回数・最後に作った日・登録日はそのまま残す）
  */
 import { readFileSync } from 'node:fs'
 import { initializeApp } from 'firebase/app'
@@ -31,7 +33,8 @@ const firebaseConfig = {
 }
 
 const args = process.argv.slice(2)
-const flags = new Set(args.filter((a) => a.startsWith('--')))
+const flags = new Set(args.filter((a) => a.startsWith('--')).map((a) => a.split('=')[0]))
+const updateId = args.find((a) => a.startsWith('--update='))?.slice('--update='.length)
 const [code, file] = args.filter((a) => !a.startsWith('--'))
 
 function fail(msg) {
@@ -93,6 +96,32 @@ const db = initializeFirestore(app, { ignoreUndefinedProperties: true })
 const col = collection(db, 'recipeBooks', code, 'recipes')
 
 try {
+  if (updateId) {
+    const ref = doc(col, updateId)
+    const current = await getDoc(ref)
+    if (!current.exists()) fail(`レシピ ${updateId} が見つかりません`)
+    const before = current.data()
+    // 中身（料理名・材料・工程など）だけ置き換え、アプリで付けた記録は残す
+    const merged = {
+      ...recipe,
+      id: updateId,
+      rating: before.rating ?? 0,
+      cookedCount: before.cookedCount ?? 0,
+      lastCookedAt: before.lastCookedAt,
+      createdAt: before.createdAt ?? now,
+    }
+    if (flags.has('--dry-run')) {
+      console.log('--dry-run のため書き込みませんでした。更新後の内容:')
+      console.log(JSON.stringify(merged, null, 2))
+    } else {
+      await setDoc(ref, merged)
+      const saved = (await getDoc(ref)).data()
+      console.log(`更新しました: 「${saved.title}」（id: ${updateId}）`)
+      console.log(`材料 ${saved.ingredients.length}行 / 工程 ${saved.steps.length}行 / モード: ${saved.modes.map((m) => m.label).join('、') || 'なし'}`)
+    }
+    process.exit(0)
+  }
+
   const existing = (await getDocs(col)).docs.map((d) => ({ id: d.id, ...d.data() }))
   const dup = existing.find((r) =>
     recipe.url
