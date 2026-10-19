@@ -253,12 +253,25 @@
     white-space: nowrap;
   }
 
+  /* A single horizontally-scrolling row instead of a wrapping grid -- with
+     14+ categories a wrapped grid runs 3-4 rows deep, which is fine lower
+     in the form but pushes everything below it off-screen when ジャンル
+     sits near the top (it drives the default 負担方法, so it needs to).
+     One row keeps the same one-tap chip interaction at a fixed height;
+     selectedCategoryChipIntoView() scrolls the current pick into view. */
   .category-picker {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    padding-bottom: 2px;
+    margin-bottom: -2px;
   }
   .category-picker-chip {
+    flex: none;
+    scroll-snap-align: start;
     padding: 8px 14px;
     border-radius: 999px;
     border: 1px solid var(--line);
@@ -1136,6 +1149,12 @@
       </div>
 
       <div class="settings-section">
+        <div class="section-title">この端末の利用者</div>
+        <div class="field-hint" style="padding-top:0; margin-bottom:12px;">設定すると、支出を新しく追加するときの「実際に立て替えた人」の初期値になります。この設定はこの端末だけのもので、もう1人には共有されません。</div>
+        <div class="segmented" id="device-person-segmented"></div>
+      </div>
+
+      <div class="settings-section">
         <div class="section-title">クレジットカード</div>
         <div class="field-card">
           <div class="field"><label for="setting-closing-day">締め日（毎月）</label><input type="number" id="setting-closing-day" min="1" max="28"></div>
@@ -1241,6 +1260,9 @@
         </div>
       </div>
 
+      <div class="section-label">ジャンル</div>
+      <div class="category-picker" id="expense-category-picker"></div>
+
       <div class="section-label">負担の分け方</div>
       <div class="option-list" id="expense-split-options"></div>
 
@@ -1277,9 +1299,6 @@
 
       <div class="section-label">実際に立て替えた人</div>
       <div class="segmented" id="expense-paidby-segmented"></div>
-
-      <div class="section-label">ジャンル</div>
-      <div class="category-picker" id="expense-category-picker"></div>
 
       <div id="expense-special-field">
         <div class="section-label">特別費として扱う</div>
@@ -1411,7 +1430,7 @@
           <li><strong>メモ</strong>：何に使ったかの短い説明</li>
           <li><strong>備考</strong>：メモとは別に、住所や補足情報などを自由に書ける欄です</li>
           <li><strong>日付・金額</strong></li>
-          <li><strong>ジャンル</strong>：食料品・外食などから選択。メモの内容から自動で推測されます。設定タブから新しいジャンルも追加できます</li>
+          <li><strong>ジャンル</strong>：食料品・外食などから選択。メモの内容から自動で推測されます。設定タブから新しいジャンルも追加できます。選んだジャンルによって下の「負担の分け方」の初期値が決まるため、負担の分け方より上に表示されます。選択肢は横1行に並んでおり、左右にスワイプして選べます</li>
         </ul>
       </div>
 
@@ -1428,7 +1447,7 @@
 
       <div class="manual-section">
         <h3>実際に立て替えた人</h3>
-        <p>「A」「B」に加えて「共有」（共有カードでの支払い）を選べます。共有カードの支出は、精算タブで通常の負担額（グロス）と、共有カード用口座への実際の精算額（ネット）の両方が表示されます。</p>
+        <p>「A」「B」に加えて「共有」（共有カードでの支払い）を選べます。共有カードの支出は、精算タブで通常の負担額（グロス）と、共有カード用口座への実際の精算額（ネット）の両方が表示されます。新しく支出を追加したときの初期値は、設定タブの「この端末の利用者」で選んだ人になります（未設定の場合は「共有」のままです）。ふたりがそれぞれ自分のスマホでこのアプリを使っている場合は設定しておくと、毎回選び直す手間が減ります。</p>
       </div>
 
       <div class="manual-section">
@@ -2529,6 +2548,24 @@ import {
   };
 
   const CODE_STORAGE_KEY = 'warikan-kakeibo-household-code';
+  // Per-device, NOT synced to the household's shared Firestore data -- the
+  // app has no login, so there's no other way to know "is this A's phone
+  // or B's phone." Used only to default 実際に立て替えた人 on a brand-new
+  // expense; existing expenses always keep whatever they were saved with.
+  const DEVICE_PERSON_KEY = 'warikan-kakeibo-device-person';
+  function loadDevicePerson() {
+    try {
+      const v = localStorage.getItem(DEVICE_PERSON_KEY);
+      return (v === 'a' || v === 'b') ? v : null;
+    } catch (e) { return null; }
+  }
+  function setDevicePerson(v) {
+    try {
+      if (v === 'a' || v === 'b') localStorage.setItem(DEVICE_PERSON_KEY, v);
+      else localStorage.removeItem(DEVICE_PERSON_KEY);
+    } catch (e) {}
+    renderDevicePersonSegmented();
+  }
   const firebaseApp = initializeApp(firebaseConfig);
   const db = getFirestore(firebaseApp);
 
@@ -3244,8 +3281,21 @@ import {
     document.getElementById('setting-name-b').value = state.settings.personBName;
     document.getElementById('setting-closing-day').value = state.settings.cardClosingDay;
     document.getElementById('settings-code-value').textContent = currentCode || '';
+    renderDevicePersonSegmented();
     renderCustomCategoryList();
     renderRecurringTemplateList();
+  }
+
+  function renderDevicePersonSegmented() {
+    const names = currentNames();
+    const current = loadDevicePerson();
+    const container = document.getElementById('device-person-segmented');
+    const opts = [['', '未設定'], ['a', names.a], ['b', names.b]];
+    container.innerHTML = opts.map(function (o) {
+      const value = o[0];
+      return '<button type="button" class="segment' + ((current || '') === value ? ' selected' : '') + '" data-action="select-device-person" data-person="' + value + '">' +
+        escapeHtml(o[1]) + '</button>';
+    }).join('');
   }
 
   function renderCustomCategoryList() {
@@ -3902,7 +3952,7 @@ import {
     categoryManuallySet = !!e;
     currentSplitType = e ? e.splitType : defaultSplitTypeForCategory(currentCategory);
     currentCustomPercent = (e && e.customAPercent != null) ? e.customAPercent : 50;
-    currentPaidBy = e ? e.paidBy : 'shared';
+    currentPaidBy = e ? e.paidBy : (loadDevicePerson() || 'shared');
     currentIsInitialCost = !!(e && e.isInitialCost);
     currentIsSpecial = e ? !!e.isSpecial : defaultSpecialForCategory(currentCategory);
     splitTypeManuallySet = !!e;
@@ -3920,6 +3970,16 @@ import {
     renderExpenseSpecialSegmented();
     renderExpenseCategoryPicker();
     updateCustomRatioVisibility();
+    // The category row scrolls horizontally now (see .category-picker);
+    // jump straight to whichever chip is already selected so reopening an
+    // expense whose category sits far down the list doesn't require an
+    // extra swipe just to see what's picked. Only on open, not on every
+    // re-render -- re-scrolling while the memo auto-guesses a category as
+    // the user types would fight any manual scrolling they're doing.
+    requestAnimationFrame(function () {
+      const selectedChip = document.querySelector('#expense-category-picker .category-picker-chip.selected');
+      if (selectedChip) selectedChip.scrollIntoView({ inline: 'center', block: 'nearest' });
+    });
   }
 
   async function saveRecurringTemplate(fields) {
@@ -4855,6 +4915,9 @@ import {
       case 'select-paidby':
         currentPaidBy = target.dataset.person;
         renderExpensePaidBySegmented();
+        break;
+      case 'select-device-person':
+        setDevicePerson(target.dataset.person);
         break;
       case 'select-expense-kind':
         currentIsInitialCost = target.dataset.value === 'true';
