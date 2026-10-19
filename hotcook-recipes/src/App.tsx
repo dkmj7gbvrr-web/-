@@ -235,6 +235,7 @@ export default function App() {
       <AddRecipe
         recipes={data.recipes}
         proxyUrl={data.settings.proxyUrl}
+        shareCode={shareCode}
         initialUrl={sharedUrl}
         onSave={addFromEditor}
         onCancel={() => history.back()}

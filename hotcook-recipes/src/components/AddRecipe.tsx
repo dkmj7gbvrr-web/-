@@ -4,6 +4,7 @@ import { fetchPageHtml, type FetchAttempt } from '../fetchPage'
 import { parseRecipeHtml, parseRecipeText } from '../parse'
 import { emptyDraft, findUrl, normalizeUrl } from '../recipeUtils'
 import { recognizeImages } from '../ocr'
+import { CLAUDE_NEW_SESSION_URL, CLAUDE_SESSION_URL, claudePrompt, isMasterCode } from '../claudeLink'
 import { RecipeEditor, type EditorValue } from './RecipeEditor'
 
 type Tab = 'url' | 'image' | 'text' | 'manual'
@@ -11,6 +12,7 @@ type Tab = 'url' | 'image' | 'text' | 'manual'
 export function AddRecipe({
   recipes,
   proxyUrl,
+  shareCode,
   initialUrl,
   onSave,
   onCancel,
@@ -18,6 +20,7 @@ export function AddRecipe({
 }: {
   recipes: Recipe[]
   proxyUrl: string
+  shareCode: string
   initialUrl?: string
   onSave: (v: EditorValue) => void
   onCancel: () => void
@@ -33,6 +36,30 @@ export function AddRecipe({
   const [previews, setPreviews] = useState<string[]>([])
   const [ocrBusy, setOcrBusy] = useState<string | null>(null)
   const [fromImage, setFromImage] = useState(false)
+  const [isMaster, setIsMaster] = useState(false)
+  const [claudeNote, setClaudeNote] = useState('')
+
+  // マスタのレシピ帳（共有コードがハッシュと一致）のときだけ「Claude で登録」を出す
+  useEffect(() => {
+    let cancelled = false
+    isMasterCode(shareCode)
+      .then((ok) => !cancelled && setIsMaster(ok))
+      .catch(() => !cancelled && setIsMaster(false))
+    return () => {
+      cancelled = true
+    }
+  }, [shareCode])
+
+  const openClaude = (target: string) => {
+    // コピーはこのページにフォーカスがあるうちに始め、そのあと同じクリックの中で新しいタブを開く
+    // （先にタブを開くとフォーカスが移ってコピーが失敗し、await 後に開くとポップアップとして止められる）
+    const text = claudePrompt(shareCode, findUrl(url))
+    const copied = navigator.clipboard?.writeText(text) ?? Promise.reject(new Error('clipboard unavailable'))
+    window.open(target, '_blank', 'noopener')
+    copied
+      .then(() => setClaudeNote('依頼文をコピーしました。チャットに貼り付けて、続けてスクショを貼ってください。'))
+      .catch(() => setClaudeNote(`チャットにこう書いてください：${text}`))
+  }
   const ctlRef = useRef<AbortController | null>(null)
   const autoStarted = useRef(false)
 
@@ -146,6 +173,25 @@ export function AddRecipe({
   return (
     <section className="page">
       <h2 className="page-title">レシピを追加</h2>
+      {isMaster && (
+        <div className="card stack claude-card">
+          <strong>🤖 Claude で登録</strong>
+          <p className="hint">
+            Claude のチャットを開きます。依頼文（共有コード入り）をコピーするので、チャットに貼り付けてからスクショを貼ってください。
+            Claude が読み取って、このレシピ帳に直接登録します。
+          </p>
+          <div className="row-buttons">
+            <button className="primary" onClick={() => openClaude(CLAUDE_SESSION_URL)}>
+              Claude のチャットを開く
+            </button>
+            <button className="ghost small" onClick={() => openClaude(CLAUDE_NEW_SESSION_URL)}>
+              新しいチャットで
+            </button>
+          </div>
+          {claudeNote && <p className="notice ok">{claudeNote}</p>}
+          <p className="hint">「新しいチャットで」のときは、リポジトリ dkmj7gbvrr-web/- を選んでから貼ってください。</p>
+        </div>
+      )}
       <div className="tabs" role="tablist">
         {(
           [

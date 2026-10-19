@@ -885,3 +885,7 @@ code {
 .file-pick:focus-within {
   border-color: var(--accent);
 }
+
+.claude-card {
+  border-color: color-mix(in srgb, var(--auto) 45%, var(--line));
+}
