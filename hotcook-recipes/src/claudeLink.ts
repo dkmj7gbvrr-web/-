@@ -22,10 +22,14 @@ export async function isMasterCode(code: string): Promise<boolean> {
   return hex === MASTER_CODE_SHA256
 }
 
-/** チャットに貼る依頼文 */
+/** 手順書のある GitHub リポジトリ（公開）。新しいチャットでリポジトリを選び忘れても、依頼文から Claude が追加できるよう名前を入れる */
+export const RECIPE_REPO = 'dkmj7gbvrr-web/-'
+
+/** チャットに貼る依頼文。どのチャット（新しいチャット・他の人の Claude を含む）に貼っても通じるよう、手順書の場所まで書く */
 export function claudePrompt(code: string, url?: string): string {
   return [
     `共有コード ${code} のレシピ帳に、このあと貼るスクショのレシピを登録して。`,
+    `手順は GitHub のリポジトリ ${RECIPE_REPO} の .claude/skills/hotcook-add-recipe/SKILL.md にあるので、このチャットにそのリポジトリが無ければ追加して読んで。`,
     url ? `元のレシピ: ${url}` : '',
   ]
     .filter(Boolean)

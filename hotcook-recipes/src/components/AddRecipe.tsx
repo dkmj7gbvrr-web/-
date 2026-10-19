@@ -4,7 +4,7 @@ import { fetchPageHtml, type FetchAttempt } from '../fetchPage'
 import { parseRecipeHtml, parseRecipeText } from '../parse'
 import { emptyDraft, findUrl, normalizeUrl } from '../recipeUtils'
 import { recognizeImages } from '../ocr'
-import { CLAUDE_NEW_SESSION_URL, CLAUDE_SESSION_URL, claudePrompt, isMasterCode } from '../claudeLink'
+import { CLAUDE_NEW_SESSION_URL, CLAUDE_SESSION_URL, RECIPE_REPO, claudePrompt, isMasterCode } from '../claudeLink'
 import { RecipeEditor, type EditorValue } from './RecipeEditor'
 
 type Tab = 'url' | 'image' | 'text' | 'manual'
@@ -181,15 +181,18 @@ export function AddRecipe({
             Claude が読み取って、このレシピ帳に直接登録します。
           </p>
           <div className="row-buttons">
-            <button className="primary" onClick={() => openClaude(CLAUDE_SESSION_URL)}>
-              Claude のチャットを開く
+            <button className="primary" onClick={() => openClaude(CLAUDE_NEW_SESSION_URL)}>
+              新しいチャットで開く
             </button>
-            <button className="ghost small" onClick={() => openClaude(CLAUDE_NEW_SESSION_URL)}>
-              新しいチャットで
+            <button className="ghost small" onClick={() => openClaude(CLAUDE_SESSION_URL)}>
+              作成者のチャットを開く
             </button>
           </div>
           {claudeNote && <p className="notice ok">{claudeNote}</p>}
-          <p className="hint">「新しいチャットで」のときは、リポジトリ dkmj7gbvrr-web/- を選んでから貼ってください。</p>
+          <p className="hint">
+            「新しいチャットで開く」はどの Claude アカウントからでも使えます。依頼文に手順書の場所（リポジトリ {RECIPE_REPO}）も入っているので、そのまま貼れば大丈夫です。
+            「作成者のチャットを開く」は、このアプリを作った人のアカウントでだけ開けます。
+          </p>
         </div>
       )}
       <div className="tabs" role="tablist">
