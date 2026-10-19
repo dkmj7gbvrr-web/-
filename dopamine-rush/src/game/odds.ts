@@ -7,7 +7,7 @@ import { pickWeighted, randInt, type Rng } from './rng'
  */
 export const SPEC = {
   /** 通常時の大当たり確率 */
-  normalWinRate: 1 / 25,
+  normalWinRate: 1 / 80,
   /** RUSH（ST）中の大当たり確率 */
   rushWinRate: 1 / 5,
   /** RUSH の回数（ST回数）。継続率 = 1 - (1 - rushWinRate)^rushSpins ≒ 79% */
@@ -16,9 +16,11 @@ export const SPEC = {
   rushEntryRate: 0.5,
   /** 1ラウンドでアタッカーに入る最大玉数と1玉あたりの払い出し */
   ballsPerRound: 10,
-  payoutPerBall: 10,
+  payoutPerBall: 2,
   /** 始動口に入ったときの賞球 */
-  startPocketPayout: 3,
+  startPocketPayout: 5,
+  /** RUSH 中の始動口（電チュー）の賞球。口が広いぶん少なくして、RUSH 中に玉が増えすぎないようにする */
+  rushStartPayout: 1,
   /** 保留の最大数 */
   maxHolds: 4,
   /** RUSH 中の大当たりのうち、ラッキートリガー（上位 RUSH）に突入する割合 */
@@ -67,9 +69,9 @@ export const REACH_ON_WIN: ReadonlyArray<readonly [Reach, number]> = [
 ]
 export const REACH_ON_MISS: ReadonlyArray<readonly [Reach, number]> = [
   ['none', 0.76],
-  ['normal', 0.17],
-  ['super', 0.065],
-  ['premium', 0.005],
+  ['normal', 0.202],
+  ['super', 0.035],
+  ['premium', 0.003],
 ]
 export const RUSH_REACH_ON_WIN: ReadonlyArray<readonly [Reach, number]> = [
   ['none', 0.45],
@@ -202,7 +204,7 @@ export function nearMissCenter(target: number, rng: Rng): number {
   return c
 }
 
-const WIN_RATE: Record<Mode, number> = {
+export const WIN_RATE: Record<Mode, number> = {
   normal: SPEC.normalWinRate,
   rush: SPEC.rushWinRate,
   lt: SPEC.ltWinRate,

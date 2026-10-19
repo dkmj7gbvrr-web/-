@@ -1,4 +1,4 @@
-import { W, WALL_L, WALL_R } from './physics'
+import { W } from './physics'
 
 export type PocketKind = 'start' | 'bonus' | 'attacker' | 'out'
 
@@ -17,10 +17,8 @@ export function startPocket(phase: BoardPhase): { x: number; w: number } {
 
 /** 常設の小当たりポケット（こまめに小さな報酬を返す） */
 export const BONUS_POCKETS: ReadonlyArray<{ x0: number; x1: number; payout: number }> = [
-  { x0: WALL_L, x1: WALL_L + 42, payout: 4 },
-  { x0: WALL_R - 42, x1: WALL_R, payout: 4 },
-  { x0: 128, x1: 152, payout: 2 },
-  { x0: 298, x1: 322, payout: 2 },
+  { x0: 130, x1: 150, payout: 1 },
+  { x0: 300, x1: 320, payout: 1 },
 ]
 
 export const ATTACKER = { x0: 80, x1: W - 80 }
