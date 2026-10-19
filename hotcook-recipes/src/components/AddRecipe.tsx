@@ -3,9 +3,10 @@ import type { Recipe, RecipeDraft } from '../types'
 import { fetchPageHtml, type FetchAttempt } from '../fetchPage'
 import { parseRecipeHtml, parseRecipeText } from '../parse'
 import { emptyDraft, findUrl, normalizeUrl } from '../recipeUtils'
+import { recognizeImages } from '../ocr'
 import { RecipeEditor, type EditorValue } from './RecipeEditor'
 
-type Tab = 'url' | 'text' | 'manual'
+type Tab = 'url' | 'image' | 'text' | 'manual'
 
 export function AddRecipe({
   recipes,
@@ -28,6 +29,10 @@ export function AddRecipe({
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<{ message: string; attempts?: FetchAttempt[] } | null>(null)
   const [draft, setDraft] = useState<RecipeDraft | null>(null)
+  const [images, setImages] = useState<File[]>([])
+  const [previews, setPreviews] = useState<string[]>([])
+  const [ocrBusy, setOcrBusy] = useState<string | null>(null)
+  const [fromImage, setFromImage] = useState(false)
   const ctlRef = useRef<AbortController | null>(null)
   const autoStarted = useRef(false)
 
@@ -83,11 +88,42 @@ export function AddRecipe({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const parseText = () => {
-    if (!text.trim()) return
-    const d = parseRecipeText(text, findUrl(url) ?? findUrl(text) ?? '')
+  const parseText = (source = text, viaImage = false) => {
+    if (!source.trim()) return
+    const d = parseRecipeText(source, findUrl(url) ?? findUrl(source) ?? '')
     setError(null)
+    setFromImage(viaImage)
     setDraft(d)
+  }
+
+  // 選んだ画像のプレビュー（URL は使い終わったら解放する）
+  useEffect(() => {
+    const urls = images.map((f) => URL.createObjectURL(f))
+    setPreviews(urls)
+    return () => urls.forEach((u) => URL.revokeObjectURL(u))
+  }, [images])
+
+  const readImages = async () => {
+    if (!images.length) return
+    setError(null)
+    try {
+      const recognized = await recognizeImages(images, ({ index, total, phase, ratio }) => {
+        const n = total > 1 ? `${index + 1}/${total}枚目 ` : ''
+        setOcrBusy(phase === 'loading' ? '読み取りの準備中…（初回は数MBのデータを読み込みます）' : `文字を読み取り中… ${n}${Math.round(ratio * 100)}%`)
+      })
+      if (!recognized.trim()) {
+        setError({ message: '画像から文字を読み取れませんでした。文字がはっきり写っている画像で試してください。' })
+        return
+      }
+      // 読み取った文字は「テキストから」タブにも入れておき、直してから読み直せるようにする
+      setText(recognized)
+      setTab('text')
+      parseText(recognized, true)
+    } catch {
+      setError({ message: '文字の読み取りに失敗しました。通信状態を確認して、もう一度試してください。' })
+    } finally {
+      setOcrBusy(null)
+    }
   }
 
   if (draft) {
@@ -99,6 +135,7 @@ export function AddRecipe({
             : draft.method === 'heuristic'
               ? '「材料」「作り方」の見出しから推測して読み取りました。間違いがないか確認してください。'
               : ''}
+          {fromImage && ' 画像の文字読み取りは誤字が出やすいので、特に分量と時間を確認してください。'}
           {draft.modes.length === 0 && draft.method !== 'manual' && ' ホットクックのモードは見つからなかったので、手で追加してください。'}
         </div>
         <RecipeEditor initial={draft} submitLabel="保存する" onSubmit={onSave} onCancel={() => setDraft(null)} />
@@ -112,8 +149,9 @@ export function AddRecipe({
       <div className="tabs" role="tablist">
         {(
           [
-            ['url', 'URLから'],
-            ['text', 'テキストから'],
+            ['url', 'URL'],
+            ['image', '画像'],
+            ['text', 'テキスト'],
             ['manual', '手入力'],
           ] as const
         ).map(([k, label]) => (
@@ -164,6 +202,48 @@ export function AddRecipe({
         </form>
       )}
 
+      {tab === 'image' && (
+        <div className="card stack">
+          <label className="file-pick">
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(e) => {
+                setImages(Array.from(e.target.files ?? []))
+                e.target.value = ''
+              }}
+            />
+            <span className="file-pick-button">📷 スクリーンショットを選ぶ</span>
+            <span className="hint">{images.length ? `${images.length}枚選択中` : '複数枚まとめて選べます'}</span>
+          </label>
+          {previews.length > 0 && (
+            <div className="image-previews">
+              {previews.map((src, i) => (
+                <figure key={src}>
+                  <img src={src} alt={`${i + 1}枚目`} />
+                  <figcaption>{i + 1}</figcaption>
+                </figure>
+              ))}
+            </div>
+          )}
+          <div className="row-buttons end">
+            {images.length > 0 && !ocrBusy && (
+              <button className="ghost" onClick={() => setImages([])}>
+                選び直す
+              </button>
+            )}
+            <button className="primary" onClick={() => void readImages()} disabled={!images.length || !!ocrBusy}>
+              {ocrBusy ?? (images.length > 1 ? `${images.length}枚を読み取る` : '読み取る')}
+            </button>
+          </div>
+          <p className="hint">
+            レシピが複数枚にまたがるときは、上から順にまとめて選んでください（選んだ順につなげて読みます）。
+            文字の読み取りはこの端末の中だけで行い、画像はどこにも送りません。
+          </p>
+        </div>
+      )}
+
       {tab === 'text' && (
         <div className="card stack">
           <label className="field">
@@ -180,7 +260,7 @@ export function AddRecipe({
             <input value={url} onChange={(e) => setUrl(e.target.value)} inputMode="url" placeholder="https://" />
           </label>
           <div className="row-buttons end">
-            <button className="primary" onClick={parseText} disabled={!text.trim()}>
+            <button className="primary" onClick={() => parseText()} disabled={!text.trim()}>
               読み取る
             </button>
           </div>
