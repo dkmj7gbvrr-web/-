@@ -253,42 +253,35 @@
     white-space: nowrap;
   }
 
-  /* A single horizontally-scrolling row instead of a wrapping grid -- with
-     14+ categories a wrapped grid runs 3-4 rows deep, which is fine lower
-     in the form but pushes everything below it off-screen when ジャンル
-     sits near the top (it drives the default 負担方法, so it needs to).
-     One row keeps the same one-tap chip interaction at a fixed height;
-     selectedCategoryChipIntoView() scrolls the current pick into view. */
-  .category-picker {
+  /* A dropdown instead of a wrapping chip grid -- with 14+ categories a
+     wrapped grid runs 3-4 rows deep, which is fine lower in the form but
+     pushes everything below it off-screen when ジャンル sits near the top
+     (it drives the default 負担方法, so it needs to). A select is a single
+     fixed-height row with no scrolling required to pick an item. */
+  .category-select-row {
     display: flex;
-    flex-wrap: nowrap;
-    gap: 8px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scroll-snap-type: x proximity;
-    padding-bottom: 2px;
-    margin-bottom: -2px;
+    align-items: center;
+    gap: 10px;
   }
-  .category-picker-chip {
-    flex: none;
-    scroll-snap-align: start;
-    padding: 8px 14px;
-    border-radius: 999px;
+  .category-select-row select {
+    flex: 1;
+    min-width: 0;
     border: 1px solid var(--line);
-    background: var(--surface);
+    background: var(--surface-2);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 16px;
     color: var(--ink);
-    font-size: 13.5px;
-    font-weight: 600;
   }
-  .category-picker-chip.selected {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--accent-ink);
-  }
-  .category-picker-chip-add {
-    border-style: dashed;
-    color: var(--ink-muted);
+  .category-add-link {
+    flex: none;
+    border: none;
     background: none;
+    color: var(--accent);
+    font-size: 13.5px;
+    font-weight: 700;
+    padding: 8px 2px;
+    white-space: nowrap;
   }
 
   /* Split-pattern color marker: always paired with a text label next to it,
@@ -1261,7 +1254,10 @@
       </div>
 
       <div class="section-label">ジャンル</div>
-      <div class="category-picker" id="expense-category-picker"></div>
+      <div class="category-select-row">
+        <select id="expense-category-picker"></select>
+        <button type="button" class="category-add-link" data-action="add-category-from-expense">＋ 新しいジャンル</button>
+      </div>
 
       <div class="section-label">負担の分け方</div>
       <div class="option-list" id="expense-split-options"></div>
@@ -1430,7 +1426,7 @@
           <li><strong>メモ</strong>：何に使ったかの短い説明</li>
           <li><strong>備考</strong>：メモとは別に、住所や補足情報などを自由に書ける欄です</li>
           <li><strong>日付・金額</strong></li>
-          <li><strong>ジャンル</strong>：食料品・外食などから選択。メモの内容から自動で推測されます。設定タブから新しいジャンルも追加できます。選んだジャンルによって下の「負担の分け方」の初期値が決まるため、負担の分け方より上に表示されます。選択肢は横1行に並んでおり、左右にスワイプして選べます</li>
+          <li><strong>ジャンル</strong>：食料品・外食などから選択。メモの内容から自動で推測されます。設定タブから新しいジャンルも追加できます。選んだジャンルによって下の「負担の分け方」の初期値が決まるため、負担の分け方より上に表示されます。選択肢はタップして開くドロップダウンから選べます</li>
         </ul>
       </div>
 
@@ -3671,12 +3667,11 @@ import {
   }
 
   function renderExpenseCategoryPicker() {
-    const container = document.getElementById('expense-category-picker');
-    container.innerHTML = allCategoryOrder().map(function (cat) {
-      return '<button type="button" class="category-picker-chip' + (currentCategory === cat ? ' selected' : '') + '" data-action="select-category" data-category="' + cat + '">' +
-        escapeHtml(categoryDisplayName(cat)) + '</button>';
-    }).join('') +
-      '<button type="button" class="category-picker-chip category-picker-chip-add" data-action="add-category-from-expense">＋ 新しいジャンル</button>';
+    const select = document.getElementById('expense-category-picker');
+    select.innerHTML = allCategoryOrder().map(function (cat) {
+      return '<option value="' + cat + '">' + escapeHtml(categoryDisplayName(cat)) + '</option>';
+    }).join('');
+    select.value = currentCategory;
   }
 
   // Auto-guesses the category from the memo, but only while the user hasn't
@@ -3970,16 +3965,6 @@ import {
     renderExpenseSpecialSegmented();
     renderExpenseCategoryPicker();
     updateCustomRatioVisibility();
-    // The category row scrolls horizontally now (see .category-picker);
-    // jump straight to whichever chip is already selected so reopening an
-    // expense whose category sits far down the list doesn't require an
-    // extra swipe just to see what's picked. Only on open, not on every
-    // re-render -- re-scrolling while the memo auto-guesses a category as
-    // the user types would fight any manual scrolling they're doing.
-    requestAnimationFrame(function () {
-      const selectedChip = document.querySelector('#expense-category-picker .category-picker-chip.selected');
-      if (selectedChip) selectedChip.scrollIntoView({ inline: 'center', block: 'nearest' });
-    });
   }
 
   async function saveRecurringTemplate(fields) {
@@ -4928,13 +4913,6 @@ import {
         specialManuallySet = true;
         renderExpenseSpecialSegmented();
         break;
-      case 'select-category':
-        currentCategory = target.dataset.category;
-        categoryManuallySet = true;
-        renderExpenseCategoryPicker();
-        applyCategoryDefaultSplitType();
-        applyCategoryDefaultSpecial();
-        break;
       case 'select-income-entry-mode':
         currentIncomeEntryMode = target.dataset.mode;
         renderIncomeEntryModeSegmented();
@@ -5025,6 +5003,13 @@ import {
   });
 
   document.getElementById('expense-memo').addEventListener('input', maybeAutoGuessCategory);
+
+  document.getElementById('expense-category-picker').addEventListener('change', function (e) {
+    currentCategory = e.target.value;
+    categoryManuallySet = true;
+    applyCategoryDefaultSplitType();
+    applyCategoryDefaultSpecial();
+  });
 
   ['expense-amount', 'income-lump-a', 'income-lump-b', 'savings-plan-a-amount', 'savings-plan-b-amount'].forEach(function (id) {
     document.getElementById(id).addEventListener('input', function (e) {
