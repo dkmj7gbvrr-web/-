@@ -15,6 +15,8 @@ Vite + React + TypeScript で、サーバー不要・ブラウザだけで動き
   複数枚にまたがるレシピはまとめて選べば選んだ順につなげて読む。読み取りは端末内で行い、画像はどこにも送らない
   （「ふたりの家計簿」と同じ Tesseract.js 一式を `public/vendor/tesseract/` に置いている。初回だけ数MBを読み込む）。
   誤字が出やすいので、保存前の確認が前提
+- **Claude Code のチャットから登録**：このリポジトリで開いた Claude Code のチャットにスクショを貼って共有コードを伝えると、
+  Claude が読み取って共有レシピ帳に直接登録する（`tools/add-recipe.mjs`。手順は [`.claude/skills/hotcook-add-recipe/SKILL.md`](../.claude/skills/hotcook-add-recipe/SKILL.md)）
 - **テキストから取り込み**：ページ全体のコピーや Instagram・YouTube の説明欄を貼り付けて読み取る（URL の取得に失敗したときの逃げ道）
 - **モードの自動抽出**：「手動で作る→煮物を作る（まぜる）→30分」「メニュー番号123」「煮物2-1」などの書き方を拾い、
   `手動 › 煮物を作る（まぜる） 30分` / `自動メニュー No.123` の形にそろえる。拾った根拠の原文も表示する
