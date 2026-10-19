@@ -4,15 +4,20 @@ import { fetchPageHtml, type FetchAttempt } from '../fetchPage'
 import { parseRecipeHtml, parseRecipeText } from '../parse'
 import { emptyDraft, findUrl, normalizeUrl } from '../recipeUtils'
 import { recognizeImages } from '../ocr'
+import { aiPrompt, parseAiRecipe, type Capacity } from '../parse/aiRecipe'
 import { CLAUDE_NEW_SESSION_URL, CLAUDE_SESSION_URL, RECIPE_REPO, claudePrompt, isMasterCode } from '../claudeLink'
 import { RecipeEditor, type EditorValue } from './RecipeEditor'
 
 type Tab = 'url' | 'image' | 'text' | 'manual'
 
+/** 依頼先の AI チャット（無料版でも使える新しいチャット画面） */
+const AI_CHAT_URL = 'https://claude.ai/new'
+
 export function AddRecipe({
   recipes,
   proxyUrl,
   shareCode,
+  capacity,
   initialUrl,
   onSave,
   onCancel,
@@ -21,6 +26,7 @@ export function AddRecipe({
   recipes: Recipe[]
   proxyUrl: string
   shareCode: string
+  capacity: Capacity
   initialUrl?: string
   onSave: (v: EditorValue) => void
   onCancel: () => void
@@ -38,6 +44,8 @@ export function AddRecipe({
   const [fromImage, setFromImage] = useState(false)
   const [isMaster, setIsMaster] = useState(false)
   const [claudeNote, setClaudeNote] = useState('')
+  const [aiText, setAiText] = useState('')
+  const [aiNote, setAiNote] = useState('')
 
   // マスタのレシピ帳（共有コードがハッシュと一致）のときだけ「Claude で登録」を出す
   useEffect(() => {
@@ -49,6 +57,27 @@ export function AddRecipe({
       cancelled = true
     }
   }, [shareCode])
+
+  /** 無料版でも使える方法：依頼文をコピーして AI チャットを開き、返事（JSON）をここに貼ってもらう */
+  const openAiChat = () => {
+    const prompt = aiPrompt(capacity)
+    const copied = navigator.clipboard?.writeText(prompt) ?? Promise.reject(new Error('clipboard unavailable'))
+    window.open(AI_CHAT_URL, '_blank', 'noopener')
+    copied
+      .then(() => setAiNote('依頼文をコピーしました。チャットに貼り付け、スクショを添付して送ってください。'))
+      .catch(() => setAiNote('コピーできませんでした。「依頼文を表示」から手でコピーしてチャットに貼ってください。'))
+  }
+
+  const importAi = () => {
+    const d = parseAiRecipe(aiText, findUrl(url) ?? '')
+    if (!d) {
+      setError({ message: 'AI の返事からレシピを読み取れませんでした。返事の ```json から始まる部分（コードブロック）を、コピーボタンで丸ごとコピーして貼ってください。' })
+      return
+    }
+    setError(null)
+    setFromImage(false)
+    setDraft(d)
+  }
 
   const openClaude = (target: string) => {
     // コピーはこのページにフォーカスがあるうちに始め、そのあと同じクリックの中で新しいタブを開く
@@ -117,7 +146,8 @@ export function AddRecipe({
 
   const parseText = (source = text, viaImage = false) => {
     if (!source.trim()) return
-    const d = parseRecipeText(source, findUrl(url) ?? findUrl(source) ?? '')
+    // AI チャットの返事（JSON）なら、その形のまま取り込む
+    const d = parseAiRecipe(source, findUrl(url) ?? '') ?? parseRecipeText(source, findUrl(url) ?? findUrl(source) ?? '')
     setError(null)
     setFromImage(viaImage)
     setDraft(d)
@@ -161,7 +191,9 @@ export function AddRecipe({
             ? 'ページに埋め込まれたレシピ情報から読み取りました。'
             : draft.method === 'heuristic'
               ? '「材料」「作り方」の見出しから推測して読み取りました。間違いがないか確認してください。'
-              : ''}
+              : draft.method === 'ai'
+                ? 'AI チャットの読み取り結果から取り込みました。画像と見比べて、分量と時間を確認してください。'
+                : ''}
           {fromImage && ' 画像の文字読み取りは誤字が出やすいので、特に分量と時間を確認してください。'}
           {draft.modes.length === 0 && draft.method !== 'manual' && ' ホットクックのモードは見つからなかったので、手で追加してください。'}
         </div>
@@ -252,7 +284,40 @@ export function AddRecipe({
       )}
 
       {tab === 'image' && (
+        <>
+        <div className="card stack ai-card">
+          <strong>AI チャットで読み取る（おすすめ・無料版の Claude でも可）</strong>
+          <ol className="ai-steps">
+            <li>
+              下のボタンで依頼文をコピーして Claude を開く
+              <div className="row-buttons">
+                <button className="primary" onClick={openAiChat}>
+                  依頼文をコピーして Claude を開く
+                </button>
+              </div>
+            </li>
+            <li>チャットに依頼文を貼り付け、レシピのスクショを添付して送る</li>
+            <li>返事のコードブロック（```json の部分）をコピーボタンでコピーし、ここに戻って下に貼る</li>
+          </ol>
+          {aiNote && <p className="notice ok">{aiNote}</p>}
+          <label className="field">
+            <span>AI の返事を貼り付け</span>
+            <textarea value={aiText} onChange={(e) => setAiText(e.target.value)} rows={5} placeholder={'{\n  "title": "…",\n  "ingredients": [ … ]\n}'} />
+          </label>
+          <div className="row-buttons end">
+            <button className="primary" onClick={importAi} disabled={!aiText.trim()}>
+              取り込む
+            </button>
+          </div>
+          <details>
+            <summary className="hint">依頼文を表示（手でコピーする場合・ChatGPT など他の AI でも使えます）</summary>
+            <textarea readOnly value={aiPrompt(capacity)} rows={8} onFocus={(e) => e.currentTarget.select()} />
+          </details>
+          {!capacity && <p className="hint">設定で「お使いのホットクックの容量」を選ぶと、容量ごとに時間が違うレシピはその容量の分だけ書いてもらえます。</p>}
+        </div>
+
         <div className="card stack">
+          <strong>この端末で読み取る（精度は低め）</strong>
           <label className="file-pick">
             <input
               type="file"
@@ -291,6 +356,7 @@ export function AddRecipe({
             文字の読み取りはこの端末の中だけで行い、画像はどこにも送りません。
           </p>
         </div>
+        </>
       )}
 
       {tab === 'text' && (

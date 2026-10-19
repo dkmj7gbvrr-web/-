@@ -1,4 +1,5 @@
 import type { Recipe } from './types'
+import type { Capacity } from './parse/aiRecipe'
 
 /**
  * データはこの端末のブラウザ（localStorage）に保存する。
@@ -14,6 +15,8 @@ export interface Settings {
   proxyUrl: string
   /** 共有コード（空ならこの端末だけで使う） */
   shareCode: string
+  /** お使いのホットクックの容量（AI への依頼文で、この容量の時間だけを書いてもらう。空なら指定しない） */
+  capacity: Capacity
 }
 
 export interface StoreData {
@@ -21,7 +24,7 @@ export interface StoreData {
   settings: Settings
 }
 
-const EMPTY: StoreData = { recipes: [], settings: { proxyUrl: '', shareCode: '' } }
+const EMPTY: StoreData = { recipes: [], settings: { proxyUrl: '', shareCode: '', capacity: '' } }
 
 export function load(): StoreData {
   try {

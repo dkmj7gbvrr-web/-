@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import type { Recipe } from '../types'
 import { exportJson, mergeImported, type Settings } from '../storage'
 import { inviteLink, parseShareCode } from '../shareCode'
+import type { Capacity } from '../parse/aiRecipe'
 
 interface SyncInfo {
   status: 'off' | 'connecting' | 'live' | 'offline' | 'error'
@@ -226,6 +227,25 @@ export function SettingsView({
           />
         </div>
         {msg && <p className="notice ok">{msg}</p>}
+      </div>
+
+      <div className="card stack">
+        <h3>お使いのホットクック</h3>
+        <label className="field">
+          <span>容量</span>
+          <select
+            value={settings.capacity}
+            onChange={(e) => onSettings({ ...settings, capacity: e.target.value as Capacity })}
+          >
+            <option value="">指定しない</option>
+            <option value="1.0L">1.0L</option>
+            <option value="1.6L">1.6L</option>
+            <option value="2.4L">2.4L</option>
+          </select>
+        </label>
+        <p className="hint">
+          AI チャットで画像を読み取るとき、容量ごとに時間が違うレシピは、ここで選んだ容量の分だけを書いてもらいます。この設定はこの端末だけに保存されます。
+        </p>
       </div>
 
       <div className="card stack">
