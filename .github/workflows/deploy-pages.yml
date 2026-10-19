@@ -9,7 +9,6 @@ on:
       - claude/test-tube-liquid-game-4trso3
       - claude/kaibugyo-pachinko-game-2gxf3e
       - claude/fervent-goldberg-s98oys
-      - claude/jolly-euler-klzyxg
     paths:
       - "pokefuta-visit-tracker/**"
       - "nanpure-app/**"
