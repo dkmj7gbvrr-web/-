@@ -819,3 +819,69 @@ code {
   flex: none;
   accent-color: var(--accent);
 }
+
+/* 画像から追加 */
+.image-previews {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.image-previews figure {
+  position: relative;
+  flex: none;
+  margin: 0;
+}
+
+.image-previews img {
+  display: block;
+  height: 120px;
+  width: auto;
+  max-width: 160px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+
+.image-previews figcaption {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.file-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 18px 12px;
+  border: 2px dashed var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: center;
+}
+
+.file-pick input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.file-pick-button {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.file-pick:focus-within {
+  border-color: var(--accent);
+}

@@ -59,7 +59,8 @@ function servingsFrom(line: string): string | undefined {
 export function extractFromText(text: string, maxSteps = 40): TextRecipe {
   const lines = text.split(/\r?\n/).map((l) => l.trim())
   const result: TextRecipe = { ingredients: [], steps: [] }
-  result.title = lines.find((l) => l.length > 0 && l.length <= 60)
+  // スクショの1行目はステータスバー（「12:34 5G」など）のことがあるので、文字（かな・漢字・英字）を含む行だけを料理名の候補にする
+  result.title = lines.find((l) => l.length > 0 && l.length <= 60 && !/^\d{1,2}[:：]\d{2}/.test(l) && /[\p{L}]{2,}/u.test(l.replace(/\d+G|LTE|[A-Z]{1,3}\b/g, '')))
 
   const ingIdx = lines.findIndex((l) => INGREDIENT_HEAD.test(l) && l.length <= 30)
   const stepIdx = lines.findIndex((l, i) => i > ingIdx && STEP_HEAD.test(l) && l.length <= 30)
@@ -72,7 +73,9 @@ export function extractFromText(text: string, maxSteps = 40): TextRecipe {
       if (END_HEAD.test(line) && line.length <= 20) break
       if (!result.servings) result.servings = servingsFrom(line)
       // 材料行は短い。長い行は説明文なので飛ばす
-      if (line.length <= 50) result.ingredients.push(line)
+      // 行頭の箇条書き記号（・ • ● - * など）は落とす
+      const item = line.replace(/^[・•●○◦▪■□\-–*＊]+\s*/, '')
+      if (item && item.length <= 50) result.ingredients.push(item)
     }
   }
 
