@@ -15,6 +15,7 @@ on:
       - "test-tube-liquid-game/**"
       - "umi-pachinko-game/**"
       - "dopamine-rush/**"
+      - "hotcook-recipes/**"
       - "docs/**"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
@@ -43,6 +44,7 @@ jobs:
             test-tube-liquid-game/package-lock.json
             umi-pachinko-game/package-lock.json
             dopamine-rush/package-lock.json
+            hotcook-recipes/package-lock.json
 
       - name: Build pokefuta-visit-tracker
         working-directory: pokefuta-visit-tracker
@@ -77,6 +79,13 @@ jobs:
           npm run test
           npm run build
 
+      - name: Build hotcook-recipes
+        working-directory: hotcook-recipes
+        run: |
+          npm ci
+          npm run test
+          npm run build
+
       - name: Assemble combined site
         run: |
           mkdir -p site
@@ -89,6 +98,8 @@ jobs:
           cp -r umi-pachinko-game/dist/. site/umi-pachinko-game/
           mkdir -p site/dopamine-rush
           cp -r dopamine-rush/dist/. site/dopamine-rush/
+          mkdir -p site/hotcook-recipes
+          cp -r hotcook-recipes/dist/. site/hotcook-recipes/
           mkdir -p site/warikan-kakeibo
           cp -r docs/. site/warikan-kakeibo/
 
