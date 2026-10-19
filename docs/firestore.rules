@@ -1,6 +1,8 @@
 rules_version = '2';
 
-// わりかん家計簿(共有版)のセキュリティルール。
+// わりかん家計簿(共有版)と、ホットクック野良レシピ帳(hotcook-recipes)の共有機能のセキュリティルール。
+// 2つのアプリは同じ Firebase プロジェクトを使うので、このファイルを丸ごと Firebase コンソールに貼ること
+// （片方の分だけ貼ると、もう片方のアプリが読み書きできなくなる）。
 // ログイン機能を使わず、ランダムな「世帯コード」を知っている人だけが
 // そのコード配下のデータを読み書きできる、という簡易的な仕組みです。
 // URLと世帯コードの両方を知っている人だけがアクセスできますが、
@@ -9,6 +11,13 @@ service cloud.firestore {
   match /databases/{database}/documents {
     match /households/{code}/{document=**} {
       allow read, write: if code is string && code.size() >= 6;
+    }
+
+    // ホットクック野良レシピ帳（hotcook-recipes）の共有レシピ帳。
+    // 家計簿と同じく、ランダムな「共有コード」を知っている人だけが読み書きできる。
+    // アプリが作るコードは12文字。短いコードを当て推量されないよう、英小文字と数字の10〜64文字に限る。
+    match /recipeBooks/{code}/recipes/{recipeId} {
+      allow read, write: if code is string && code.matches('^[a-z0-9]{10,64}$');
     }
   }
 }

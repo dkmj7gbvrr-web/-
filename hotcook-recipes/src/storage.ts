@@ -2,8 +2,9 @@ import type { Recipe } from './types'
 
 /**
  * データはこの端末のブラウザ（localStorage）に保存する。
- * サーバーには何も送らないので、別の端末と共有したいときや機種変更のときは
- * 設定画面の「書き出し」「読み込み」で JSON ファイルを受け渡す。
+ * 共有コードを設定しているときは Firestore（sync.ts）が正で、ここには最後に受け取った内容を
+ * 控えとして置く（次に開いたとき、通信を待たずに一覧を出すため）。
+ * 共有していないときはサーバーに何も送らない。機種変更などは「書き出し」「読み込み」で JSON を受け渡す。
  */
 
 const KEY = 'hotcook-recipes:v1'
@@ -11,6 +12,8 @@ const KEY = 'hotcook-recipes:v1'
 export interface Settings {
   /** 自分の CORS プロキシ（空なら公開プロキシのみ） */
   proxyUrl: string
+  /** 共有コード（空ならこの端末だけで使う） */
+  shareCode: string
 }
 
 export interface StoreData {
@@ -18,7 +21,7 @@ export interface StoreData {
   settings: Settings
 }
 
-const EMPTY: StoreData = { recipes: [], settings: { proxyUrl: '' } }
+const EMPTY: StoreData = { recipes: [], settings: { proxyUrl: '', shareCode: '' } }
 
 export function load(): StoreData {
   try {
@@ -85,13 +88,14 @@ export function exportJson(data: StoreData): string {
 
 /**
  * 書き出した JSON を取り込む。同じ id は更新日時が新しい方を残し、新しいものは足す。
- * 返り値は [取り込み後の一覧, 追加件数, 更新件数]
+ * 返り値は 取り込み後の一覧・追加/更新したレシピ・それぞれの件数
  */
-export function mergeImported(current: Recipe[], json: string): [Recipe[], number, number] {
+export function mergeImported(current: Recipe[], json: string): { recipes: Recipe[]; changed: Recipe[]; added: number; updated: number } {
   const parsed = JSON.parse(json) as { recipes?: unknown } | unknown[]
   const incoming = (Array.isArray(parsed) ? parsed : ((parsed as { recipes?: unknown }).recipes ?? []))
   if (!Array.isArray(incoming)) throw new Error('レシピの一覧が見つかりません')
   const byId = new Map(current.map((r) => [r.id, r]))
+  const changed: Recipe[] = []
   let added = 0
   let updated = 0
   for (const raw of incoming) {
@@ -100,13 +104,15 @@ export function mergeImported(current: Recipe[], json: string): [Recipe[], numbe
     const existing = byId.get(r.id)
     if (!existing) {
       byId.set(r.id, r)
+      changed.push(r)
       added++
     } else if (r.updatedAt > existing.updatedAt) {
       byId.set(r.id, r)
+      changed.push(r)
       updated++
     }
   }
-  return [Array.from(byId.values()), added, updated]
+  return { recipes: Array.from(byId.values()), changed, added, updated }
 }
 
 export function newId(): string {
