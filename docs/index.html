@@ -1454,7 +1454,7 @@
         <p>支出タブ右上のアイコンから、カード明細をまとめて取り込めます。2つの方法があります。</p>
         <ul>
           <li><strong>明細PDFを読み込む</strong>：カード会社が発行するPDF形式の明細をそのまま読み込みます。</li>
-          <li><strong>テキストから明細を読み込む</strong>：PDFに対応していないカードの明細でも使えます。表示されるプロンプトをコピーして別のClaudeのチャットに貼り付け、続けて明細のテキスト（コピー＆ペーストやスクリーンショットの文字など）も貼り付けて送ると、取り込める形式に変換されます。その結果をアプリに貼り付けて読み込みます。</li>
+          <li><strong>テキストから明細を読み込む</strong>：PDFに対応していないカードの明細でも使えます。「このプロンプトでClaudeを開く」でClaudeが起動し、プロンプトが入力された状態になるので、続けて明細のテキスト（コピー＆ペーストやスクリーンショットの文字など）を貼り付けて送ると、取り込める形式に変換されます。その結果をアプリに貼り付けて読み込みます。</li>
         </ul>
         <p>どちらの方法でも、読み込んだ内容は1件ずつ確認・編集してから追加できます。すでに登録済みと思われる項目には印が付き、二重登録を防ぎます。</p>
       </div>
@@ -1628,9 +1628,10 @@
         下の手順でカード明細を取り込み用のテキストに変換してから、ここに貼り付けてください。
       </div>
       <div class="field-group">
-        <label class="field-label">① このプロンプトをコピーして、別のClaudeのチャットに貼り付け、続けてカード明細もそのまま貼り付けて送信する</label>
+        <label class="field-label">① Claudeを開いて、続けてカード明細もそのまま貼り付けて送信する</label>
         <div class="paste-import-prompt-box" id="paste-import-prompt-box"></div>
-        <button type="button" class="btn btn-secondary" style="margin-top:8px;" data-action="copy-paste-import-prompt">プロンプトをコピー</button>
+        <button type="button" class="btn btn-primary" style="margin-top:8px;" data-action="open-prompt-in-claude">このプロンプトでClaudeを開く</button>
+        <button type="button" class="category-add-link" style="margin-top:6px; display:block;" data-action="copy-paste-import-prompt">うまく開けない場合は、プロンプトだけコピーする</button>
       </div>
       <div class="field-group">
         <label class="field-label" for="paste-import-textarea">② Claudeが出力した結果をここに貼り付ける</label>
@@ -4809,6 +4810,18 @@ import {
     showSheet('paste-import-sheet-backdrop');
   }
 
+  // Opens claude.ai with the prompt pre-filled in the composer, so the user
+  // doesn't have to copy-paste it in by hand -- an undocumented behavior
+  // (claude.ai/new?q=<text>), so window.open() is called first, synchronously,
+  // before the clipboard write below: Safari only allows a popup opened
+  // directly inside a user-gesture handler, and an await before it (even a
+  // fast one) can get it blocked. The clipboard copy is a fallback for
+  // whatever q= doesn't carry over reliably (or if the tab failed to open).
+  function openPromptInClaude() {
+    window.open('https://claude.ai/new?q=' + encodeURIComponent(PASTE_IMPORT_PROMPT), '_blank');
+    copyCode(PASTE_IMPORT_PROMPT);
+  }
+
   // Accepts the 日付|金額|メモ lines Claude's reply is expected to contain.
   // Tolerant of a stray header row (it just won't match the date pattern
   // and gets skipped) and of slashes in the date or a yen sign/commas in
@@ -5107,6 +5120,7 @@ import {
       case 'paste-import-trigger': openPasteImportSheet(); break;
       case 'parse-paste-import': parsePasteImportAndOpenReview(); break;
       case 'copy-paste-import-prompt': copyCode(PASTE_IMPORT_PROMPT); break;
+      case 'open-prompt-in-claude': openPromptInClaude(); break;
       case 'toggle-import-item': toggleImportItem(Number(target.dataset.index)); break;
       case 'edit-import-item': openExpenseSheetForPendingImport(Number(target.dataset.index)); break;
       case 'select-import-paidby':
