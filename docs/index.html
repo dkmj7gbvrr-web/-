@@ -807,7 +807,8 @@
   .field-group input[type="text"],
   .field-group input[type="date"],
   .field-group input[type="month"],
-  .field-group select {
+  .field-group select,
+  .field-group textarea {
     width: 100%;
     border: 1px solid var(--line);
     background: var(--surface-2);
@@ -815,6 +816,21 @@
     padding: 12px 14px;
     font-size: 16px;
     color: var(--ink);
+    font-family: inherit;
+    resize: vertical;
+  }
+  .paste-import-prompt-box {
+    width: 100%;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--ink-muted);
+    white-space: pre-wrap;
+    font-family: inherit;
+    resize: vertical;
   }
   .amount-field {
     display: flex;
@@ -1054,6 +1070,9 @@
           </button>
           <button class="icon-btn" data-action="import-pdf-trigger" aria-label="明細PDFを読み込む">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9.5 17v-4.5h1.3a1.3 1.3 0 0 1 0 2.6H9.5M13.5 17v-4.5h1.6a1 1 0 0 1 0 4.5h-1.6z"/></svg>
+          </button>
+          <button class="icon-btn" data-action="paste-import-trigger" aria-label="テキストから明細を読み込む">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M8 12h8M8 16h5"/></svg>
           </button>
           <button class="icon-btn" data-action="open-template-picker" aria-label="定期支出から追加">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 21v-5h5"/><path d="M12 8v4l3 2"/></svg>
@@ -1431,6 +1450,16 @@
       </div>
 
       <div class="manual-section">
+        <h3>明細を一括で読み込む</h3>
+        <p>支出タブ右上のアイコンから、カード明細をまとめて取り込めます。2つの方法があります。</p>
+        <ul>
+          <li><strong>明細PDFを読み込む</strong>：カード会社が発行するPDF形式の明細をそのまま読み込みます。</li>
+          <li><strong>テキストから明細を読み込む</strong>：PDFに対応していないカードの明細でも使えます。表示されるプロンプトをコピーして別のClaudeのチャットに貼り付け、続けて明細のテキスト（コピー＆ペーストやスクリーンショットの文字など）も貼り付けて送ると、取り込める形式に変換されます。その結果をアプリに貼り付けて読み込みます。</li>
+        </ul>
+        <p>どちらの方法でも、読み込んだ内容は1件ずつ確認・編集してから追加できます。すでに登録済みと思われる項目には印が付き、二重登録を防ぎます。</p>
+      </div>
+
+      <div class="manual-section">
         <h3>負担の分け方</h3>
         <p>支出ごとに、ふたりでどう分けるか選べます。</p>
         <ul>
@@ -1582,6 +1611,35 @@
     </div>
     <div class="import-sheet-footer">
       <button class="btn btn-primary" data-action="commit-import" id="import-commit-btn">追加する</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet-backdrop" id="paste-import-sheet-backdrop" hidden>
+  <div class="sheet import-sheet" role="dialog" aria-modal="true" aria-labelledby="paste-import-sheet-title">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <button class="sheet-btn" data-action="close-sheet" data-sheet="paste-import">キャンセル</button>
+      <div class="sheet-title" id="paste-import-sheet-title">テキストから読み込み</div>
+      <span style="width:52px;"></span>
+    </div>
+    <div class="sheet-body import-sheet-body">
+      <div class="field-hint" style="padding-top:0;">
+        下の手順でカード明細を取り込み用のテキストに変換してから、ここに貼り付けてください。
+      </div>
+      <div class="field-group">
+        <label class="field-label">① このプロンプトをコピーして、別のClaudeのチャットに貼り付け、続けてカード明細もそのまま貼り付けて送信する</label>
+        <div class="paste-import-prompt-box" id="paste-import-prompt-box"></div>
+        <button type="button" class="btn btn-secondary" style="margin-top:8px;" data-action="copy-paste-import-prompt">プロンプトをコピー</button>
+      </div>
+      <div class="field-group">
+        <label class="field-label" for="paste-import-textarea">② Claudeが出力した結果をここに貼り付ける</label>
+        <textarea id="paste-import-textarea" rows="8" placeholder="2026-10-05|12800|イオン南砂店&#10;2026-10-07|3200|Amazon.co.jp"></textarea>
+      </div>
+      <div class="field-hint" style="padding-top:0;">1行に1件、「日付｜金額｜お店・メモ」の形式として読み取ります。形式に合わない行はスキップされます。</div>
+    </div>
+    <div class="import-sheet-footer">
+      <button class="btn btn-primary" data-action="parse-paste-import">読み込む</button>
     </div>
   </div>
 </div>
@@ -4662,6 +4720,34 @@ import {
   // can't clobber a newer pendingImportItems array.
   let pendingImportGeneration = 0;
 
+  // Shared by every import source (PDF-OCR rows, pasted text) -- turns a
+  // plain {date, memo, amount} list into the full review-list item shape
+  // (duplicate/category/split-type guesses, merchant memory, etc.).
+  function buildPendingImportItems(parsed) {
+    const memory = loadMerchantMemory();
+    return parsed.map(function (p) {
+      const remembered = memory[p.memo];
+      const duplicate = isLikelyDuplicateExpense(p);
+      const category = guessCategory(p.memo, memory);
+      return {
+        date: p.date,
+        memo: p.memo,
+        amount: p.amount,
+        splitType: remembered ? remembered.splitType : defaultSplitTypeForCategory(category),
+        customAPercent: remembered ? remembered.customAPercent : null,
+        paidBy: remembered ? remembered.paidBy : importDefaultPaidBy,
+        category: category,
+        isSpecial: remembered && remembered.isSpecial != null ? remembered.isSpecial : defaultSpecialForCategory(category),
+        included: !duplicate,
+        isDuplicate: duplicate,
+        isGarbled: looksGarbled(p.memo),
+        rowImageUrl: null,
+        page: p.page,
+        sourceY: p.sourceY
+      };
+    });
+  }
+
   async function handlePdfFile(file) {
     toast('PDFを解析しています…');
     let pdfjsLib;
@@ -4683,28 +4769,7 @@ import {
       renderedPdfPages.clear();
       pendingImportGeneration++;
       const myGeneration = pendingImportGeneration;
-      const memory = loadMerchantMemory();
-      pendingImportItems = parsed.map(function (p) {
-        const remembered = memory[p.memo];
-        const duplicate = isLikelyDuplicateExpense(p);
-        const category = guessCategory(p.memo, memory);
-        return {
-          date: p.date,
-          memo: p.memo,
-          amount: p.amount,
-          splitType: remembered ? remembered.splitType : defaultSplitTypeForCategory(category),
-          customAPercent: remembered ? remembered.customAPercent : null,
-          paidBy: remembered ? remembered.paidBy : importDefaultPaidBy,
-          category: category,
-          isSpecial: remembered && remembered.isSpecial != null ? remembered.isSpecial : defaultSpecialForCategory(category),
-          included: !duplicate,
-          isDuplicate: duplicate,
-          isGarbled: looksGarbled(p.memo),
-          rowImageUrl: null,
-          page: p.page,
-          sourceY: p.sourceY
-        };
-      });
+      pendingImportItems = buildPendingImportItems(parsed);
       openImportSheet();
       // Row images are a best-effort visual aid for garbled memos -- render
       // them in the background so the review sheet opens immediately rather
@@ -4721,6 +4786,69 @@ import {
       console.error('PDF import failed:', e);
       toast('PDFの読み込みに失敗しました');
     }
+  }
+
+  // The exact instruction the user copies into a separate Claude chat,
+  // alongside their pasted card statement, so Claude's reply comes back in
+  // the one-line-per-transaction format parsePasteImportText() expects.
+  const PASTE_IMPORT_PROMPT = 'これはクレジットカードの利用明細です。各取引を1行ずつ、次の形式だけで出力してください。他の文章や説明、合計行、ヘッダーは付けないでください。\n' +
+    '形式: 日付|金額|お店・メモ\n' +
+    '- 日付は YYYY-MM-DD 形式\n' +
+    '- 金額は数字のみ（カンマや円記号は付けない）\n' +
+    '- 返金・取消し・キャッシングなど通常の買い物でない行は除く\n' +
+    '\n' +
+    '例:\n' +
+    '2026-10-05|12800|イオン南砂店\n' +
+    '2026-10-07|3200|Amazon.co.jp\n' +
+    '\n' +
+    '明細はこちらです↓\n';
+
+  function openPasteImportSheet() {
+    document.getElementById('paste-import-prompt-box').textContent = PASTE_IMPORT_PROMPT;
+    document.getElementById('paste-import-textarea').value = '';
+    showSheet('paste-import-sheet-backdrop');
+  }
+
+  // Accepts the 日付|金額|メモ lines Claude's reply is expected to contain.
+  // Tolerant of a stray header row (it just won't match the date pattern
+  // and gets skipped) and of slashes in the date or a yen sign/commas in
+  // the amount, in case the reply doesn't follow the format exactly.
+  function parsePasteImportText(text) {
+    const items = [];
+    text.split('\n').forEach(function (rawLine) {
+      const line = rawLine.trim();
+      if (!line) return;
+      const parts = line.split('|').map(function (s) { return s.trim(); });
+      if (parts.length < 3) return;
+      const dateMatch = parts[0].replace(/\//g, '-').match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      if (!dateMatch) return;
+      const year = Number(dateMatch[1]), month = Number(dateMatch[2]), day = Number(dateMatch[3]);
+      if (month < 1 || month > 12 || day < 1 || day > 31) return;
+      const amount = Number(parts[1].replace(/[,¥\s]/g, ''));
+      const memo = parts.slice(2).join('|').trim();
+      if (!memo || memo.length > 40 || !Number.isFinite(amount) || amount <= 0) return;
+      items.push({
+        date: year + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0'),
+        memo: memo,
+        amount: amount,
+        page: null,
+        sourceY: null
+      });
+    });
+    return items;
+  }
+
+  function parsePasteImportAndOpenReview() {
+    const text = document.getElementById('paste-import-textarea').value;
+    const parsed = parsePasteImportText(text);
+    if (parsed.length === 0) {
+      toast('読み取れる行がありませんでした。形式を確認してください');
+      return;
+    }
+    pendingImportGeneration++;
+    pendingImportItems = buildPendingImportItems(parsed);
+    closeSheet('paste-import-sheet-backdrop');
+    openImportSheet();
   }
 
   // Runs OCR over every currently-garbled row's already-rendered image and
@@ -4976,6 +5104,9 @@ import {
       case 'enter-app': enterApp(); break;
       case 'leave-household': leaveHousehold(); break;
       case 'import-pdf-trigger': document.getElementById('import-pdf-input').click(); break;
+      case 'paste-import-trigger': openPasteImportSheet(); break;
+      case 'parse-paste-import': parsePasteImportAndOpenReview(); break;
+      case 'copy-paste-import-prompt': copyCode(PASTE_IMPORT_PROMPT); break;
       case 'toggle-import-item': toggleImportItem(Number(target.dataset.index)); break;
       case 'edit-import-item': openExpenseSheetForPendingImport(Number(target.dataset.index)); break;
       case 'select-import-paidby':
