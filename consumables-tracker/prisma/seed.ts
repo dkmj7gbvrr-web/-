@@ -2,6 +2,7 @@
 // (全体が空でなくても、DEFAULT_ITEMSを後から増やせばその分だけ追加される。
 //  ユーザーが既に同名の品目を登録・削除している場合はそれを尊重し、
 //  上書き・重複作成はしない)
+import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
