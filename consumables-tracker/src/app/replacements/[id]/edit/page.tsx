@@ -2,10 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { updateReplacementItem, listReplacementHistory } from "@/actions/replacementItems";
+import { updateReplacementItem, markReplaced, listReplacementHistory } from "@/actions/replacementItems";
 import { getNextDueDate, getUrgency, getDaysUntilDue, URGENCY_LABEL, URGENCY_STYLE } from "@/lib/replacement";
 import { DeleteReplacementItemButton } from "@/components/DeleteReplacementItemButton";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime, toDateInputValue } from "@/lib/format";
 import { clsx } from "@/lib/clsx";
 
 export default async function EditReplacementItemPage({ params }: { params: Promise<{ id: string }> }) {
@@ -60,8 +60,7 @@ export default async function EditReplacementItemPage({ params }: { params: Prom
         </label>
 
         <p className="text-xs text-slate-400">
-          前回交換日は一覧画面の「交換した」ボタンで更新してください。現在:{" "}
-          {formatDate(item.lastReplacedAt)}(次回目安:{" "}
+          前回交換日: {formatDate(item.lastReplacedAt)}(次回目安:{" "}
           <span
             className={clsx(
               "inline-flex items-center rounded-full border px-2 py-0.5 font-semibold",
@@ -82,6 +81,32 @@ export default async function EditReplacementItemPage({ params }: { params: Prom
           保存する
         </button>
       </form>
+
+      <section className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <div>
+          <h2 className="text-sm font-bold text-slate-600">交換した日を記録する</h2>
+          <p className="text-xs text-slate-400">
+            「交換した」を押し忘れた場合、実際に交換した日を指定して後から記録できます。
+          </p>
+        </div>
+        <form action={markReplaced} className="flex items-center gap-2">
+          <input type="hidden" name="id" value={item.id} />
+          <input
+            type="date"
+            name="replacedAt"
+            required
+            defaultValue={toDateInputValue(new Date())}
+            max={toDateInputValue(new Date())}
+            className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm"
+          />
+          <button
+            type="submit"
+            className="shrink-0 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white active:bg-slate-700"
+          >
+            記録する
+          </button>
+        </form>
+      </section>
 
       <DeleteReplacementItemButton itemId={item.id} />
 

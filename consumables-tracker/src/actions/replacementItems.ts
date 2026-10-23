@@ -74,25 +74,33 @@ export async function deleteReplacementItem(formData: FormData) {
   redirect("/replacements");
 }
 
-/** 一覧からのワンタップ「交換した」。前回交換日を今日に更新する。 */
+/** 一覧からのワンタップ「交換した」。日付指定が無ければ今日として記録する。 */
 export async function markReplaced(formData: FormData) {
   const user = await requireUser();
   const id = z.string().min(1).parse(formData.get("id"));
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const replacedAtRaw = formData.get("replacedAt");
+
+  let replacedAt: Date;
+  if (typeof replacedAtRaw === "string" && replacedAtRaw.length > 0) {
+    replacedAt = parseLastReplacedAt(replacedAtRaw);
+  } else {
+    replacedAt = new Date();
+    replacedAt.setHours(0, 0, 0, 0);
+  }
 
   await prisma.replacementItem.update({
     where: { id },
     data: {
-      lastReplacedAt: today,
+      lastReplacedAt: replacedAt,
       lastUpdatedById: user.id,
       history: {
-        create: { replacedAt: today, userId: user.id },
+        create: { replacedAt, userId: user.id },
       },
     },
   });
 
   revalidatePath("/replacements");
+  revalidatePath(`/replacements/${id}/edit`);
 }
 
 export async function listReplacementItems() {
