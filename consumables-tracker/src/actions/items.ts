@@ -6,6 +6,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { itemInputSchema, STATUS_VALUES } from "@/lib/validation";
+import { isShoppingNeeded, STATUS_LABEL } from "@/lib/status";
+import { sendPushNotification } from "@/lib/push";
 import type { StockStatus } from "@/generated/prisma/enums";
 
 /** 品目の新規追加。 */
@@ -87,6 +89,21 @@ export async function setItemStatus(formData: FormData) {
   });
 
   revalidatePath("/");
+
+  // 「少ない/切れた」に新たに変わった瞬間だけ、本人以外に通知する。
+  if (isShoppingNeeded(status) && !isShoppingNeeded(current.status)) {
+    const item = await prisma.item.findUnique({ where: { id }, select: { name: true } });
+    if (item) {
+      await sendPushNotification(
+        {
+          title: "買い物リストに追加されました",
+          body: `${item.name}が${STATUS_LABEL[status]}になりました（${user.name}が更新）`,
+          url: "/",
+        },
+        { excludeUserId: user.id },
+      );
+    }
+  }
 }
 
 export async function listItems() {

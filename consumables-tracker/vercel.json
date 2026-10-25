@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/check-replacements",
+      "schedule": "0 0 * * *"
+    }
+  ]
+}

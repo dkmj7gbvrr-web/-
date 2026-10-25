@@ -35,6 +35,21 @@ model User {
 
   updatedReplacementItems   ReplacementItem[]      @relation("ReplacementItemLastUpdatedBy")
   replacementHistoryEntries ReplacementLogEntry[]
+
+  pushSubscriptions PushSubscription[]
+}
+
+/// ブラウザのPush購読情報(Web Push API)。端末ごとに1行。
+/// endpointがその端末/ブラウザを一意に識別する。
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 /// カテゴリは固定enumにせず自由入力の文字列にしている(「あったら良い機能」の
