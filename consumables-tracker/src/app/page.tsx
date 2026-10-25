@@ -8,6 +8,7 @@ import { ItemCard } from "@/components/ItemCard";
 import { ShoppingList } from "@/components/ShoppingList";
 import { CategoryFilter } from "@/components/CategoryFilter";
 import { ReplacementBanner } from "@/components/ReplacementBanner";
+import { NotificationSetup } from "@/components/NotificationSetup";
 
 export default async function HomePage({
   searchParams,
@@ -33,11 +34,14 @@ export default async function HomePage({
           <h1 className="text-lg font-bold">消耗品トラッカー</h1>
           <p className="text-xs text-slate-400">{me.name}としてログイン中</p>
         </div>
-        <form action={switchUser}>
-          <button type="submit" className="rounded-lg px-2 py-1 text-xs text-slate-400 active:bg-slate-100">
-            人を切り替える
-          </button>
-        </form>
+        <div className="flex items-center gap-1">
+          <NotificationSetup vapidPublicKey={process.env.VAPID_PUBLIC_KEY ?? null} />
+          <form action={switchUser}>
+            <button type="submit" className="rounded-lg px-2 py-1 text-xs text-slate-400 active:bg-slate-100">
+              人を切り替える
+            </button>
+          </form>
+        </div>
       </header>
 
       <ReplacementBanner items={replacementItems} />
