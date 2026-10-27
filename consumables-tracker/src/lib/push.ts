@@ -64,7 +64,8 @@ export async function sendPushNotification(
       } catch (error) {
         const statusCode = (error as { statusCode?: number }).statusCode;
         const message = error instanceof Error ? error.message : String(error);
-        if (statusCode === 404 || statusCode === 410) {
+        // 404/410(購読が無効になった)や400(壊れた購読情報)は自動で削除する。
+        if (statusCode === 404 || statusCode === 410 || statusCode === 400) {
           await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => {});
         } else {
           console.error("Failed to send push notification", error);
