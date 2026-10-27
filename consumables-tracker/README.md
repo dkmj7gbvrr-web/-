@@ -98,6 +98,7 @@ createdAt / updatedAt
 | --- | --- |
 | `VAPID_PUBLIC_KEY` | Web Push用の公開鍵 |
 | `VAPID_PRIVATE_KEY` | Web Push用の秘密鍵 |
+| `VAPID_SUBJECT` | デプロイ先の `https://〇〇.vercel.app` URL(**必須**。詳細は下記) |
 | `CRON_SECRET` | 定期交換品チェック用cronの認証に使うランダムな文字列 |
 
 `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` は以下のコマンドで生成できます。
@@ -105,6 +106,8 @@ createdAt / updatedAt
 ```bash
 npx web-push generate-vapid-keys
 ```
+
+> **`VAPID_SUBJECT`は省略しないでください。** 省略した場合のデフォルト値(存在しないダミーのmailto:アドレス)のままだと、iPhone(Apple)向けのプッシュ送信が`403 BadJwtToken`で失敗します。デプロイ後の実際のURL(`https://〇〇.vercel.app`)を指定してください。
 
 追加後に再度Deployすると、定期交換品を毎日チェックするcron（`vercel.json`、Vercel Hobbyプランの上限である1日1回で設定）が有効になり、ホーム画面に「通知を有効にする」ボタンが表示されるようになります。
 

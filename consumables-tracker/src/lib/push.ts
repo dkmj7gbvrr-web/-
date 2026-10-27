@@ -5,11 +5,18 @@ const vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
 const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
 const vapidSubject = process.env.VAPID_SUBJECT ?? "mailto:notifications@consumables-tracker.local";
 
-export const isPushConfigured = Boolean(vapidPublicKey && vapidPrivateKey);
-
-if (isPushConfigured) {
-  webpush.setVapidDetails(vapidSubject, vapidPublicKey!, vapidPrivateKey!);
-}
+export const isPushConfigured = (() => {
+  if (!vapidPublicKey || !vapidPrivateKey) return false;
+  try {
+    webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
+    return true;
+  } catch (error) {
+    // VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY の値がおかしい(コピペミスなど)場合に
+    // ビルド/サイト全体を落とさず、通知機能だけを無効にする。
+    console.error("Invalid VAPID keys; push notifications are disabled.", error);
+    return false;
+  }
+})();
 
 export type PushPayload = {
   title: string;
@@ -57,7 +64,8 @@ export async function sendPushNotification(
       } catch (error) {
         const statusCode = (error as { statusCode?: number }).statusCode;
         const message = error instanceof Error ? error.message : String(error);
-        if (statusCode === 404 || statusCode === 410) {
+        // 404/410(購読が無効になった)や400(壊れた購読情報)は自動で削除する。
+        if (statusCode === 404 || statusCode === 410 || statusCode === 400) {
           await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => {});
         } else {
           console.error("Failed to send push notification", error);
