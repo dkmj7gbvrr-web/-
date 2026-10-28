@@ -17,6 +17,7 @@ on:
       - "dopamine-rush/**"
       - "hotcook-recipes/**"
       - "docs/**"
+      - "warikan-kakeibo-tests/**"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 
@@ -45,6 +46,7 @@ jobs:
             umi-pachinko-game/package-lock.json
             dopamine-rush/package-lock.json
             hotcook-recipes/package-lock.json
+            warikan-kakeibo-tests/package-lock.json
 
       - name: Build pokefuta-visit-tracker
         working-directory: pokefuta-visit-tracker
@@ -85,6 +87,13 @@ jobs:
           npm ci
           npm run test
           npm run build
+
+      - name: Test warikan-kakeibo (docs/)
+        working-directory: warikan-kakeibo-tests
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm run test
 
       - name: Assemble combined site
         run: |
