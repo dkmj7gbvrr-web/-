@@ -1206,7 +1206,11 @@
           入力したデータは自動的に2人の間で共有されます。念のための保存用に、いつでもファイルとして書き出せます。
         </div>
         <div class="settings-actions">
-          <button class="btn btn-secondary" data-action="export-data">バックアップを書き出す</button>
+          <button class="btn btn-secondary" data-action="export-data">バックアップを書き出す（JSON）</button>
+          <button class="btn btn-secondary" data-action="export-expenses-csv">支出をCSVで書き出す</button>
+        </div>
+        <div class="field-hint" style="padding-top:8px;">
+          JSONは復元用の完全なバックアップです。CSVは表計算アプリ（Excel・スプレッドシート等）で開いて集計・確認するのに向いています。
         </div>
       </div>
 
@@ -1532,7 +1536,7 @@
 
       <div class="manual-section">
         <h3>バックアップ・データ削除</h3>
-        <p>設定タブからいつでもデータをファイルに書き出せます。世帯データを削除すると、同じ世帯コードを使っているふたり両方の画面から消えるのでご注意ください。</p>
+        <p>設定タブからいつでもデータをファイルに書き出せます。JSONは復元用の完全なバックアップ、CSVは支出の一覧を表計算アプリで開くための書き出しです。世帯データを削除すると、同じ世帯コードを使っているふたり両方の画面から消えるのでご注意ください。</p>
       </div>
 
       <div class="manual-section">
@@ -4349,6 +4353,54 @@ import {
     toast('バックアップを書き出しました');
   }
 
+  // Quotes a CSV field only when it actually needs it (contains a comma,
+  // quote, or newline) -- doubling any internal quotes per RFC 4180.
+  function csvField(value) {
+    const s = value == null ? '' : String(value);
+    if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+
+  // A human-readable export for opening in a spreadsheet app, distinct from
+  // exportBackup()'s full-fidelity JSON: resolved labels (category/split
+  // type/paid-by names) instead of internal keys, one row per expense.
+  function exportExpensesCsv() {
+    const names = currentNames();
+    const header = ['日付', 'ジャンル', 'メモ', '備考', '金額', '負担の分け方', '実際に立て替えた人', '特別費', '初期費用', '翌月請求分'];
+    const rows = state.expenses
+      .slice()
+      .sort(function (a, b) { return parseLocalDate(a.date) - parseLocalDate(b.date); })
+      .map(function (e) {
+        return [
+          e.date,
+          categoryDisplayName(e.category),
+          e.memo || '',
+          e.note || '',
+          e.amount,
+          splitLabel(e.splitType, names),
+          paidByLabel(e.paidBy, names),
+          e.isSpecial ? '○' : '',
+          e.isInitialCost ? '○' : '',
+          e.billingYm ? (e.billingYm.year + '-' + String(e.billingYm.month).padStart(2, '0')) : ''
+        ];
+      });
+    // A UTF-8 BOM so Excel (which otherwise guesses the system codepage)
+    // reads the Japanese header and values correctly instead of as mojibake.
+    const csv = '﻿' + [header].concat(rows).map(function (cols) { return cols.map(csvField).join(','); }).join('\r\n');
+    const now = new Date();
+    const stamp = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'warikan-kakeibo-expenses-' + stamp + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    toast('支出をCSVで書き出しました');
+  }
+
   // ============================================================
   // PDF import: read a card statement PDF, parse purchase lines,
   // and stage them for review before writing anything to Firestore.
@@ -5109,6 +5161,7 @@ import {
       case 'toggle-initial-cost-settled-leg': toggleInitialCostSettledLeg(target.dataset.leg); break;
       case 'open-manual': showSheet('manual-sheet-backdrop'); break;
       case 'export-data': exportBackup(); break;
+      case 'export-expenses-csv': exportExpensesCsv(); break;
       case 'reset-data': resetAllData(); break;
       case 'create-household': createHousehold(); break;
       case 'join-household': joinHousehold(document.getElementById('join-code-input').value); break;

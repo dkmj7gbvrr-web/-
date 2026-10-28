@@ -1,0 +1,13 @@
+{
+  "name": "warikan-kakeibo-tests",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "End-to-end Playwright tests for docs/index.html (ふたりの家計簿), run against a mock in-memory Firestore so no real network/Firebase project is needed.",
+  "scripts": {
+    "test": "node run-tests.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}
