@@ -1212,6 +1212,12 @@
         <div class="field-hint" style="padding-top:8px;">
           JSONは復元用の完全なバックアップです。CSVは表計算アプリ（Excel・スプレッドシート等）で開いて集計・確認するのに向いています。
         </div>
+        <div class="settings-actions" style="margin-top:12px;">
+          <button class="btn btn-danger-ghost" data-action="import-backup-trigger" style="margin-top:0;">バックアップから復元する</button>
+        </div>
+        <div class="field-hint" style="padding-top:8px;">
+          JSONのバックアップファイルを選ぶと、今の支出・収入・設定をすべて置き換えます。もう1人の画面にも反映され、元に戻せません。
+        </div>
       </div>
 
       <div class="settings-section">
@@ -1536,7 +1542,7 @@
 
       <div class="manual-section">
         <h3>バックアップ・データ削除</h3>
-        <p>設定タブからいつでもデータをファイルに書き出せます。JSONは復元用の完全なバックアップ、CSVは支出の一覧を表計算アプリで開くための書き出しです。世帯データを削除すると、同じ世帯コードを使っているふたり両方の画面から消えるのでご注意ください。</p>
+        <p>設定タブからいつでもデータをファイルに書き出せます。JSONは復元用の完全なバックアップ、CSVは支出の一覧を表計算アプリで開くための書き出しです。「バックアップから復元する」でJSONファイルを選ぶと、今の支出・収入・設定をそのバックアップの内容に置き換えられます。置き換え・削除いずれも、同じ世帯コードを使っているふたり両方の画面に反映され、元に戻せないのでご注意ください。</p>
       </div>
 
       <div class="manual-section">
@@ -1664,6 +1670,7 @@
 </div>
 
 <input type="file" id="import-pdf-input" accept="application/pdf" hidden>
+<input type="file" id="import-backup-input" accept="application/json" hidden>
 
 <div id="toast"></div>
 
@@ -4401,6 +4408,87 @@ import {
     toast('支出をCSVで書き出しました');
   }
 
+  // Applies a list of {type: 'delete'|'set', ref, data} writes in Firestore
+  // batches of at most 450 (its hard limit is 500 writes per batch) --
+  // restoring a backup that's grown past that many expenses/income periods
+  // would otherwise silently fail the whole commit.
+  async function runBatchedOps(ops) {
+    const CHUNK = 450;
+    for (let i = 0; i < ops.length; i += CHUNK) {
+      const batch = writeBatch(db);
+      ops.slice(i, i + CHUNK).forEach(function (op) {
+        if (op.type === 'delete') batch.delete(op.ref);
+        else batch.set(op.ref, op.data);
+      });
+      await batch.commit();
+    }
+  }
+
+  // Restores a JSON file written by exportBackup(): wipes the household's
+  // current expenses/incomePeriods/settings and replaces them with the
+  // backup's, preserving each expense/income period's original id (falling
+  // back to a fresh one if the backup is missing it, rather than passing
+  // undefined into doc()). Deletes are committed before any of the
+  // restored docs are written, as two separate batched passes -- same
+  // order resetAllData() already uses -- rather than mixing deletes and
+  // sets of a possibly-colliding id within one batch.
+  async function importBackup(file) {
+    let data;
+    try {
+      data = JSON.parse(await file.text());
+    } catch (e) {
+      toast('ファイルの読み込みに失敗しました。正しいバックアップファイルか確認してください');
+      return;
+    }
+    if (!data || typeof data !== 'object' || !Array.isArray(data.expenses) || !data.settings) {
+      toast('このファイルはバックアップ形式として認識できませんでした');
+      return;
+    }
+    const incomePeriods = Array.isArray(data.incomePeriods) ? data.incomePeriods : [];
+    if (!confirm(
+      'バックアップを復元します。\n' +
+      '支出 ' + data.expenses.length + '件、収入 ' + incomePeriods.length + '件に置き換わります。\n' +
+      '今の世帯データ（支出・収入・設定）はすべて上書きされ、もう1人の画面にも反映されます。この操作は取り消せません。よろしいですか？'
+    )) return;
+    try {
+      const deleteOps = [];
+      (await getDocs(expensesCol(currentCode))).forEach(function (d) { deleteOps.push({ type: 'delete', ref: d.ref }); });
+      (await getDocs(incomePeriodsCol(currentCode))).forEach(function (d) { deleteOps.push({ type: 'delete', ref: d.ref }); });
+      await runBatchedOps(deleteOps);
+
+      const setOps = [];
+      data.expenses.forEach(function (e) {
+        const payload = Object.assign({}, e);
+        delete payload.id;
+        setOps.push({ type: 'set', ref: e.id ? doc(expensesCol(currentCode), e.id) : doc(expensesCol(currentCode)), data: payload });
+      });
+      incomePeriods.forEach(function (p) {
+        const payload = Object.assign({}, p);
+        delete payload.id;
+        setOps.push({ type: 'set', ref: p.id ? doc(incomePeriodsCol(currentCode), p.id) : doc(incomePeriodsCol(currentCode)), data: payload });
+      });
+      await runBatchedOps(setOps);
+
+      const settings = Object.assign({}, defaultState().settings, data.settings);
+      await setDoc(configRef(currentCode), {
+        personAName: settings.personAName,
+        personBName: settings.personBName,
+        cardClosingDay: settings.cardClosingDay,
+        customCategories: settings.customCategories,
+        categoryBudgets: settings.categoryBudgets,
+        recurringTemplates: settings.recurringTemplates,
+        jointSavingsPlan: settings.jointSavingsPlan,
+        settledCycles: (data.settledCycles && typeof data.settledCycles === 'object') ? data.settledCycles : {},
+        settledInitialCosts: data.settledInitialCosts || false
+      }, { merge: false });
+
+      toast('バックアップから復元しました');
+    } catch (e) {
+      console.error('restore failed:', e);
+      toast('復元に失敗しました。通信環境を確認してください');
+    }
+  }
+
   // ============================================================
   // PDF import: read a card statement PDF, parse purchase lines,
   // and stage them for review before writing anything to Firestore.
@@ -5162,6 +5250,7 @@ import {
       case 'open-manual': showSheet('manual-sheet-backdrop'); break;
       case 'export-data': exportBackup(); break;
       case 'export-expenses-csv': exportExpensesCsv(); break;
+      case 'import-backup-trigger': document.getElementById('import-backup-input').click(); break;
       case 'reset-data': resetAllData(); break;
       case 'create-household': createHousehold(); break;
       case 'join-household': joinHousehold(document.getElementById('join-code-input').value); break;
@@ -5354,6 +5443,13 @@ import {
     if (!file) return;
     if (file.type !== 'application/pdf') { toast('PDFファイルを選んでください'); return; }
     handlePdfFile(file);
+  });
+
+  document.getElementById('import-backup-input').addEventListener('change', function (e) {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    importBackup(file);
   });
 
   document.querySelectorAll('.sheet-backdrop').forEach(function (backdrop) {
