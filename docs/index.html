@@ -2324,15 +2324,13 @@ import {
   function findRecurringTemplate(id) {
     return recurringTemplates().find(function (t) { return t.id === id; }) || null;
   }
-  // その他 first -- it's the default category for a brand-new expense, so
-  // leading with it means the picker's default selection is always the
-  // first (and for the dropdown case, immediately visible) option, rather
-  // than buried at the bottom -- then the other built-ins, then custom
-  // categories in the order they were created.
+  // Built-ins first (その他 held back to the end), then custom categories in
+  // the order they were created, then その他 -- so その他 always reads as
+  // the final catch-all rather than sitting in the middle of the list.
   function allCategoryOrder() {
     const builtinsExceptOther = CATEGORY_ORDER.slice(0, -1);
     const customIds = customCategoryList().map(function (c) { return c.id; });
-    return ['other'].concat(builtinsExceptOther, customIds);
+    return builtinsExceptOther.concat(customIds, ['other']);
   }
   function isKnownCategory(id) {
     return !!(id && (CATEGORY_NAMES[id] || findCustomCategory(id)));
@@ -2548,7 +2546,11 @@ import {
 
   function guessCategory(memo, merchantMemory) {
     const trimmed = (memo || '').trim();
-    if (!trimmed) return 'other';
+    // No memo yet is the same "nothing to guess from" state as a brand-new
+    // entry (see populateExpenseSheetFields()) -- 食料品, not その他, so
+    // clearing the memo back to empty doesn't flip the category away from
+    // that default.
+    if (!trimmed) return 'food';
     const remembered = merchantMemory[trimmed];
     if (remembered && isKnownCategory(remembered.category)) return remembered.category;
 
@@ -4015,7 +4017,11 @@ import {
     // Existing expenses (or pending import items, which already carry a
     // guessed category) keep whatever category they have; only a brand-new
     // blank entry auto-refines its category guess as the memo is typed.
-    currentCategory = (e && isKnownCategory(e.category)) ? e.category : 'other';
+    // 食料品 (the single most common category) rather than その他 is the
+    // starting point for that blank entry, since it's also first in the
+    // list -- its options menu opens straight on the default instead of
+    // needing a scroll to find it.
+    currentCategory = (e && isKnownCategory(e.category)) ? e.category : 'food';
     categoryManuallySet = !!e;
     currentSplitType = e ? e.splitType : defaultSplitTypeForCategory(currentCategory);
     currentCustomPercent = (e && e.customAPercent != null) ? e.customAPercent : 50;
