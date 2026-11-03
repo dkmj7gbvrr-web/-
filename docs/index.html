@@ -2324,13 +2324,15 @@ import {
   function findRecurringTemplate(id) {
     return recurringTemplates().find(function (t) { return t.id === id; }) || null;
   }
-  // Built-ins first (その他 held back to the end), then custom categories in
-  // the order they were created, then その他 -- so その他 always reads as
-  // the final catch-all rather than sitting in the middle of the list.
+  // その他 first -- it's the default category for a brand-new expense, so
+  // leading with it means the picker's default selection is always the
+  // first (and for the dropdown case, immediately visible) option, rather
+  // than buried at the bottom -- then the other built-ins, then custom
+  // categories in the order they were created.
   function allCategoryOrder() {
     const builtinsExceptOther = CATEGORY_ORDER.slice(0, -1);
     const customIds = customCategoryList().map(function (c) { return c.id; });
-    return builtinsExceptOther.concat(customIds, ['other']);
+    return ['other'].concat(builtinsExceptOther, customIds);
   }
   function isKnownCategory(id) {
     return !!(id && (CATEGORY_NAMES[id] || findCustomCategory(id)));
