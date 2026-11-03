@@ -30,12 +30,15 @@ export async function run({ browser, baseUrl }) {
     const pickerBox = await page.locator('#expense-category-picker').boundingBox();
     assert(pickerBox.height < 60, 'ジャンルのプルダウンは1行分の高さに収まっている: ' + pickerBox.height);
 
-    // --- その他(デフォルトのジャンル)が選択肢の一番上に来る ---
+    // --- 一覧の一番上は食料品、その他は一番下。新規支出のデフォルトは
+    // その一番上の食料品になる ---
     const firstOptionValue = await page.locator('#expense-category-picker option').first().getAttribute('value');
     const firstOptionText = await page.locator('#expense-category-picker option').first().textContent();
-    assert(firstOptionValue === 'other' && firstOptionText === 'その他', '「その他」がジャンルの選択肢の一番上にある: ' + firstOptionValue + '/' + firstOptionText);
+    assert(firstOptionValue === 'food' && firstOptionText === '食料品', 'ジャンルの選択肢の一番上は「食料品」: ' + firstOptionValue + '/' + firstOptionText);
+    const lastOptionValue = await page.locator('#expense-category-picker option').last().getAttribute('value');
+    assert(lastOptionValue === 'other', '「その他」は選択肢の一番下のまま: ' + lastOptionValue);
     const newExpenseDefaultCategory = await page.evaluate(function () { return document.getElementById('expense-category-picker').value; });
-    assert(newExpenseDefaultCategory === 'other', '新規支出のジャンルの初期値は「その他」のまま: ' + newExpenseDefaultCategory);
+    assert(newExpenseDefaultCategory === 'food', '新規支出のジャンルの初期値は一番上の「食料品」になる: ' + newExpenseDefaultCategory);
 
     // --- ジャンルを選ぶと、負担の分け方の初期値がそのジャンルに連動して変わる ---
     await page.selectOption('#expense-category-picker', 'dining');
