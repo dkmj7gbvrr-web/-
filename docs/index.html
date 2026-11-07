@@ -1482,7 +1482,7 @@
 
       <div class="manual-section">
         <h3>実際に立て替えた人</h3>
-        <p>「A」「B」に加えて「共有」（共有カードでの支払い）を選べます。共有カードの支出は、精算タブで通常の負担額（グロス）と、共有カード用口座への実際の精算額（ネット）の両方が表示されます。新しく支出を追加したときの初期値は、設定タブの「この端末の利用者」で選んだ人になります（未設定の場合は「共有」のままです）。ふたりがそれぞれ自分のスマホでこのアプリを使っている場合は設定しておくと、毎回選び直す手間が減ります。</p>
+        <p>「A」「B」に加えて「共有①」「共有②」（それぞれの共有カードでの支払い）を選べます。どちらのカードで払った支出も精算タブでは1つにまとめて扱われ、通常の負担額（グロス）と、共有カード用口座への実際の精算額（ネット）の両方が表示されます。「振り込みを完了にする」も共有①・②まとめて1回で記録します（カードごとに分かれているのは、支出一覧やジャンル別の内訳でどちらのカードを使ったか見分けられるようにするためです）。新しく支出を追加したときの初期値は、設定タブの「この端末の利用者」で選んだ人になります（未設定の場合は「共有①」のままです）。ふたりがそれぞれ自分のスマホでこのアプリを使っている場合は設定しておくと、毎回選び直す手間が減ります。</p>
       </div>
 
       <div class="manual-section">
@@ -1892,6 +1892,9 @@ import {
       burdenB += b.b;
       if (e.paidBy === 'a') { paidByA += e.amount; nonSharedBurdenA += b.a; }
       else if (e.paidBy === 'b') { paidByB += e.amount; nonSharedBurdenA += b.a; }
+      // Catches 'shared' AND 'shared2' (共有①/共有②) as one combined pot --
+      // see the PAID_BY_OPTIONS comment for why the two cards aren't split
+      // any further than the paidBy label itself.
       else { paidByShared += e.amount; sharedBurdenA += b.a; sharedBurdenB += b.b; }
       bySplitType[e.splitType] = (bySplitType[e.splitType] || 0) + e.amount;
       const cat = isKnownCategory(e.category) ? e.category : 'other';
@@ -2203,14 +2206,19 @@ import {
     return '<span class="split-dot split-dot-' + type + '"></span>';
   }
 
-  // 'shared' means the expense was paid from a joint/shared card -- nobody
-  // personally fronted it, so it's excluded from the A/B settlement balance
-  // (see settlement()) but still counts toward totals and breakdowns.
-  const PAID_BY_OPTIONS = ['a', 'b', 'shared'];
+  // 'shared'/'shared2' mean the expense was paid from one of the two joint
+  // cards (共有①/共有②) -- nobody personally fronted it, so both are
+  // excluded from the A/B settlement balance the same way (see the
+  // catch-all branch in summarizeExpenses()) and folded into the same
+  // joint-account transfer plan and the same single 振り込み完了 toggle --
+  // only the day-to-day paidBy label (and so the per-expense breakdown,
+  // filter, and CSV export) actually distinguishes which card was used.
+  const PAID_BY_OPTIONS = ['a', 'b', 'shared', 'shared2'];
   function paidByLabel(paidBy, names) {
     if (paidBy === 'a') return names.a;
     if (paidBy === 'b') return names.b;
-    return '共有';
+    if (paidBy === 'shared2') return '共有②';
+    return '共有①';
   }
 
   // ============================================================
