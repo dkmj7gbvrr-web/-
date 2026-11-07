@@ -53,11 +53,15 @@ export async function run({ browser, baseUrl }) {
     await page.click('[data-action="clear-expense-filter"]');
     await page.waitForTimeout(150);
 
-    // --- 精算タブでは共有①・②が合算され、振り込み完了は1つのトグルでまとまる ---
+    // --- 精算タブの「実際の立替額」では共有①・②が別々の行で表示される ---
     await page.click('[data-action="switch-tab"][data-tab="settle"]');
     await page.waitForTimeout(200);
     const settleText = await page.locator('#settle-body').innerText();
-    assert(settleText.includes('10,000'), '共有①(4,000円)と共有②(6,000円)の合計1万円が、1つの共有カードの金額としてまとまって表示される: ' + settleText);
+    assert(/実際の立替額[\s\S]*?共有①[\s\S]*?4,000/.test(settleText), '「実際の立替額」に共有①(4,000円)の行がある: ' + settleText);
+    assert(/実際の立替額[\s\S]*?共有②[\s\S]*?6,000/.test(settleText), '「実際の立替額」に共有②(6,000円)の行がある: ' + settleText);
+    assert(settleText.includes('10,000'), '負担額の合計1万円（共有①4,000円+共有②6,000円+ふたりの負担額）は変わらず表示される: ' + settleText);
+    // --- ただし振り込み完了・グロス/ネットの精算プラン自体は共有①・②を
+    // 合わせて1つのまま ---
     assert((settleText.match(/共有カードの精算プラン/g) || []).length === 1, '「共有カードの精算プラン」の表示は共有①・②を合わせて1つだけ（別々のセクションにはならない）');
     await page.click('[data-action="toggle-settled-leg"][data-leg="shared"]');
     await page.waitForTimeout(200);

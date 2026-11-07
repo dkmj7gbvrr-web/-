@@ -1870,7 +1870,7 @@ import {
   // (the whole isInitialCost bucket, no date range) -- everything past
   // filtering `target` down to the right expenses is identical.
   function summarizeExpenses(target, incomePeriods, closingDay) {
-    let paidByA = 0, paidByB = 0, paidByShared = 0, burdenA = 0, burdenB = 0, total = 0;
+    let paidByA = 0, paidByB = 0, paidByShared = 0, paidByShared1 = 0, paidByShared2 = 0, burdenA = 0, burdenB = 0, total = 0;
     // Burden from 'shared'-card expenses is excluded here: that money was
     // already paid out of the joint pot, not by A or B individually, so it
     // carries no balance to settle between them (see the shared-card note
@@ -1892,10 +1892,17 @@ import {
       burdenB += b.b;
       if (e.paidBy === 'a') { paidByA += e.amount; nonSharedBurdenA += b.a; }
       else if (e.paidBy === 'b') { paidByB += e.amount; nonSharedBurdenA += b.a; }
-      // Catches 'shared' AND 'shared2' (共有①/共有②) as one combined pot --
-      // see the PAID_BY_OPTIONS comment for why the two cards aren't split
-      // any further than the paidBy label itself.
-      else { paidByShared += e.amount; sharedBurdenA += b.a; sharedBurdenB += b.b; }
+      // Catches 'shared' AND 'shared2' (共有①/共有②) as one combined pot for
+      // the burden/settle math -- see the PAID_BY_OPTIONS comment for why
+      // the two cards aren't split any further than this. paidByShared1/2
+      // break the actual-amount-paid total back out per card, purely for
+      // the 精算タブ breakdown display (実際の立替額) -- they don't feed
+      // into sharedBurdenA/B or the settle math at all.
+      else {
+        paidByShared += e.amount; sharedBurdenA += b.a; sharedBurdenB += b.b;
+        if (e.paidBy === 'shared2') paidByShared2 += e.amount;
+        else paidByShared1 += e.amount;
+      }
       bySplitType[e.splitType] = (bySplitType[e.splitType] || 0) + e.amount;
       const cat = isKnownCategory(e.category) ? e.category : 'other';
       byCategory[cat] = (byCategory[cat] || 0) + e.amount;
@@ -1908,6 +1915,7 @@ import {
 
     return {
       total: total, paidByA: paidByA, paidByB: paidByB, paidByShared: paidByShared,
+      paidByShared1: paidByShared1, paidByShared2: paidByShared2,
       burdenA: burdenA, burdenB: burdenB, sharedBurdenA: sharedBurdenA, sharedBurdenB: sharedBurdenB,
       bySplitType: bySplitType, byCategory: byCategory, settle: settle
     };
@@ -3182,7 +3190,8 @@ import {
         '<div class="ledger-title">実際の立替額</div>' +
         '<div class="kv-row"><span>' + escapeHtml(names.a) + '</span><span class="num">' + formatYen(s.paidByA) + '</span></div>' +
         '<div class="kv-row"><span>' + escapeHtml(names.b) + '</span><span class="num">' + formatYen(s.paidByB) + '</span></div>' +
-        (s.paidByShared > 0 ? '<div class="kv-row"><span>共有カード</span><span class="num">' + formatYen(s.paidByShared) + '</span></div>' : '') +
+        (s.paidByShared1 > 0 ? '<div class="kv-row"><span>共有①</span><span class="num">' + formatYen(s.paidByShared1) + '</span></div>' : '') +
+        (s.paidByShared2 > 0 ? '<div class="kv-row"><span>共有②</span><span class="num">' + formatYen(s.paidByShared2) + '</span></div>' : '') +
       '</div>' +
       (sharedPlan ?
         '<div class="ledger-card">' +
