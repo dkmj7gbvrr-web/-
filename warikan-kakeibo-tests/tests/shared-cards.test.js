@@ -59,6 +59,7 @@ export async function run({ browser, baseUrl }) {
     const settleText = await page.locator('#settle-body').innerText();
     assert(/実際の立替額[\s\S]*?共有①[\s\S]*?4,000/.test(settleText), '「実際の立替額」に共有①(4,000円)の行がある: ' + settleText);
     assert(/実際の立替額[\s\S]*?共有②[\s\S]*?6,000/.test(settleText), '「実際の立替額」に共有②(6,000円)の行がある: ' + settleText);
+    assert(/実際の立替額[\s\S]*?共有合計[\s\S]*?10,000/.test(settleText), '「実際の立替額」に共有①・②を合わせた共有合計(10,000円)の行もある: ' + settleText);
     assert(settleText.includes('10,000'), '負担額の合計1万円（共有①4,000円+共有②6,000円+ふたりの負担額）は変わらず表示される: ' + settleText);
     // --- ただし振り込み完了・グロス/ネットの精算プラン自体は共有①・②を
     // 合わせて1つのまま ---
