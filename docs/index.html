@@ -3192,6 +3192,10 @@ import {
         '<div class="kv-row"><span>' + escapeHtml(names.b) + '</span><span class="num">' + formatYen(s.paidByB) + '</span></div>' +
         (s.paidByShared1 > 0 ? '<div class="kv-row"><span>共有①</span><span class="num">' + formatYen(s.paidByShared1) + '</span></div>' : '') +
         (s.paidByShared2 > 0 ? '<div class="kv-row"><span>共有②</span><span class="num">' + formatYen(s.paidByShared2) + '</span></div>' : '') +
+        // Only worth a separate total row when there's actually something
+        // to add up -- if only one card was used this cycle, it would just
+        // repeat that same row's number.
+        (s.paidByShared1 > 0 && s.paidByShared2 > 0 ? '<div class="kv-row total"><span>共有合計</span><span class="num">' + formatYen(s.paidByShared) + '</span></div>' : '') +
       '</div>' +
       (sharedPlan ?
         '<div class="ledger-card">' +
