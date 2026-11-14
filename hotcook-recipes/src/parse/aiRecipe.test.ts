@@ -67,6 +67,10 @@ describe('aiPrompt', () => {
     expect(aiPrompt('')).not.toContain('の分だけを書き')
   })
 
+  it('画像に写っている URL を url に入れるよう頼む', () => {
+    expect(aiPrompt('')).toContain('URL（https:// から始まるリンク）が写っていれば url に入れて')
+  })
+
   it('依頼文の中の JSON の見本は、そのまま取り込める形になっている', () => {
     const d = parseAiRecipe(aiPrompt(''))
     expect(d?.method).toBe('ai')

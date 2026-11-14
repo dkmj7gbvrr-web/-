@@ -64,6 +64,10 @@ export function RecipeEditor({
         <span>料理名</span>
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例: 無水カレー" required />
       </label>
+      <label className="field">
+        <span>元レシピのURL</span>
+        <input value={url} onChange={(e) => setUrl(e.target.value)} type="url" inputMode="url" placeholder="https://" />
+      </label>
 
       <fieldset className="field modes-edit">
         <legend>ホットクックのモード</legend>
@@ -107,10 +111,6 @@ export function RecipeEditor({
       <label className="field">
         <span>メモ</span>
         <textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={3} placeholder="例: 水は半分でOK。KN-HW16Gなら加熱は35分" />
-      </label>
-      <label className="field">
-        <span>元レシピのURL</span>
-        <input value={url} onChange={(e) => setUrl(e.target.value)} type="url" inputMode="url" placeholder="https://" />
       </label>
       <label className="field">
         <span>画像URL</span>
