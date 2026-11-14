@@ -280,6 +280,10 @@ export function AddRecipe({
           </ol>
           {aiNote && <p className="notice ok">{aiNote}</p>}
           <label className="field">
+            <span>元レシピのURL（任意・スクショには写らないので、残したいときはここに貼る）</span>
+            <input value={url} onChange={(e) => setUrl(e.target.value)} type="text" inputMode="url" placeholder="https://…（X のポストやレシピページのリンク）" />
+          </label>
+          <label className="field">
             <span>AI の返事を貼り付け</span>
             <textarea value={aiText} onChange={(e) => setAiText(e.target.value)} rows={5} placeholder={'{\n  "title": "…",\n  "ingredients": [ … ]\n}'} />
           </label>
